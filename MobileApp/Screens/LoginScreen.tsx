@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, KeyboardAvoidingView, Alert } from "react-native";
+import { authApi } from '../api/auth';
 
 const screenHeight = Dimensions.get('window').height;
 const screenWidth = Dimensions.get('window').width;
@@ -11,12 +12,28 @@ export default function LoginScreen({ navigation, route }: { navigation: any; ro
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
 
-    async function signInWithEmail() {
-        navigation.reset({
-            index: 0,
-            routes: [{ name: "Home", params: { username } }],
-        });
-    }
+    const handleLogin = async () => {
+        try {
+            const response = await authApi.login({
+                email: email,
+                password: password
+            });
+            
+            // Get user profile after successful login
+            const userProfile = await authApi.getCurrentUser();
+            
+            // Navigate to home screen with user data
+            navigation.reset({
+                index: 0,
+                routes: [{ 
+                    name: 'Home',
+                    params: { userData: userProfile }
+                }],
+            });
+        } catch (error) {
+            Alert.alert('Login Failed', 'Please check your credentials and try again.');
+        }
+    };
 
     return (
         <KeyboardAvoidingView behavior="padding" style={styles.container}>
@@ -41,7 +58,7 @@ export default function LoginScreen({ navigation, route }: { navigation: any; ro
                     <TouchableOpacity onPress={() => {Alert.alert("Forgot Password?", "Forgot Password will be implemented here.");}}>
                         <Text style={styles.forgotText}>Forget Password ?</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.button} onPress={signInWithEmail} disabled={loading}>
+                    <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
                         <Text style={styles.buttonText}>Login</Text>
                     </TouchableOpacity>
                     <View style={styles.bottomRow}>
