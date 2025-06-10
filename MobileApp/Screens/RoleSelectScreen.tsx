@@ -9,13 +9,7 @@ export default function RoleSelectScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity 
-        style={styles.backButton}
-        onPress={() => navigation.goBack()}
-      >
-        <Text>←</Text>
-      </TouchableOpacity>
-
+ 
       <Text style={styles.title}>What is your Role?</Text>
       <Text style={styles.subtitle}>Your access to content is depend on your role</Text>
 
@@ -51,6 +45,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
     padding: 20,
+    paddingTop: 100,
   },
   backButton: {
     marginTop: 20,

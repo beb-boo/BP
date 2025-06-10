@@ -14,18 +14,35 @@ interface BloodPressureData {
 
 export default function HomeScreen({ navigation, setIsCameraActive, route }: { navigation: any; setIsCameraActive: (active: boolean) => void, route: any }) {
     const [readings, setReadings] = useState<BloodPressureData[]>([]);
-    const [username, setUsername] = useState(route.params?.username || "Empty name");
-    const [i,setI] = useState(0);
     const defaultReading = {
         diastolic: 0,
         pulse: 0,
         systolic: 0,
         time: ""
     };
+    const [userData, setUserData] = useState({
+        username: '',
+        citizenId: '',
+        dateOfBirth: '',
+        bloodType: '',
+        height: '',
+        weight: '',
+        age: '',
+        gender: '',
+        email: '',
+        role: '',
+    });
 
     useEffect(() => {
         setReadings([defaultReading]);
     }, []);
+
+    useEffect(() => {
+        if (route.params?.userData) {
+            setUserData(route.params.userData);
+            console.log("HomeScreen, userData:", route.params.userData);
+        }
+    }, [route.params?.userData]);
 
     useEffect(() => {
         if (!route.params?.bloodPressureData) {
@@ -60,7 +77,7 @@ export default function HomeScreen({ navigation, setIsCameraActive, route }: { n
             </View>
             <View style={{ marginLeft: 8 }}>
                 <Text style={styles.helloText}>Hello!</Text>
-                <Text style={styles.usernameText}>{username}</Text>
+                <Text style={styles.usernameText}>{userData.username}</Text>
             </View>
         </View>
     );
@@ -110,7 +127,7 @@ export default function HomeScreen({ navigation, setIsCameraActive, route }: { n
             <TouchableOpacity style={styles.bottomBarIcon}>
                 <FontAwesome name="medkit" size={28} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.bottomBarIcon} onPress={() => {navigation.navigate("Account"); setI(i+1);}}>
+            <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate("Account", {userData: userData})}>
                 <Ionicons name="person-circle-outline" size={28} color="#fff" />
             </TouchableOpacity>
         </View>

@@ -7,15 +7,6 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 export default function Account({ navigation, route }: { navigation: any, route: any }) {
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
-  const [name, setName] = useState(route.params?.username || "Empty name");
-  const [email, setEmail] = useState(route.params?.email || "Empty email");
-  const [dateOfBirth, setDateOfBirth] = useState(route.params?.dateOfBirth || "Empty date of birth");
-  const [bloodType, setBloodType] = useState(route.params?.bloodType || "Empty blood type");
-  const [height, setHeight] = useState(route.params?.height || "000");
-  const [weight, setWeight] = useState(route.params?.weight || "000");
-  const [age, setAge] = useState(route.params?.age || "Empty age");
-  const [gender, setGender] = useState(route.params?.gender || "Empty gender");
-  const [citizenId, setCitizenId] = useState(route.params?.citizenId || "Empty citizen id");
   const [website, setWebsite] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(route.params?.avatarUrl || null);
   const [avatarPath, setAvatarPath] = useState("");
@@ -24,17 +15,29 @@ export default function Account({ navigation, route }: { navigation: any, route:
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedData, setEditedData] = useState({
-    name: name,
-    email: email,
-    dateOfBirth: dateOfBirth,
-    bloodType: bloodType,
-    height: height,
-    weight: weight,
-    age: age,
-    gender: gender,
-    citizenId: citizenId
+    username: '',
+    citizenId: '',
+    dateOfBirth: '',
+    bloodType: '',
+    height: '',
+    weight: '',
+    age: '',
+    gender: '',
+    email: '',
+    role: '',
   });
-
+  const [userData, setUserData] = useState({
+    username: '',
+    citizenId: '',
+    dateOfBirth: '',
+    bloodType: '',
+    height: '',
+    weight: '',
+    age: '',
+    gender: '',
+    email: '',
+    role: '',
+  });
   useEffect(() => {
     (async () => {
       if (!mediaPermission) {
@@ -45,6 +48,13 @@ export default function Account({ navigation, route }: { navigation: any, route:
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (route.params?.userData) {
+        setUserData(route.params.userData);
+        setEditedData(route.params.userData);
+    }
+}, [route.params?.userData]);
 
   async function getProfile() {
 
@@ -97,21 +107,13 @@ export default function Account({ navigation, route }: { navigation: any, route:
   const handleEditToggle = () => {
     if (isEditMode) {
       // Save changes
-      setName(editedData.name);
-      setEmail(editedData.email);
-      setDateOfBirth(editedData.dateOfBirth);
-      setBloodType(editedData.bloodType);
-      setHeight(editedData.height);
-      setWeight(editedData.weight);
-      setAge(editedData.age);
-      setGender(editedData.gender);
-      setCitizenId(editedData.citizenId);
+      setUserData(editedData);
     }
     setIsEditMode(!isEditMode);
   };
 
   const handleInputChange = (field: string, value: string) => {
-    setEditedData(prev => ({
+    setEditedData((prev: any) => ({
       ...prev,
       [field]: value
     }));
@@ -157,13 +159,13 @@ export default function Account({ navigation, route }: { navigation: any, route:
                 {isEditMode ? (
                   <TextInput
                     style={[styles.username, styles.editableInput, { color: '#fff', borderColor: '#fff' }]}
-                    value={editedData.name}
-                    onChangeText={(text) => handleInputChange('name', text)}
+                    value={editedData.username}
+                    onChangeText={(text) => handleInputChange('username', text)}
                     placeholder="Enter name"
                     placeholderTextColor="#ffffff80"
                   />
                 ) : (
-                  <Text style={styles.username}>{name}</Text>
+                  <Text style={styles.username}>{userData.username}</Text>
                 )}
                 <View style={styles.patientBadge}>
                   <Text style={styles.patientBadgeText}>PATIENT</Text>
@@ -180,7 +182,7 @@ export default function Account({ navigation, route }: { navigation: any, route:
                   placeholder="Enter citizen ID"
                 />
               ) : (
-                <Text style={styles.citizenValue}>{citizenId}</Text>
+                <Text style={styles.citizenValue}>{userData.citizenId}</Text>
               )}
             </View>
           </View>
@@ -234,13 +236,13 @@ export default function Account({ navigation, route }: { navigation: any, route:
                 ) : (
                   <>
                     <Text style={styles.detailLabel}>Email</Text>
-                    <Text style={styles.citizenValue}>{email}</Text>
+                    <Text style={styles.citizenValue}>{userData.email}</Text>
                     <Text style={styles.detailLabel}>Date of Birth</Text>
-                    <Text style={styles.citizenValue}>{dateOfBirth}</Text>
+                    <Text style={styles.citizenValue}>{userData.dateOfBirth}</Text>
                     <Text style={styles.detailLabel}>Blood Type</Text>
-                    <Text style={styles.citizenValue}>{bloodType}</Text>
+                    <Text style={styles.citizenValue}>{userData.bloodType}</Text>
                     <Text style={styles.detailLabel}>Height</Text>
-                    <Text style={styles.citizenValue}>{height} cm</Text>
+                    <Text style={styles.citizenValue}>{userData.height}</Text>
                   </>
                 )}
               </View>
@@ -272,11 +274,11 @@ export default function Account({ navigation, route }: { navigation: any, route:
                 ) : (
                   <>
                     <Text style={styles.detailLabel}>Age</Text>
-                    <Text style={styles.citizenValue}>{age}</Text>
+                    <Text style={styles.citizenValue}>{userData.age}</Text>
                     <Text style={styles.detailLabel}>Gender</Text>
-                    <Text style={styles.citizenValue}>{gender}</Text>
+                    <Text style={styles.citizenValue}>{userData.gender}</Text>
                     <Text style={styles.detailLabel}>Weight</Text>
-                    <Text style={styles.citizenValue}>{weight} kg</Text>
+                    <Text style={styles.citizenValue}>{userData.weight}</Text>
                   </>
                 )}
               </View>
@@ -303,10 +305,10 @@ export default function Account({ navigation, route }: { navigation: any, route:
           </View>
         ) : (
           <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Home')}>
+          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Home', {userData: userData})}>
             <Ionicons name="home" size={28} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Camera')}>
+          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Camera', {userData: userData})}>
             <Ionicons name="scan" size={28} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.bottomBarIcon}>
