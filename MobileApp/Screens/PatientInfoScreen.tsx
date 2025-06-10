@@ -13,7 +13,7 @@ export default function PatientInfoScreen({ navigation }: { navigation: any }) {
     weight: '',
   });
 
-  const bloodTypes = ['A', 'B', 'AB', 'O', 'Rh+', 'Rh-'];
+  const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
   const genderOptions = ['Male', 'Female', 'Other'];
 
   const handleRegister = () => {

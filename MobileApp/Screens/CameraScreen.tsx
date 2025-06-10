@@ -6,6 +6,7 @@ import { AntDesign } from "@expo/vector-icons";
 import * as FileSystem from 'expo-file-system'
 import * as ImagePicker from 'expo-image-picker'
 import * as ImageManipulator from 'expo-image-manipulator';
+import { ocrApi } from '../api/ocr';
 
 const screenHeight = Dimensions.get('window').height;
 const screenWidth = Dimensions.get('window').width;
@@ -72,36 +73,20 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
     };
 
     const processImage = async () => {
-        if (!imageUri) {
-            alert("No image to process.");
-            return;
-        }
-
-        setIsProcessing(true);
         try {
+            setIsProcessing(true);
             const creationTime = new Date().toLocaleTimeString();
-            const base64Image = await FileSystem.readAsStringAsync(imageUri, {
-                encoding: FileSystem.EncodingType.Base64
-            });
 
-            if (!base64Image) {
-                throw new Error("Failed to convert image to base64");
-            }
+            // Create FormData
+            const formData = new FormData();
+            formData.append('file', {
+                uri: imageUri,
+                type: 'image/jpeg',
+                name: 'image.jpg',
+            } as any); // Type assertion needed for React Native FormData
 
-            const response = await fetch("http://172.19.200.62:3000/api/processImage", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ image: base64Image }),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to process image through backend: ${errorText}`);
-            }
-
-            const data = await response.json() as BloodPressureData;
+            // Process image using the OCR API
+            const data = await ocrApi.processImage(formData);
 
             if (!data.time || data.time === "") {
                 data.time = creationTime;

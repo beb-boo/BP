@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, FlatList, Image, Pressable, StyleSheet, Text, View, Modal, TouchableOpacity, TouchableWithoutFeedback, TextInput, ScrollView, Alert, ActivityIndicator, Dimensions } from "react-native";
 import { AntDesign, MaterialIcons, Ionicons, FontAwesome } from "@expo/vector-icons";
+import { bloodPressureApi } from '../api/bloodPressure';
 
 const screenHeight = Dimensions.get('window').height;
 const screenWidth = Dimensions.get('window').width;
@@ -43,6 +44,20 @@ export default function HomeScreen({ navigation, setIsCameraActive, route }: { n
             console.log("HomeScreen, userData:", route.params.userData);
         }
     }, [route.params?.userData]);
+
+    useEffect(() => {
+        const fetchBPRecords = async () => {
+            try {
+                const records = await bloodPressureApi.getRecords();
+                setReadings(records.length > 0 ? records : [defaultReading]);
+            } catch (error) {
+                console.error('Error fetching BP records:', error);
+                setReadings([defaultReading]);
+            }
+        };
+
+        fetchBPRecords();
+    }, []);
 
     useEffect(() => {
         if (!route.params?.bloodPressureData) {
