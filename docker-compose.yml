@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:17.5
+    container_name: bp_postgres
+    restart: always
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: bp_user
+      POSTGRES_PASSWORD: bp_pass
+      POSTGRES_DB: bp_db
+    ports:
+      - "5432:5432"
+
+  fastapi:
+    build: .
+    container_name: bp_fastapi
+    ports:
+      - "8000:80"
+    depends_on:
+      - postgres
+    env_file:
+      - .env
+
+volumes:
+  pgdata:
