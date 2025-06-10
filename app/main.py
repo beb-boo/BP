@@ -421,7 +421,8 @@ async def root():
 @app.post("/auth/register", response_model=UserResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     """Register new user"""
-    # Check if user already exists
+
+    # Email uniqueness
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -429,9 +430,20 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=400, detail="Citizen ID already registered")
 
-    if user.medical_license and db.query(User).filter(User.medical_license == user.medical_license).first():
-        raise HTTPException(
-            status_code=400, detail="Medical license already registered")
+    # --- Role-specific validation ---
+    if user.role == "doctor":
+        if not user.medical_license:
+            raise HTTPException(
+                status_code=400, detail="Doctors must provide a medical license number")
+        if db.query(User).filter(User.medical_license == user.medical_license).first():
+            raise HTTPException(
+                status_code=400, detail="Medical license already registered")
+    elif user.role == "patient":
+        if user.medical_license:
+            raise HTTPException(
+                status_code=400, detail="Patients must not provide a medical license")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid role")
 
     # Create new user
     db_user = User(
@@ -439,7 +451,7 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
         password_hash=hash_password(user.password),
         full_name=user.full_name,
         citizen_id=user.citizen_id,
-        medical_license=user.medical_license,
+        medical_license=user.medical_license if user.role == "doctor" else None,
         date_of_birth=user.date_of_birth,
         gender=user.gender,
         blood_type=user.blood_type,
