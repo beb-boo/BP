@@ -3,7 +3,7 @@ Blood Pressure App - FastAPI Server with Google Generative AI OCR
 Comprehensive API for blood pressure monitoring application
 """
 
-from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile
+from fastapi import FastAPI, HTTPException, Depends, status, File, UploadFile, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text
@@ -11,7 +11,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from pydantic import BaseModel, EmailStr, validator
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Literal, Union
 import bcrypt
 import jwt
 import os
@@ -127,28 +127,41 @@ class AccessRequest(Base):
 # =====================================================
 
 
-class UserBase(BaseModel):
+class UserCreateBasic(BaseModel):
     email: EmailStr
-    full_name: str
-    citizen_id: Optional[str] = None
-    medical_license: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
-    gender: Optional[str] = None
-    blood_type: Optional[str] = None
-    height: Optional[float] = None
-    weight: Optional[float] = None
-    role: str = "patient"
-
-
-class UserCreate(UserBase):
     password: str
     confirm_password: str
 
     @validator('confirm_password')
     def passwords_match(cls, v, values, **kwargs):
         if 'password' in values and v != values['password']:
-            raise ValueError('passwords do not match')
+            raise ValueError('Passwords do not match')
         return v
+
+
+class UserRoleSelect(BaseModel):
+    email: EmailStr
+    role: Literal["patient", "doctor"]
+
+
+class PatientProfile(BaseModel):
+    email: EmailStr
+    full_name: str
+    citizen_id: str
+    date_of_birth: datetime
+    gender: str
+    blood_type: str
+    height: float
+    weight: float
+
+
+class DoctorProfile(BaseModel):
+    email: EmailStr
+    full_name: str
+    citizen_id: str
+    medical_license: str
+    date_of_birth: datetime
+    gender: str
 
 
 class UserLogin(BaseModel):
@@ -156,23 +169,44 @@ class UserLogin(BaseModel):
     password: str
 
 
-class UserResponse(UserBase):
-    id: int
-    is_active: bool
-    created_at: datetime
+class PatientProfileResponse(BaseModel):
+    email: EmailStr
+    full_name: str
+    citizen_id: str
+    date_of_birth: datetime
+    gender: str
+    blood_type: str
+    height: float
+    weight: float
+    role: Literal["patient"]
 
-    class Config:
-        from_attributes = True
+
+class DoctorProfileResponse(BaseModel):
+    email: EmailStr
+    full_name: str
+    citizen_id: str
+    medical_license: str
+    date_of_birth: datetime
+    gender: str
+    role: Literal["doctor"]
 
 
-class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    citizen_id: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
-    gender: Optional[str] = None
-    blood_type: Optional[str] = None
-    height: Optional[float] = None
-    weight: Optional[float] = None
+class PatientUpdate(BaseModel):
+    full_name: Optional[str]
+    citizen_id: Optional[str]
+    date_of_birth: Optional[datetime]
+    gender: Optional[str]
+    blood_type: Optional[str]
+    height: Optional[float]
+    weight: Optional[float]
+
+
+class DoctorUpdate(BaseModel):
+    full_name: Optional[str]
+    citizen_id: Optional[str]
+    medical_license: Optional[str]
+    date_of_birth: Optional[datetime]
+    gender: Optional[str]
 
 
 class BloodPressureRecordCreate(BaseModel):
@@ -221,7 +255,7 @@ class DoctorPatientResponse(BaseModel):
     hospital: Optional[str] = None
     is_active: bool
     created_at: datetime
-    patient: UserResponse
+    patient: PatientProfileResponse
 
     class Config:
         from_attributes = True
@@ -415,56 +449,78 @@ async def root():
     """Health check endpoint"""
     return {"message": "Blood Pressure API with Google AI OCR is running", "status": "healthy"}
 
-# Authentication Routes
+# Authentication Routes, separate register
 
 
-@app.post("/auth/register", response_model=UserResponse)
-async def register(user: UserCreate, db: Session = Depends(get_db)):
-    """Register new user"""
-
-    # Email uniqueness
+@app.post("/auth/register/basic")
+def register_basic(user: UserCreateBasic, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    if user.citizen_id and db.query(User).filter(User.citizen_id == user.citizen_id).first():
-        raise HTTPException(
-            status_code=400, detail="Citizen ID already registered")
-
-    # --- Role-specific validation ---
-    if user.role == "doctor":
-        if not user.medical_license:
-            raise HTTPException(
-                status_code=400, detail="Doctors must provide a medical license number")
-        if db.query(User).filter(User.medical_license == user.medical_license).first():
-            raise HTTPException(
-                status_code=400, detail="Medical license already registered")
-    elif user.role == "patient":
-        if user.medical_license:
-            raise HTTPException(
-                status_code=400, detail="Patients must not provide a medical license")
-    else:
-        raise HTTPException(status_code=400, detail="Invalid role")
-
-    # Create new user
-    db_user = User(
+    new_user = User(
         email=user.email,
         password_hash=hash_password(user.password),
-        full_name=user.full_name,
-        citizen_id=user.citizen_id,
-        medical_license=user.medical_license if user.role == "doctor" else None,
-        date_of_birth=user.date_of_birth,
-        gender=user.gender,
-        blood_type=user.blood_type,
-        height=user.height,
-        weight=user.weight,
-        role=user.role
+        role=None  # Temporarily None
     )
-
-    db.add(db_user)
+    db.add(new_user)
     db.commit()
-    db.refresh(db_user)
+    db.refresh(new_user)
+    return {"message": "Account created. Please select your role."}
 
-    return db_user
+
+@app.post("/auth/register/role")
+def register_role(data: UserRoleSelect, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if data.role not in ["patient", "doctor"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    user.role = data.role
+    db.commit()
+    return {"message": f"Role '{data.role}' set successfully."}
+
+
+@app.post("/auth/register/profile")
+def register_profile(
+    profile_data: Union[PatientProfile, DoctorProfile],
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.email == profile_data.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role == "patient" and isinstance(profile_data, PatientProfile):
+        user.full_name = profile_data.full_name
+        user.citizen_id = profile_data.citizen_id
+        user.date_of_birth = profile_data.date_of_birth
+        user.gender = profile_data.gender
+        user.blood_type = profile_data.blood_type
+        user.height = profile_data.height
+        user.weight = profile_data.weight
+
+    elif user.role == "doctor" and isinstance(profile_data, DoctorProfile):
+        if not profile_data.medical_license:
+            raise HTTPException(
+                status_code=400, detail="Doctors must provide a medical license")
+        if db.query(User).filter(User.medical_license == profile_data.medical_license).first():
+            raise HTTPException(
+                status_code=400, detail="Medical license already registered")
+
+        user.full_name = profile_data.full_name
+        user.citizen_id = profile_data.citizen_id
+        user.medical_license = profile_data.medical_license
+        user.date_of_birth = profile_data.date_of_birth
+        user.gender = profile_data.gender
+
+    else:
+        raise HTTPException(
+            status_code=400, detail="Profile does not match selected role")
+
+    db.commit()
+    db.refresh(user)
+    return {"message": "Profile information saved successfully."}
 
 
 @app.post("/auth/login", response_model=Token)
@@ -485,20 +541,32 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
 # User Profile Routes
 
 
-@app.get("/users/me", response_model=UserResponse)
+@app.get("/users/me")
 async def get_current_user_profile(current_user: User = Depends(get_current_user)):
-    """Get current user profile"""
-    return current_user
+    """Return role-specific user profile"""
+    if current_user.role == "patient":
+        return PatientProfileResponse(**current_user.__dict__)
+    elif current_user.role == "doctor":
+        return DoctorProfileResponse(**current_user.__dict__)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid role")
 
 
-@app.put("/users/me", response_model=UserResponse)
+@app.put("/users/me")
 async def update_user_profile(
-    user_update: UserUpdate,
+    user_update: dict = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update current user profile"""
-    update_data = user_update.dict(exclude_unset=True)
+    """Update user profile based on role"""
+    if current_user.role == "patient":
+        validated = PatientUpdate(**user_update)
+    elif current_user.role == "doctor":
+        validated = DoctorUpdate(**user_update)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
+    update_data = validated.dict(exclude_unset=True)
 
     for field, value in update_data.items():
         setattr(current_user, field, value)
@@ -507,7 +575,12 @@ async def update_user_profile(
     db.commit()
     db.refresh(current_user)
 
-    return current_user
+    # Return updated profile with correct response model
+    if current_user.role == "patient":
+        return PatientProfileResponse(**current_user.__dict__)
+    else:
+        return DoctorProfileResponse(**current_user.__dict__)
+
 
 # Blood Pressure Records Routes -> @app.post("/bp-records", response_model=BloodPressureRecordResponse)
     db.add(db_record)
