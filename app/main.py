@@ -32,7 +32,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Google AI Configuration
-GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "AIxxxxxxxxxxxx")
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
 genai.configure(api_key=GOOGLE_AI_API_KEY)
 
 # Database
@@ -509,45 +509,12 @@ async def update_user_profile(
 
     return current_user
 
-# Blood Pressure Records Routes
-
-
-@app.post("/bp-records", response_model=BloodPressureRecordResponse)
-async def create_bp_record(
-    record: BloodPressureRecordCreate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Create new blood pressure record"""
-    db_record = BloodPressureRecord(
-        user_id=current_user.id,
-        systolic=record.systolic,
-        diastolic=record.diastolic,
-        pulse=record.pulse,
-        measurement_date=record.measurement_date,
-        measurement_time=record.measurement_time,
-        notes=record.notes
-    )
-
+# Blood Pressure Records Routes -> @app.post("/bp-records", response_model=BloodPressureRecordResponse)
     db.add(db_record)
     db.commit()
     db.refresh(db_record)
 
     return db_record
-
-
-@app.get("/bp-records", response_model=List[BloodPressureRecordResponse])
-async def get_bp_records(
-    skip: int = 0,
-    limit: int = 100,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get blood pressure records with optional date filtering"""
-    query = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.user_id == current_user.id)
 
     if start_date:
         query = query.filter(
@@ -559,37 +526,10 @@ async def get_bp_records(
         skip).limit(limit).all()
     return records
 
-
-@app.get("/bp-records/{record_id}", response_model=BloodPressureRecordResponse)
-async def get_bp_record(
-    record_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get specific blood pressure record"""
-    record = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.id == record_id,
-        BloodPressureRecord.user_id == current_user.id
-    ).first()
-
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
 
     return record
-
-
-@app.put("/bp-records/{record_id}", response_model=BloodPressureRecordResponse)
-async def update_bp_record(
-    record_id: int,
-    record_update: BloodPressureRecordUpdate,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update blood pressure record"""
-    record = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.id == record_id,
-        BloodPressureRecord.user_id == current_user.id
-    ).first()
 
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -602,19 +542,6 @@ async def update_bp_record(
     db.refresh(record)
 
     return record
-
-
-@app.delete("/bp-records/{record_id}")
-async def delete_bp_record(
-    record_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Delete blood pressure record"""
-    record = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.id == record_id,
-        BloodPressureRecord.user_id == current_user.id
-    ).first()
 
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -629,43 +556,50 @@ async def delete_bp_record(
 # =====================================================
 
 
-@app.post("/ocr/process-image", response_model=OCRResult)
+@app.post("/ocr/process-image")
 async def process_bp_image(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
 ):
-    """Process blood pressure monitor image with Google Generative AI OCR"""
+    """Extract blood pressure values from an uploaded image (OCR only)"""
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
-    # สร้างไฟล์ชั่วคราวเพื่อบันทึกรูปภาพ
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            # อ่านข้อมูลภาพและบันทึกลงไฟล์ชั่วคราว
             content = await file.read()
             temp_file.write(content)
             temp_file_path = temp_file.name
 
-        # ประมวลผลด้วย Google Generative AI
         ocr_result = read_blood_pressure_with_gemini(temp_file_path)
-
-        # ลบไฟล์ชั่วคราว
         os.unlink(temp_file_path)
 
-        return ocr_result
+        if ocr_result.error:
+            raise HTTPException(
+                status_code=400, detail=f"OCR Error: {ocr_result.error}")
+
+        if not all([ocr_result.systolic, ocr_result.diastolic, ocr_result.pulse]):
+            raise HTTPException(
+                status_code=400, detail="Could not extract all required blood pressure values")
+
+        return {
+            "systolic": ocr_result.systolic,
+            "diastolic": ocr_result.diastolic,
+            "pulse": ocr_result.pulse,
+            "measurement_time": ocr_result.time,
+            "image_metadata": ocr_result.image_metadata,
+            "confidence": ocr_result.confidence
+        }
 
     except Exception as e:
-        # ลบไฟล์ชั่วคราวในกรณีที่เกิดข้อผิดพลาด
         if 'temp_file_path' in locals():
             try:
                 os.unlink(temp_file_path)
             except:
                 pass
-
         raise HTTPException(
             status_code=500, detail=f"Error processing image: {str(e)}")
 
-
+'''
 @app.post("/ocr/process-and-save", response_model=BloodPressureRecordResponse)
 async def process_and_save_bp_record(
     file: UploadFile = File(...),
@@ -757,7 +691,75 @@ async def process_and_save_bp_record(
 
         raise HTTPException(
             status_code=500, detail=f"Error processing image: {str(e)}")
+'''
 
+
+@app.get("/bp-records", response_model=List[BloodPressureRecordResponse])
+async def get_bp_records(
+    skip: int = 0,
+    limit: int = 100,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get blood pressure records with optional date filtering"""
+    query = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id)
+
+    if start_date:
+        query = query.filter(
+            BloodPressureRecord.measurement_date >= start_date)
+    if end_date:
+        query = query.filter(BloodPressureRecord.measurement_date <= end_date)
+
+    records = query.order_by(BloodPressureRecord.measurement_date.desc()).offset(
+        skip).limit(limit).all()
+    return records
+
+
+@app.post("/bp-records/save-from-ocr", response_model=BloodPressureRecordResponse)
+async def save_from_ocr(
+    data: BloodPressureRecordCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Save blood pressure record from OCR result (edited or not)"""
+    db_record = BloodPressureRecord(
+        user_id=current_user.id,
+        systolic=data.systolic,
+        diastolic=data.diastolic,
+        pulse=data.pulse,
+        measurement_date=data.measurement_date,
+        measurement_time=data.measurement_time,
+        notes=data.notes,
+    )
+
+    db.add(db_record)
+    db.commit()
+    db.refresh(db_record)
+    return db_record
+
+
+@app.delete("/bp-records/{record_id}")
+async def delete_bp_record(
+    record_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete blood pressure record"""
+    record = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.id == record_id,
+        BloodPressureRecord.user_id == current_user.id
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    db.delete(record)
+    db.commit()
+
+    return {"message": "Record deleted successfully"}
 # Patient: View List of Authorized Doctors
 
 
