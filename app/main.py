@@ -34,6 +34,7 @@ import phonenumbers
 from phonenumbers import NumberParseException
 import hashlib
 import secrets
+from dotenv import load_dotenv
 
 # Google Generative AI imports
 import google.generativeai as genai
@@ -43,6 +44,10 @@ from PIL.ExifTags import TAGS
 # =====================================================
 # Configuration
 # =====================================================
+# สั่งให้โหลดค่าจากไฟล์ .env เข้าสู่ Environment Variables ของโปรแกรม
+load_dotenv()
+
+
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -830,7 +835,7 @@ async def root():
     return create_standard_response(
         status="success",
         message="Blood Pressure API with OTP System is running",
-        data={"version": "2.0.0", "status": "healthy"}
+        data={"version": "1.0.0", "status": "healthy"}
     )
 
 @app.get("/health")
