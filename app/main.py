@@ -25,8 +25,8 @@ import random
 import string
 import smtplib
 import requests
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -497,7 +497,7 @@ def send_email_otp(email: str, otp: str, purpose: str):
         
         subject = subject_map.get(purpose, "รหัส OTP")
         
-        message = MimeMultipart()
+        message = MIMEMultipart()
         message["From"] = EMAIL_FROM
         message["To"] = email
         message["Subject"] = subject
@@ -510,7 +510,7 @@ def send_email_otp(email: str, otp: str, purpose: str):
         หากคุณไม่ได้ทำการร้องขอนี้ กรุณาเพิกเฉยต่ออีเมลนี้
         """
         
-        message.attach(MimeText(body, "plain"))
+        message.attach(MIMEText(body, "plain"))
         
         server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
         server.starttls()

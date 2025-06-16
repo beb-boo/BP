@@ -1,8 +1,14 @@
 fastapi==0.115.12
+phonenumbers==8.13.30
+phonenumberslite==8.13.30
 Pillow==11.2.1
 protobuf==6.31.1
-pydantic==2.11.5
+pydantic==2.11.7
+PyJWT==2.10.1
 PyJWT==2.10.1
 python_bcrypt==0.3.2
+Requests==2.32.4
+slowapi==0.1.9
 SQLAlchemy==2.0.35
 uvicorn==0.34.3
+email-to 0.1.0
