@@ -6,6 +6,7 @@ import { API_BASE_URL } from '../config';
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
+    'X-API-Key': 'bp-mobile-app-key',
     'Content-Type': 'application/json',
   },
 });

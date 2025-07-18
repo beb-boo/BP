@@ -1087,6 +1087,8 @@ async def verify_otp(
         OTPCode.expires_at > datetime.now(timezone.utc)
     ).first()
 
+    logger.info(f'otp_record: {otp_record}')
+    
     if not otp_record:
         # Check if there's an expired or used OTP
         expired_otp = db.query(OTPCode).filter(
@@ -1097,7 +1099,7 @@ async def verify_otp(
         if expired_otp:
             if expired_otp.is_used:
                 raise HTTPException(status_code=400, detail="OTP already used")
-            elif expired_otp.expires_at <= datetime.now(timezone.utc):
+            elif expired_otp.expires_at.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
                 raise HTTPException(status_code=400, detail="OTP expired")
             elif expired_otp.attempts >= expired_otp.max_attempts:
                 raise HTTPException(
@@ -1138,109 +1140,6 @@ async def verify_otp(
 # =====================================================
 
 
-# @app.post("/api/v1/auth/register", tags=["register"])
-# @limiter.limit("3/minute")
-# async def register_user(
-#     request: Request,
-#     user_data: UserRegister,
-#     api_key: str = Depends(verify_api_key),
-#     db: Session = Depends(get_db)
-# ):
-#     """Register new user - requires OTP verification first"""
-#     request_id = generate_request_id()
-
-#     contact_target = (
-#         user_data.email or user_data.phone_number).strip().lower()
-
-#     # Verify that OTP was verified for registration
-
-#     recent_otp = db.query(OTPCode).filter(
-#         OTPCode.purpose == "registration",
-#         OTPCode.contact_target == contact_target,
-#         OTPCode.created_at > datetime.now(timezone.utc) - timedelta(minutes=10)
-#     ).order_by(OTPCode.created_at.desc()).first()
-
-#     if not recent_otp or not recent_otp.is_used or recent_otp.user_id is not None:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="Please verify your contact information with OTP first"
-#         )
-
-
-#     # Check if user already exists
-#     if user_data.email:
-#         existing_user = db.query(User).filter(
-#             User.email == user_data.email).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Email already registered")
-
-#     if user_data.phone_number:
-#         existing_user = db.query(User).filter(
-#             User.phone_number == user_data.phone_number).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Phone number already registered")
-
-#     # Check medical license for doctors
-#     if user_data.role == "doctor" and user_data.medical_license:
-#         existing_doctor = db.query(User).filter(
-#             User.medical_license == user_data.medical_license).first()
-#         if existing_doctor:
-#             raise HTTPException(
-#                 status_code=400, detail="Medical license already registered")
-
-#     try:
-#         # Create new user
-#         new_user = User(
-#             email=user_data.email,
-#             phone_number=user_data.phone_number,
-#             password_hash=hash_password(user_data.password),
-#             full_name=user_data.full_name,
-#             role=user_data.role,
-#             citizen_id=user_data.citizen_id,
-#             medical_license=user_data.medical_license,
-#             date_of_birth=user_data.date_of_birth,
-#             gender=user_data.gender,
-#             blood_type=user_data.blood_type,
-#             height=user_data.height,
-#             weight=user_data.weight,
-#             is_email_verified=bool(user_data.email),  # Verified via OTP
-#             is_phone_verified=bool(user_data.phone_number)  # Verified via OTP
-#         )
-
-#         db.add(new_user)
-#         db.commit()
-#         db.refresh(new_user)
-
-#         # Update OTP record with user ID
-#         recent_otp.user_id = new_user.id
-#         recent_otp.is_used = True
-#         db.commit()
-
-#         logger.info(
-#             f"New user registered: {contact_target} - Role: {new_user.role} - Request ID: {request_id}")
-
-#         return create_standard_response(
-#             status="success",
-#             message="User registered successfully",
-#             data={
-#                 "user_id": new_user.id,
-#                 "email": new_user.email,
-#                 "phone_number": new_user.phone_number,
-#                 "role": new_user.role,
-#                 "is_email_verified": new_user.is_email_verified,
-#                 "is_phone_verified": new_user.is_phone_verified
-#             },
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"Registration failed: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(status_code=500, detail="Registration failed")
-
 @app.post("/api/v1/auth/register", tags=["authentication"])
 @limiter.limit("3/minute")
 async def register_user(
@@ -1255,6 +1154,9 @@ async def register_user(
     contact_target = (
         user_data.email or user_data.phone_number).strip().lower()
 
+    logger.info(f"date time calculation(OTPCode.created_at): {datetime.now(timezone.utc) - timedelta(minutes=10)}" 
+    )
+
     # get most recent OTP
     recent_otp = db.query(OTPCode).filter(
         OTPCode.purpose == "registration",
@@ -1262,10 +1164,23 @@ async def register_user(
         OTPCode.created_at > datetime.now(timezone.utc) - timedelta(minutes=10)
     ).order_by(OTPCode.created_at.desc()).first()
 
-    if not recent_otp or not recent_otp.is_used or recent_otp.user_id is not None:
+    logger.info(
+        f"OTP recent: {recent_otp}")
+
+    if not recent_otp:
         raise HTTPException(
             status_code=400,
-            detail="Please verify your contact information with OTP first"
+            detail="No OTP record matching the criteria was found in the database."
+        )
+    elif not recent_otp.is_used:
+        raise HTTPException(
+            status_code=400,
+            detail="An OTP was found, but its is_used flag is False"
+        )
+    elif recent_otp.user_id is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="An OTP was found, and it's already associated with a user_id"
         )
 
     # Optional debug log
@@ -1611,69 +1526,10 @@ async def get_current_user_profile(
     return create_standard_response(
         status="success",
         message="Profile retrieved successfully",
-        data={"profile": user_profile.dict()},
+        data={"profile": user_profile.model_dump()},
         request_id=request_id
     )
 
-
-# @app.put("/api/v1/users/me", response_model=StandardResponse,  tags=["profile"])
-# async def update_user_profile(
-#     user_update: UserProfileUpdate,
-#     current_user: User = Depends(get_current_user),
-#     db: Session = Depends(get_db)
-# ):
-#     """Update user profile"""
-#     request_id = generate_request_id()
-
-#     # Check if phone number is already taken by another user
-#     if user_update.phone_number and user_update.phone_number != current_user.phone_number:
-#         existing_user = db.query(User).filter(
-#             User.phone_number == user_update.phone_number,
-#             User.id != current_user.id
-#         ).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Phone number already taken")
-
-#     # Check if medical license is already taken (for doctors)
-#     if (user_update.medical_license and
-#         current_user.role == "doctor" and
-#             user_update.medical_license != current_user.medical_license):
-#         existing_doctor = db.query(User).filter(
-#             User.medical_license == user_update.medical_license,
-#             User.id != current_user.id
-#         ).first()
-#         if existing_doctor:
-#             raise HTTPException(
-#                 status_code=400, detail="Medical license already taken")
-
-#     try:
-#         # Update fields
-#         update_data = user_update.dict(exclude_unset=True)
-#         for field, value in update_data.items():
-#             setattr(current_user, field, value)
-
-#         current_user.updated_at = datetime.now(timezone.utc)
-#         db.commit()
-#         db.refresh(current_user)
-
-#         logger.info(
-#             f"Profile updated for user: {current_user.email} - Request ID: {request_id}")
-
-#         user_profile = UserProfileResponse.model_validate(current_user)
-
-#         return create_standard_response(
-#             status="success",
-#             message="Profile updated successfully",
-#             data={"profile": user_profile.dict()},
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"Profile update failed for user {current_user.email}: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(status_code=500, detail="Profile update failed")
 
 @app.put("/api/v1/users/me", response_model=StandardResponse, tags=["user"])
 async def update_user_profile(
@@ -1700,18 +1556,18 @@ async def update_user_profile(
                 status_code=400, detail="Phone number already taken")
 
     # Check if email is already taken by another user
-    if user_update.email and user_update.email != current_user.email:
-        if not current_user.is_email_verified:
-            raise HTTPException(
-                status_code=400, detail="Please verify your email before updating it")
+    # if user_update.email and user_update.email != current_user.email:
+    #     if not current_user.is_email_verified:
+    #         raise HTTPException(
+    #             status_code=400, detail="Please verify your email before updating it")
 
-        existing_user = db.query(User).filter(
-            User.email == user_update.email,
-            User.id != current_user.id
-        ).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=400, detail="Email already taken")
+    #     existing_user = db.query(User).filter(
+    #         User.email == user_update.email,
+    #         User.id != current_user.id
+    #     ).first()
+    #     if existing_user:
+    #         raise HTTPException(
+    #             status_code=400, detail="Email already taken")
 
     # Check if medical license is already taken (for doctors)
     if (user_update.medical_license and
@@ -1743,7 +1599,7 @@ async def update_user_profile(
         return create_standard_response(
             status="success",
             message="Profile updated successfully",
-            data={"profile": user_profile.dict()},
+            data={"profile": user_profile.model_dump()},
             request_id=request_id
         )
 
@@ -2342,7 +2198,7 @@ async def view_access_requests(
 @app.post("/api/v1/patient/access-requests/{request_id}/approve", response_model=StandardResponse, tags=["patient view"])
 async def approve_request(
     request_id: int,
-    hospital: Optional[str] = Body(None),
+    hospital: Optional[str] = Body(None, embed=True),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -2819,79 +2675,6 @@ async def get_config_info():
 # Search and Filter Routes
 # =====================================================
 
-
-# @app.get("/api/v1/users/search", response_model=StandardResponse)
-# async def search_users(
-#     q: str,
-#     role: Optional[Literal["patient", "doctor"]] = None,
-#     page: int = 1,
-#     per_page: int = 10,
-#     current_user: User = Depends(get_current_user),
-#     db: Session = Depends(get_db)
-# ):
-#     """Search users by email or name (for doctor-patient connections)"""
-#     request_id = generate_request_id()
-
-#     if current_user.role != "doctor":
-#         raise HTTPException(
-#             status_code=403, detail="Only doctors can search users")
-
-#     if len(q) < 3:
-#         raise HTTPException(
-#             status_code=400, detail="Search query must be at least 3 characters")
-
-#     if per_page > 50:
-#         per_page = 50
-
-#     skip = (page - 1) * per_page
-
-#     query = db.query(User).filter(
-#         User.id != current_user.id,
-#         User.is_active == True
-#     )
-
-#     # Add role filter if specified
-#     if role:
-#         query = query.filter(User.role == role)
-
-#     # Search in email and full_name
-#     search_filter = (
-#         User.email.ilike(f"%{q}%") |
-#         User.full_name.ilike(f"%{q}%")
-#     )
-#     query = query.filter(search_filter)
-
-#     total = query.count()
-#     users = query.offset(skip).limit(per_page).all()
-
-#     total_pages = (total + per_page - 1) // per_page
-
-#     users_data = []
-#     for user in users:
-#         user_profile = UserProfileResponse.model_validate(user)
-#         # Remove sensitive information for search results
-#         user_dict = user_profile.model_dump()
-#         user_dict.pop('citizen_id', None)
-#         if user.role == "patient":
-#             user_dict.pop('blood_type', None)
-#             user_dict.pop('height', None)
-#             user_dict.pop('weight', None)
-#         users_data.append(user_dict)
-
-#     pagination_meta = PaginationMeta(
-#         current_page=page,
-#         per_page=per_page,
-#         total=total,
-#         total_pages=total_pages
-#     )
-
-#     return create_standard_response(
-#         status="success",
-#         message="Search completed successfully",
-#         data={"users": users_data, "search_query": q},
-#         meta={"pagination": pagination_meta.dict()},
-#         request_id=request_id
-#     )
 
 @app.get("/api/v1/users/search", response_model=StandardResponse, tags=["user"])
 async def search_users(

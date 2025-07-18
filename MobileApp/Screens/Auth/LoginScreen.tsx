@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, KeyboardAvoidingView, Alert } from "react-native";
-import { authApi } from '../api/auth';
+import { authApi } from '../../api/auth';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const screenHeight = Dimensions.get('window').height;
 const screenWidth = Dimensions.get('window').width;
@@ -18,7 +19,12 @@ export default function LoginScreen({ navigation, route }: { navigation: any; ro
                 email: email,
                 password: password
             });
-            
+            console.log(response)
+            if (response.data.access_token) {
+                await AsyncStorage.setItem('token', response.data.access_token);
+                
+              }
+            console.log('LOGIN: ',response.data.user.role)
             // Get user profile after successful login
             const userProfile = await authApi.getCurrentUser();
             
@@ -27,11 +33,13 @@ export default function LoginScreen({ navigation, route }: { navigation: any; ro
                 index: 0,
                 routes: [{ 
                     name: 'Home',
-                    params: { userData: userProfile }
+                    params: {userProfile: userProfile}                   
                 }],
             });
-        } catch (error) {
-            Alert.alert('Login Failed', 'Please check your credentials and try again.');
+        } catch (error : any) {
+            const errorMessage = error.response?.data?.message || 'Login failed. Please try again.';
+            Alert.alert('Login Error', errorMessage);
+            console.error('Login error:', error.response?.data || error.message);
         }
     };
 

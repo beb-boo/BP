@@ -6,3 +6,7 @@ PyJWT==2.10.1
 python_bcrypt==0.3.2
 SQLAlchemy==2.0.35
 uvicorn==0.34.3
+slowapi
+phonenumbers
+python-dotenv
+google-generativeai

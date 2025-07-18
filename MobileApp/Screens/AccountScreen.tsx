@@ -3,6 +3,8 @@ import { StyleSheet, View, Alert, Button, TextInput, Image, TouchableOpacity, Mo
 import * as ImagePicker from 'expo-image-picker'
 import * as MediaLibrary from 'expo-media-library';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { authApi } from '../api/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function Account({ navigation, route }: { navigation: any, route: any }) {
   const [loading, setLoading] = useState(true);
@@ -15,29 +17,55 @@ export default function Account({ navigation, route }: { navigation: any, route:
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedData, setEditedData] = useState({
-    username: '',
-    citizenId: '',
-    dateOfBirth: '',
-    bloodType: '',
+    id: null,
+    email: '',
+    phone_number: '',
+    full_name: '',
+    role: '',
+    citizen_id: '',
+    medical_license: '',
+    date_of_birth: '',
+    gender: '',
+    blood_type: '',
     height: '',
     weight: '',
-    age: '',
-    gender: '',
-    email: '',
-    role: '',
+    is_active: false,
+    is_email_verified: false,
+    is_phone_verified: false,
+    last_login: '',
+    created_at: '',
+    updated_at: '',
   });
+
+  // Separate date fields for editing
+  const [dateDay, setDateDay] = useState('');
+  const [dateMonth, setDateMonth] = useState('');
+  const [dateYear, setDateYear] = useState('');
+
+  // Selection options
+  const bloodTypeOptions = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+  const genderOptions = ['male', 'female', 'other'];
   const [userData, setUserData] = useState({
-    username: '',
-    citizenId: '',
-    dateOfBirth: '',
-    bloodType: '',
+    id: null,
+    email: '',
+    phone_number: '',
+    full_name: '',
+    role: '',
+    citizen_id: '',
+    medical_license: '',
+    date_of_birth: '',
+    gender: '',
+    blood_type: '',
     height: '',
     weight: '',
-    age: '',
-    gender: '',
-    email: '',
-    role: '',
+    is_active: false,
+    is_email_verified: false,
+    is_phone_verified: false,
+    last_login: '',
+    created_at: '',
+    updated_at: '',
   });
+
   useEffect(() => {
     (async () => {
       if (!mediaPermission) {
@@ -50,18 +78,39 @@ export default function Account({ navigation, route }: { navigation: any, route:
   }, []);
 
   useEffect(() => {
-    if (route.params?.userData) {
-        setUserData(route.params.userData);
-        setEditedData(route.params.userData);
-    }
-}, [route.params?.userData]);
+    // Always fetch from backend on mount
+    const fetchProfile = async () => {
+      const response = await authApi.getCurrentUser();
+      const profile = response.data.profile; // Extract the profile from nested structure
+      setUserData(profile);
+    };
+    fetchProfile();
+  }, []);
 
-  async function getProfile() {
+  async function updateProfile(userData: any) {
+    const {
+      full_name,
+      phone_number,
+      citizen_id,
+      date_of_birth,
+      gender,
+      blood_type,
+      height,
+      weight,
+      medical_license
+    } = userData;
 
-  }
-
-  async function updateProfile() {
-
+    await authApi.updateProfile({
+      full_name,
+      phone_number,
+      citizen_id,
+      date_of_birth,
+      gender,
+      blood_type,
+      height,
+      weight,
+      medical_license
+    });
   }
 
   async function updateAvatar() {
@@ -84,30 +133,33 @@ export default function Account({ navigation, route }: { navigation: any, route:
     }
   };
 
-  const uploadImage = async () => {
-
-  };
-
   async function signOut() {
+    const response = await authApi.logout();
+    console.log('LogOut ' + response)
+    await AsyncStorage.removeItem('token')
     navigation.reset({
       index: 0,
       routes: [{ name: 'Login' }],
     });
   }
 
-  async function handleUpdate() {
-
-  }
-
-  const cancelUpload = () => {
-    setAvatarUrl(null); // Clear the photo URI
-    setShowUploadModal(false); // Close the modal
-  };
-
   const handleEditToggle = () => {
     if (isEditMode) {
       // Save changes
       setUserData(editedData);
+      updateProfile(editedData);
+      console.log(editedData)
+    } else {
+      // When entering edit mode, update editedData with current userData
+      setEditedData(userData);
+
+      // Parse date of birth for separate fields
+      if (userData.date_of_birth) {
+        const date = new Date(userData.date_of_birth);
+        setDateDay(date.getDate().toString().padStart(2, '0'));
+        setDateMonth((date.getMonth() + 1).toString().padStart(2, '0'));
+        setDateYear(date.getFullYear().toString());
+      }
     }
     setIsEditMode(!isEditMode);
   };
@@ -119,13 +171,38 @@ export default function Account({ navigation, route }: { navigation: any, route:
     }));
   };
 
+  const handleDateChange = (type: 'day' | 'month' | 'year', value: string) => {
+    if (type === 'day') setDateDay(value);
+    if (type === 'month') setDateMonth(value);
+    if (type === 'year') setDateYear(value);
+
+    // Update the combined date in editedData
+    const day = type === 'day' ? value : dateDay;
+    const month = type === 'month' ? value : dateMonth;
+    const year = type === 'year' ? value : dateYear;
+
+    if (day && month && year) {
+      const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T00:00:00`;
+      setEditedData((prev: any) => ({
+        ...prev,
+        date_of_birth: formattedDate
+      }));
+    }
+  };
+
+  const formatDateForDisplay = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+  };
+
   const DetailField = ({ label, value, field }: { label: string, value: string, field: string }) => (
     <>
       <Text style={styles.detailLabel}>{label}</Text>
       {isEditMode ? (
         <TextInput
           style={[styles.detailValue, styles.editableInput]}
-          value={editedData[field as keyof typeof editedData]}
+          value={String(editedData[field as keyof typeof editedData] || '')}
           onChangeText={(text) => handleInputChange(field, text)}
           placeholder={`Enter ${label.toLowerCase()}`}
         />
@@ -158,17 +235,18 @@ export default function Account({ navigation, route }: { navigation: any, route:
               <View style={{ marginLeft: 12 }}>
                 {isEditMode ? (
                   <TextInput
-                    style={[styles.username, styles.editableInput, { color: '#fff', borderColor: '#fff' }]}
-                    value={editedData.username}
-                    onChangeText={(text) => handleInputChange('username', text)}
+                    style={[styles.username, styles.editableInput, { color: '#000', borderColor: '#fff' }]}
+                    value={editedData.full_name}
+                    onChangeText={(text) => handleInputChange('full_name', text)}
                     placeholder="Enter name"
                     placeholderTextColor="#ffffff80"
                   />
+
                 ) : (
-                  <Text style={styles.username}>{userData.username}</Text>
+                  <Text style={styles.username}>{userData.full_name}</Text>
                 )}
                 <View style={styles.patientBadge}>
-                  <Text style={styles.patientBadgeText}>PATIENT</Text>
+                  <Text style={styles.patientBadgeText}>{userData.role.toUpperCase()}</Text>
                 </View>
               </View>
             </View>
@@ -177,12 +255,27 @@ export default function Account({ navigation, route }: { navigation: any, route:
               {isEditMode ? (
                 <TextInput
                   style={[styles.citizenValue, styles.editableInput]}
-                  value={editedData.citizenId}
-                  onChangeText={(text) => handleInputChange('citizenId', text)}
+                  value={editedData.citizen_id}
+                  onChangeText={(text) => handleInputChange('citizen_id', text)}
                   placeholder="Enter citizen ID"
                 />
               ) : (
-                <Text style={styles.citizenValue}>{userData.citizenId}</Text>
+                <Text style={styles.citizenValue}>{userData.citizen_id}</Text>
+              )}
+              <Text style={styles.detailLabel}>Email</Text>
+              <Text style={styles.citizenValue}>{userData.email}</Text>
+              <Text style={styles.detailLabel}>Phone</Text>
+              {isEditMode ? (
+                <TextInput
+                  style={[styles.citizenValue, styles.editableInput]}
+                  value={editedData.phone_number}
+                  onChangeText={(text) => handleInputChange('phone_number', text)}
+                  placeholder="Enter Phone"
+                  placeholderTextColor="#ffffff80"
+                />
+
+              ) : (
+                <Text style={styles.citizenValue}>{userData.phone_number}</Text>
               )}
             </View>
           </View>
@@ -204,27 +297,55 @@ export default function Account({ navigation, route }: { navigation: any, route:
               <View style={styles.detailsColLeft}>
                 {isEditMode ? (
                   <>
-                    <Text style={styles.detailLabel}>Email</Text>
-                    <TextInput
-                      style={[styles.citizenValue, styles.editableInput]}
-                      value={editedData.email}
-                      onChangeText={(text) => handleInputChange('email', text)}
-                      placeholder="Enter email"
-                    />
                     <Text style={styles.detailLabel}>Date of Birth</Text>
-                    <TextInput
-                      style={[styles.citizenValue, styles.editableInput]}
-                      value={editedData.dateOfBirth}
-                      onChangeText={(text) => handleInputChange('dateOfBirth', text)}
-                      placeholder="Enter date of birth"
-                    />
+                    <View style={styles.dateInputContainer}>
+                      <TextInput
+                        style={[styles.dateInput, styles.editableInput]}
+                        value={dateDay}
+                        onChangeText={(text) => handleDateChange('day', text)}
+                        placeholder="DD"
+                        keyboardType="numeric"
+                        maxLength={2}
+                      />
+                      <Text style={styles.dateSeparator}>/</Text>
+                      <TextInput
+                        style={[styles.dateInput, styles.editableInput]}
+                        value={dateMonth}
+                        onChangeText={(text) => handleDateChange('month', text)}
+                        placeholder="MM"
+                        keyboardType="numeric"
+                        maxLength={2}
+                      />
+                      <Text style={styles.dateSeparator}>/</Text>
+                      <TextInput
+                        style={[styles.dateInput, styles.editableInput]}
+                        value={dateYear}
+                        onChangeText={(text) => handleDateChange('year', text)}
+                        placeholder="YYYY"
+                        keyboardType="numeric"
+                        maxLength={4}
+                      />
+                    </View>
                     <Text style={styles.detailLabel}>Blood Type</Text>
-                    <TextInput
-                      style={[styles.citizenValue, styles.editableInput]}
-                      value={editedData.bloodType}
-                      onChangeText={(text) => handleInputChange('bloodType', text)}
-                      placeholder="Enter blood type"
-                    />
+                    <View style={styles.pickerContainer}>
+                      {bloodTypeOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option}
+                          style={[
+                            styles.optionButton,
+                            editedData.blood_type === option && styles.selectedOption
+                          ]}
+                          onPress={() => handleInputChange('blood_type', option)}
+                        >
+                          <Text style={[
+                            styles.optionText,
+                            editedData.blood_type === option && styles.selectedOptionText
+                          ]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                     <Text style={styles.detailLabel}>Height</Text>
                     <TextInput
                       style={[styles.citizenValue, styles.editableInput]}
@@ -235,12 +356,10 @@ export default function Account({ navigation, route }: { navigation: any, route:
                   </>
                 ) : (
                   <>
-                    <Text style={styles.detailLabel}>Email</Text>
-                    <Text style={styles.citizenValue}>{userData.email}</Text>
                     <Text style={styles.detailLabel}>Date of Birth</Text>
-                    <Text style={styles.citizenValue}>{userData.dateOfBirth}</Text>
+                    <Text style={styles.citizenValue}>{formatDateForDisplay(userData.date_of_birth)}</Text>
                     <Text style={styles.detailLabel}>Blood Type</Text>
-                    <Text style={styles.citizenValue}>{userData.bloodType}</Text>
+                    <Text style={styles.citizenValue}>{userData.blood_type}</Text>
                     <Text style={styles.detailLabel}>Height</Text>
                     <Text style={styles.citizenValue}>{userData.height}</Text>
                   </>
@@ -249,20 +368,35 @@ export default function Account({ navigation, route }: { navigation: any, route:
               <View style={styles.detailsColRight}>
                 {isEditMode ? (
                   <>
-                    <Text style={styles.detailLabel}>Age</Text>
+                    <Text style={styles.detailLabel}></Text>
+                    <Text style={styles.detailLabel}></Text>
+                    {/* <Text style={styles.detailLabel}>Age</Text>
                     <TextInput
                       style={[styles.citizenValue, styles.editableInput]}
                       value={editedData.age}
                       onChangeText={(text) => handleInputChange('age', text)}
                       placeholder="Enter age"
-                    />
+                    /> */}
                     <Text style={styles.detailLabel}>Gender</Text>
-                    <TextInput
-                      style={[styles.citizenValue, styles.editableInput]}
-                      value={editedData.gender}
-                      onChangeText={(text) => handleInputChange('gender', text)}
-                      placeholder="Enter gender"
-                    />
+                    <View style={styles.pickerContainer}>
+                      {genderOptions.map((option) => (
+                        <TouchableOpacity
+                          key={option}
+                          style={[
+                            styles.optionButton,
+                            editedData.gender === option && styles.selectedOption
+                          ]}
+                          onPress={() => handleInputChange('gender', option)}
+                        >
+                          <Text style={[
+                            styles.optionText,
+                            editedData.gender === option && styles.selectedOptionText
+                          ]}>
+                            {option}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                     <Text style={styles.detailLabel}>Weight</Text>
                     <TextInput
                       style={[styles.citizenValue, styles.editableInput]}
@@ -274,7 +408,7 @@ export default function Account({ navigation, route }: { navigation: any, route:
                 ) : (
                   <>
                     <Text style={styles.detailLabel}>Age</Text>
-                    <Text style={styles.citizenValue}>{userData.age}</Text>
+                    <Text style={styles.citizenValue}></Text>
                     <Text style={styles.detailLabel}>Gender</Text>
                     <Text style={styles.citizenValue}>{userData.gender}</Text>
                     <Text style={styles.detailLabel}>Weight</Text>
@@ -301,23 +435,26 @@ export default function Account({ navigation, route }: { navigation: any, route:
         {/* Bottom Bar */}
         {isEditMode ? (
           <View style={{}}>
-            
+
           </View>
         ) : (
           <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Home', {userData: userData})}>
-            <Ionicons name="home" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate('Camera', {userData: userData})}>
-            <Ionicons name="scan" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bottomBarIcon}>
-            <Ionicons name="medkit" size={28} color="#fff" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.bottomBarIconActive}>
-            <Ionicons name="person-circle-outline" size={28} color="#1ccfc0" />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate("Home")}>
+                <Ionicons name="home" size={28} color="#fff" />
+              </TouchableOpacity>
+
+            <TouchableOpacity style={styles.bottomBarIcon} onPress={() => navigation.navigate("Camera")}>
+              <Ionicons name="scan" size={28} color="#fff" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.bottomBarIcon} onPress={() => userData.role === 'doctor' ? (navigation.navigate("Patientlist")) : (navigation.navigate("Doctorlist"))}>
+              <Ionicons name="medkit" size={28} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.bottomBarIconActive}>
+              <Ionicons name="person-circle-outline" size={28} color="#1ccfc0" />
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -500,6 +637,53 @@ const styles = StyleSheet.create({
     padding: 5,
     minWidth: 80,
     marginVertical: 2,
+  },
+  dateInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#808080',
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+    padding: 5,
+    width: 60,
+    textAlign: 'center',
+  },
+  dateSeparator: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#222',
+    marginHorizontal: 8,
+  },
+  pickerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginVertical: 2,
+  },
+  optionButton: {
+    borderWidth: 1,
+    borderColor: '#808080',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: '#f2f2f2',
+  },
+  selectedOption: {
+    backgroundColor: '#4662e6',
+    borderColor: '#4662e6',
+  },
+  optionText: {
+    fontSize: 14,
+    color: '#222',
+  },
+  selectedOptionText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
 });
 

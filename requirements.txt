@@ -9,3 +9,6 @@ pillow
 google-generativeai
 PyJWT==2.8.0
 email-validator
+slowapi
+phonenumbers
+python-dotenv

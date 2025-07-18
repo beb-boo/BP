@@ -12,11 +12,18 @@ export default function SignUpScreen({ navigation }: { navigation: any }) {
     const [loading, setLoading] = useState(false);
 
     async function signUpWithEmail() {
+        if (password.length < 8) {
+            alert('Password must be more than 8 characters.');
+            return;
+        }
+        if(password !== confirmPassword){
+            alert('Password not match');
+            return;
+        }
         // Implement sign up logic
-        navigation.reset({
-            index: 0,
-            routes: [{ name: 'RoleSelect' }],
-          });
+        navigation.navigate('RoleSelect',{
+             email: email, password: password, confirmPassword: confirmPassword } ,
+          );
     }
 
     async function goToLogin() {

@@ -6,7 +6,7 @@ import { AntDesign } from "@expo/vector-icons";
 import * as FileSystem from 'expo-file-system'
 import * as ImagePicker from 'expo-image-picker'
 import * as ImageManipulator from 'expo-image-manipulator';
-import { ocrApi } from '../api/ocr';
+import { bloodPressureApi } from '../api/bloodPressure';
 
 const screenHeight = Dimensions.get('window').height;
 const screenWidth = Dimensions.get('window').width;
@@ -77,21 +77,33 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
             setIsProcessing(true);
             const creationTime = new Date().toLocaleTimeString();
 
-            // Create FormData
-            const formData = new FormData();
-            formData.append('file', {
+            if (!imageUri) {
+                alert('No image selected.');
+                setIsProcessing(false);
+                return;
+            }
+
+            // Prepare file object for upload
+            const fileObj = {
                 uri: imageUri,
                 type: 'image/jpeg',
                 name: 'image.jpg',
-            } as any); // Type assertion needed for React Native FormData
-
+            };
+            console.log('camera: ', fileObj);
             // Process image using the OCR API
-            const data = await ocrApi.processImage(formData);
+            const ocrResponse = await bloodPressureApi.processImage(fileObj);
+            console.log('ocrResp: ', ocrResponse);
+            // Extract only the ocr_result
+            const data = ocrResponse?.data?.ocr_result || ocrResponse?.ocr_result || ocrResponse;
+            console.log('data: ', data);
 
-            if (!data.time || data.time === "") {
+            if (!data.measurement_time || data.measurement_time === "") {
                 data.time = creationTime;
             }
-
+            if (data.measurement_time) {
+                data.time = data.measurement_time
+            }
+            console.log('data: ', data)
             setBloodPressureData(data);
             setEditableData(data);
             setShowUploadModal(false);
@@ -106,17 +118,27 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
         }
     };
 
-    const handleConfirmReadings = () => {
+    const handleConfirmReadings = async () => {
         if (editableData) {
+            // Save to backend using saveFromOcr
+            try {
+                const savePayload = {
+                    systolic: editableData.systolic,
+                    diastolic: editableData.diastolic,
+                    pulse: editableData.pulse,
+                    measurement_date: new Date().toISOString(),
+                    measurement_time: editableData.time,
+                    notes: '',
+                };
+                await bloodPressureApi.saveFromOcr(savePayload);
+            } catch (error) {
+                console.error('Error saving OCR record:', error);
+            }
             setbpDataArr(prevData => [...prevData, editableData]);
             navigation.reset({
                 index: 0,
                 routes: [{
                     name: "Home",
-                    params: {
-                        bloodPressureData: editableData,
-                        allReadings: [...bpDataArr, editableData]
-                    }
                 }],
             });
         }
@@ -249,7 +271,7 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
                                         <Text style={styles.valueLabel}>Systolic</Text>
                                         <TextInput
                                             style={styles.valueInput}
-                                            value={editableData?.systolic.toString()}
+                                            value={editableData?.systolic != null ? editableData.systolic.toString() : ''}
                                             onChangeText={(text) => setEditableData(prev => prev ? { ...prev, systolic: parseInt(text) || 0 } : null)}
                                             keyboardType="numeric"
                                         />
@@ -259,7 +281,7 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
                                         <Text style={styles.valueLabel}>Diastolic</Text>
                                         <TextInput
                                             style={styles.valueInput}
-                                            value={editableData?.diastolic.toString()}
+                                            value={editableData?.diastolic != null ? editableData.diastolic.toString() : ''}
                                             onChangeText={(text) => setEditableData(prev => prev ? { ...prev, diastolic: parseInt(text) || 0 } : null)}
                                             keyboardType="numeric"
                                         />
@@ -269,7 +291,7 @@ export default function CameraScreen({ navigation, setIsCameraActive, route }: {
                                         <Text style={styles.valueLabel}>Pulse</Text>
                                         <TextInput
                                             style={styles.valueInput}
-                                            value={editableData?.pulse.toString()}
+                                            value={editableData?.pulse != null ? editableData.pulse.toString() : ''}
                                             onChangeText={(text) => setEditableData(prev => prev ? { ...prev, pulse: parseInt(text) || 0 } : null)}
                                             keyboardType="numeric"
                                         />

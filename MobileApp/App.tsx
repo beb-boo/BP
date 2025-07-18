@@ -1,15 +1,19 @@
 import React, { useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-import HomeScreen from "./Screens/HomeScreen";
+import HomeScreen from "./Screens/Patient/HomeScreen";
 import CameraScreen from "./Screens/CameraScreen";
 import AccountScreen from "./Screens/AccountScreen";
-import LoginScreen from "./Screens/LoginScreen";
-import RegisterScreen from "./Screens/SignUpScreen";
+import LoginScreen from "./Screens/Auth/LoginScreen";
+import RegisterScreen from "./Screens/Auth/SignUpScreen";
 import SplashScreen from "./Screens/SplashScreen";
-import RoleSelectScreen from "./Screens/RoleSelectScreen";
-import PatientInfoScreen from "./Screens/PatientInfoScreen";
-import DoctorInfoScreen from "./Screens/DoctorInfoScreen";
+import RoleSelectScreen from "./Screens/Auth/RoleSelectScreen";
+import PatientInfoScreen from "./Screens/Auth/PatientInfoScreen";
+import DoctorInfoScreen from "./Screens/Auth/DoctorInfoScreen";
+import DoctorListScreen from './Screens/Patient/DoctorListScreen';
+import PatientListScreen from "./Screens/Doctor/PatientListScreen";
+import RecordScreen from "./Screens/Doctor/RecordScreen";
+
 
 const Stack = createStackNavigator();
 
@@ -74,6 +78,21 @@ export default function App() {
         >
           {(props) => <DoctorInfoScreen {...props} />}
         </Stack.Screen>
+        <Stack.Screen
+          name="Doctorlist"
+          component={DoctorListScreen}
+          options={{ headerShown: false }}
+        />
+      <Stack.Screen
+          name="Patientlist"
+          component={PatientListScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="record"
+          component={RecordScreen}
+          options={{ headerShown: false }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

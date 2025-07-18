@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 
-export default function RoleSelectScreen({ navigation }: { navigation: any }) {
+export default function RoleSelectScreen({ navigation, route }: { navigation: any, route: any }) {
 
   const handleRoleSelect = (role: 'patient' | 'doctor') => {
-    navigation.navigate(role === 'patient' ? 'PatientInfo' : 'DoctorInfo');
+    navigation.navigate(role === 'patient' ? 'PatientInfo' : 'DoctorInfo', { email: route.params.email, password: route.params.password, confirmPassword: route.params.confirmPassword });
   };
 
   return (
@@ -19,7 +19,7 @@ export default function RoleSelectScreen({ navigation }: { navigation: any }) {
           onPress={() => handleRoleSelect('patient')}
         >
           <Image 
-            source={require('../assets/role-select-norm.png')}
+            source={require('../../assets/role-select-norm.png')}
             style={styles.roleImage}
           />
           <Text style={styles.roleText}>Patient</Text>
@@ -30,7 +30,7 @@ export default function RoleSelectScreen({ navigation }: { navigation: any }) {
           onPress={() => handleRoleSelect('doctor')}
         >
           <Image 
-            source={require('../assets/role-select-doc.png')}
+            source={require('../../assets/role-select-doc.png')}
             style={styles.roleImage}
           />
           <Text style={styles.roleText}>Doctor</Text>
