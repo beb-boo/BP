@@ -146,28 +146,6 @@ class User(Base):
     # otp_codes = relationship("OTPCode", back_populates="user")
 
 
-# class OTPCode(Base):
-#     __tablename__ = "otp_codes"
-
-#     id = Column(Integer, primary_key=True, index=True)
-#     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-#     code = Column(String, nullable=False)
-#     code_hash = Column(String, nullable=False)  # Hashed OTP for security
-#     # registration, login, password_reset, phone_verification
-#     purpose = Column(String, nullable=False)
-#     contact_method = Column(String, nullable=False)  # email, sms
-#     # email address or phone number
-#     contact_target = Column(String, nullable=False)
-#     is_used = Column(Boolean, default=False)
-#     attempts = Column(Integer, default=0)
-#     max_attempts = Column(Integer, default=3)
-#     expires_at = Column(DateTime, nullable=False)
-#     created_at = Column(DateTime, default=now_th())
-
-#     # Relationships
-#     user = relationship("User", back_populates="otp_codes")
-
-
 class UserSession(Base):
     __tablename__ = "user_sessions"
 
@@ -298,31 +276,6 @@ class UserRegister(BaseModel):
     # Doctor specific fields
     medical_license: Optional[str] = None
 
-    # @validator('phone_number')
-    # def validate_phone(cls, v):
-    #     if v is not None:
-    #         try:
-    #             parsed = phonenumbers.parse(v, "TH")
-    #             if not phonenumbers.is_valid_number(parsed):
-    #                 raise ValueError("Invalid phone number")
-    #             return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    #         except NumberParseException:
-    #             raise ValueError("Invalid phone number format")
-    #     return v
-
-    # @validator('email')
-    # def validate_contact_method(cls, v, values, **kwargs):
-    #     phone_number = values.get('phone_number')
-    #     if not v and not phone_number:
-    #         raise ValueError('Either email or phone_number must be provided')
-    #     return v
-
-    # @validator('medical_license')
-    # def validate_medical_license(cls, v, values, **kwargs):
-    #     if values.get('role') == 'doctor' and not v:
-    #         raise ValueError('Medical license is required for doctors')
-    #     return v
-
     # validators
 
     @model_validator(mode="after")
@@ -339,25 +292,6 @@ class OTPRequest(BaseModel):
     phone_number: Optional[str] = None
     purpose: Literal["registration", "login", "password_reset",
                      "phone_verification", "email_verification"]
-
-    # @validator('phone_number')
-    # def validate_phone(cls, v):
-    #     if v is not None:
-    #         try:
-    #             parsed = phonenumbers.parse(v, "TH")
-    #             if not phonenumbers.is_valid_number(parsed):
-    #                 raise ValueError("Invalid phone number")
-    #             return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    #         except NumberParseException:
-    #             raise ValueError("Invalid phone number format")
-    #     return v
-
-    # @validator('email')
-    # def validate_contact_method(cls, v, values, **kwargs):
-    #     phone_number = values.get('phone_number')
-    #     if not v and not phone_number:
-    #         raise ValueError('Either email or phone_number must be provided')
-    #     return v
 
     # validators
 
@@ -590,16 +524,6 @@ Base.metadata.create_all(bind=engine)
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())
-
-
-# def generate_otp() -> str:
-#     """Generate 6-digit OTP"""
-#     return ''.join(random.choices(string.digits, k=6))
-
-
-# def hash_otp(otp: str) -> str:
-#     """Hash OTP for secure storage"""
-#     return hashlib.sha256(otp.encode()).hexdigest()
 
 
 def hash_password(password: str) -> str:
@@ -958,124 +882,6 @@ async def health_check():
 # =====================================================
 
 
-# @app.post("/api/v1/auth/request-otp", tags=["OTP"])
-# @limiter.limit("3/minute")
-# async def request_otp(
-#     request: Request,
-#     otp_request: OTPRequest,
-#     api_key: str = Depends(verify_api_key),
-#     db: Session = Depends(get_db)
-# ):
-#     """Request OTP for various purposes"""
-#     request_id = generate_request_id()
-
-#     contact_method = "email" if otp_request.email else "sms"
-#     contact_target = otp_request.email or otp_request.phone_number
-
-#     # For registration, check if user already exists
-#     if otp_request.purpose == "registration":
-#         if otp_request.email:
-#             existing_user = db.query(User).filter(
-#                 User.email == otp_request.email).first()
-#         else:
-#             existing_user = db.query(User).filter(
-#                 User.phone_number == otp_request.phone_number).first()
-
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="User already exists with this contact information")
-
-#     # For other purposes, check if user exists
-#     elif otp_request.purpose in ["login", "password_reset", "phone_verification", "email_verification"]:
-#         if otp_request.email:
-#             user = db.query(User).filter(
-#                 User.email == otp_request.email).first()
-#         else:
-#             user = db.query(User).filter(User.phone_number ==
-#                                          otp_request.phone_number).first()
-
-#         if not user:
-#             raise HTTPException(status_code=404, detail="User not found")
-
-#         if not user.is_active:
-#             raise HTTPException(
-#                 status_code=400, detail="Account is deactivated")
-
-#     # Generate OTP
-#     otp_code = generate_otp()
-#     otp_hash = hash_otp(otp_code)
-#     expires_at = now_th() + \
-#         timedelta(minutes=OTP_EXPIRE_MINUTES)
-
-#     try:
-#         # Create OTP record (for existing users) or temporary record (for registration)
-#         user_id = None
-#         if otp_request.purpose != "registration":
-#             user_id = user.id
-
-#         # Invalidate any existing OTPs for this purpose and contact
-#         if user_id:
-#             db.query(OTPCode).filter(
-#                 OTPCode.user_id == user_id,
-#                 OTPCode.purpose == otp_request.purpose,
-#                 OTPCode.contact_target == contact_target,
-#                 OTPCode.is_used == False
-#             ).update({"is_used": True})
-
-#         # Create new OTP record
-#         otp_record = OTPCode(
-#             user_id=user_id,
-#             code=otp_code,  # Store plain text temporarily for sending
-#             code_hash=otp_hash,
-#             purpose=otp_request.purpose,
-#             contact_method=contact_method,
-#             contact_target=contact_target,
-#             expires_at=expires_at
-#         )
-
-#         db.add(otp_record)
-#         db.commit()
-
-#         # Send OTP
-#         send_success = False
-#         if contact_method == "email":
-#             send_success = send_email_otp(
-#                 contact_target, otp_code, otp_request.purpose)
-#         else:
-#             send_success = send_sms_otp(
-#                 contact_target, otp_code, otp_request.purpose)
-
-#         if not send_success:
-#             # Mark OTP as used if sending failed
-#             otp_record.is_used = True
-#             db.commit()
-#             raise HTTPException(status_code=500, detail="Failed to send OTP")
-
-#         # Clear the plain text OTP from record for security
-#         otp_record.code = ""
-#         db.commit()
-
-#         logger.info(
-#             f"OTP requested - Purpose: {otp_request.purpose} - Contact: {contact_target} - Request ID: {request_id}")
-
-#         return create_standard_response(
-#             status="success",
-#             message=f"OTP sent to your {contact_method}",
-#             data={
-#                 "otp_id": otp_record.id,
-#                 "contact_method": contact_method,
-#                 "contact_target": contact_target[:3] + "*" * (len(contact_target) - 6) + contact_target[-3:],
-#                 "expires_in_minutes": OTP_EXPIRE_MINUTES
-#             },
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"OTP request failed: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(status_code=500, detail="Failed to generate OTP")
-
 @app.post("/api/v1/auth/request-otp", tags=["OTP"])
 @limiter.limit("3/minute")
 async def request_otp(
@@ -1117,75 +923,6 @@ async def request_otp(
     )
 
 
-# @app.post("/api/v1/auth/verify-otp", tags=["OTP"])
-# @limiter.limit("5/minute")
-# async def verify_otp(
-#     request: Request,
-#     otp_verification: OTPVerification,
-#     api_key: str = Depends(verify_api_key),
-#     db: Session = Depends(get_db)
-# ):
-#     """Verify OTP code"""
-#     request_id = generate_request_id()
-
-#     contact_target = otp_verification.email or otp_verification.phone_number
-#     otp_hash = hash_otp(otp_verification.otp_code)
-
-#     # Find the OTP record
-#     otp_record = db.query(OTPCode).filter(
-#         OTPCode.code_hash == otp_hash,
-#         OTPCode.purpose == otp_verification.purpose,
-#         OTPCode.contact_target == contact_target,
-#         OTPCode.is_used == False,
-#         OTPCode.expires_at > datetime.now(timezone.utc)
-#     ).first()
-
-#     if not otp_record:
-#         # Check if there's an expired or used OTP
-#         expired_otp = db.query(OTPCode).filter(
-#             OTPCode.purpose == otp_verification.purpose,
-#             OTPCode.contact_target == contact_target
-#         ).order_by(OTPCode.created_at.desc()).first()
-
-#         if expired_otp:
-#             if expired_otp.is_used:
-#                 raise HTTPException(status_code=400, detail="OTP already used")
-#             elif expired_otp.expires_at <= datetime.now(timezone.utc):
-#                 raise HTTPException(status_code=400, detail="OTP expired")
-#             elif expired_otp.attempts >= expired_otp.max_attempts:
-#                 raise HTTPException(
-#                     status_code=400, detail="Too many incorrect attempts")
-
-#         raise HTTPException(status_code=400, detail="Invalid OTP")
-
-#     # Increment attempts
-#     otp_record.attempts += 1
-
-#     # Check max attempts
-#     if otp_record.attempts > otp_record.max_attempts:
-#         otp_record.is_used = True
-#         db.commit()
-#         raise HTTPException(
-#             status_code=400, detail="Too many incorrect attempts")
-
-#     # Mark OTP as used
-#     otp_record.is_used = True
-#     db.commit()
-
-#     logger.info(
-#         f"OTP verified - Purpose: {otp_verification.purpose} - Contact: {contact_target} - Request ID: {request_id}")
-
-#     return create_standard_response(
-#         status="success",
-#         message="OTP verified successfully",
-#         data={
-#             "verified": True,
-#             "purpose": otp_verification.purpose,
-#             "contact_target": contact_target
-#         },
-#         request_id=request_id
-#     )
-
 @app.post("/api/v1/auth/verify-otp", tags=["OTP"])
 @limiter.limit("5/minute")
 async def verify_otp(
@@ -1216,146 +953,6 @@ async def verify_otp(
 # Authentication Routes
 # =====================================================
 
-
-# @app.post("/api/v1/auth/register", tags=["register"])
-# @limiter.limit("3/minute")
-# async def register_user(
-#     request: Request,
-#     user_data: UserRegister,
-#     api_key: str = Depends(verify_api_key),
-#     db: Session = Depends(get_db)
-# ):
-#     """Register new user - requires OTP verification first"""
-#     request_id = generate_request_id()
-
-#     contact_target = (
-#         user_data.email or user_data.phone_number).strip().lower()
-
-#     # Verify that OTP was verified for registration
-
-#     recent_otp = db.query(OTPCode).filter(
-#         OTPCode.purpose == "registration",
-#         OTPCode.contact_target == contact_target,
-#         OTPCode.created_at > now_th() - timedelta(minutes=10)
-#     ).order_by(OTPCode.created_at.desc()).first()
-
-#     # Debug logging
-#     print(f"=== DEBUG REGISTER ===")
-#     print(f"Contact target: {contact_target}")
-#     print(f"Current UTC time: {now_th()}")
-#     print(
-#         f"10 minutes ago: {now_th() - timedelta(minutes=10)}")
-
-#     if recent_otp:
-#         print(f"Found OTP ID: {recent_otp.id}")
-#         print(f"OTP created_at: {recent_otp.created_at}")
-#         print(f"OTP is_used: {recent_otp.is_used}")
-#         print(f"OTP user_id: {recent_otp.user_id}")
-#         print(f"OTP purpose: {recent_otp.purpose}")
-#         print(f"OTP contact_target: {recent_otp.contact_target}")
-#     else:
-#         print("No recent OTP found!")
-
-#     print(f"=== END DEBUG ===")
-
-#     if not recent_otp or not recent_otp.is_used or recent_otp.user_id is not None:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="Please verify your contact information with OTP first"
-#         )
-
-#     # More condition
-#     if not recent_otp:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="No recent OTP found for this contact"
-#         )
-
-#     if not recent_otp.is_used:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="OTP has not been verified yet"
-#         )
-
-#     if recent_otp.user_id is not None:
-#         raise HTTPException(
-#             status_code=400,
-#             detail="OTP has already been used for registration"
-#         )
-
-#     # Check if user already exists
-#     if user_data.email:
-#         existing_user = db.query(User).filter(
-#             User.email == user_data.email).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Email already registered")
-
-#     if user_data.phone_number:
-#         existing_user = db.query(User).filter(
-#             User.phone_number == user_data.phone_number).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Phone number already registered")
-
-#     # Check medical license for doctors
-#     if user_data.role == "doctor" and user_data.medical_license:
-#         existing_doctor = db.query(User).filter(
-#             User.medical_license == user_data.medical_license).first()
-#         if existing_doctor:
-#             raise HTTPException(
-#                 status_code=400, detail="Medical license already registered")
-
-#     try:
-#         # Create new user
-#         new_user = User(
-#             email=user_data.email,
-#             phone_number=user_data.phone_number,
-#             password_hash=hash_password(user_data.password),
-#             full_name=user_data.full_name,
-#             role=user_data.role,
-#             citizen_id=user_data.citizen_id,
-#             medical_license=user_data.medical_license,
-#             date_of_birth=user_data.date_of_birth,
-#             gender=user_data.gender,
-#             blood_type=user_data.blood_type,
-#             height=user_data.height,
-#             weight=user_data.weight,
-#             is_email_verified=bool(user_data.email),  # Verified via OTP
-#             is_phone_verified=bool(user_data.phone_number)  # Verified via OTP
-#         )
-
-#         db.add(new_user)
-#         db.commit()
-#         db.refresh(new_user)
-
-#         # Update OTP record with user ID
-#         recent_otp.user_id = new_user.id
-#         recent_otp.is_used = True
-#         db.commit()
-
-#         logger.info(
-#             f"New user registered: {contact_target} - Role: {new_user.role} - Request ID: {request_id}")
-
-#         return create_standard_response(
-#             status="success",
-#             message="User registered successfully",
-#             data={
-#                 "user_id": new_user.id,
-#                 "email": new_user.email,
-#                 "phone_number": new_user.phone_number,
-#                 "role": new_user.role,
-#                 "is_email_verified": new_user.is_email_verified,
-#                 "is_phone_verified": new_user.is_phone_verified
-#             },
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"Registration failed: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(status_code=500, detail="Registration failed")
 
 @app.post("/api/v1/auth/register", tags=["register"])
 @limiter.limit("3/minute")
@@ -1704,65 +1301,6 @@ async def get_current_user_profile(
     )
 
 
-# @app.put("/api/v1/users/me", response_model=StandardResponse,  tags=["profile"])
-# async def update_user_profile(
-#     user_update: UserProfileUpdate,
-#     current_user: User = Depends(get_current_user),
-#     db: Session = Depends(get_db)
-# ):
-#     """Update user profile"""
-#     request_id = generate_request_id()
-
-#     # Check if phone number is already taken by another user
-#     if user_update.phone_number and user_update.phone_number != current_user.phone_number:
-#         existing_user = db.query(User).filter(
-#             User.phone_number == user_update.phone_number,
-#             User.id != current_user.id
-#         ).first()
-#         if existing_user:
-#             raise HTTPException(
-#                 status_code=400, detail="Phone number already taken")
-
-#     # Check if medical license is already taken (for doctors)
-#     if (user_update.medical_license and
-#         current_user.role == "doctor" and
-#             user_update.medical_license != current_user.medical_license):
-#         existing_doctor = db.query(User).filter(
-#             User.medical_license == user_update.medical_license,
-#             User.id != current_user.id
-#         ).first()
-#         if existing_doctor:
-#             raise HTTPException(
-#                 status_code=400, detail="Medical license already taken")
-
-#     try:
-#         # Update fields
-#         update_data = user_update.dict(exclude_unset=True)
-#         for field, value in update_data.items():
-#             setattr(current_user, field, value)
-
-#         current_user.updated_at = datetime.now(timezone.utc)
-#         db.commit()
-#         db.refresh(current_user)
-
-#         logger.info(
-#             f"Profile updated for user: {current_user.email} - Request ID: {request_id}")
-
-#         user_profile = UserProfileResponse.model_validate(current_user)
-
-#         return create_standard_response(
-#             status="success",
-#             message="Profile updated successfully",
-#             data={"profile": user_profile.dict()},
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"Profile update failed for user {current_user.email}: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(status_code=500, detail="Profile update failed")
-
 @app.put("/api/v1/users/me", response_model=StandardResponse, tags=["user"])
 async def update_user_profile(
     user_update: UserProfileUpdate,
@@ -1841,70 +1379,6 @@ async def update_user_profile(
             f"Profile update failed for user {current_user.email}: {str(e)} - Request ID: {request_id}")
         raise HTTPException(status_code=500, detail="Profile update failed")
 
-
-# @app.post("/api/v1/auth/verify-contact", tags=["authentication"])
-# @limiter.limit("3/minute")
-# async def verify_contact_method(
-#     request: Request,
-#     verification_data: OTPVerification,
-#     current_user: User = Depends(get_current_user),
-#     api_key: str = Depends(verify_api_key),
-#     db: Session = Depends(get_db)
-# ):
-#     """Verify email or phone number for existing user"""
-#     request_id = generate_request_id()
-
-#     contact_target = verification_data.email or verification_data.phone_number
-
-#     # Verify OTP first
-#     otp_hash = hash_otp(verification_data.otp_code)
-#     otp_record = db.query(OTPCode).filter(
-#         OTPCode.user_id == current_user.id,
-#         OTPCode.code_hash == otp_hash,
-#         OTPCode.purpose == verification_data.purpose,
-#         OTPCode.contact_target == contact_target,
-#         OTPCode.is_used == False,
-#         OTPCode.expires_at > now_th()
-#     ).first()
-
-#     if not otp_record:
-#         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-
-#     # Mark OTP as used
-#     otp_record.is_used = True
-
-#     try:
-#         # Update verification status
-#         if verification_data.purpose == "email_verification":
-#             current_user.is_email_verified = True
-#             current_user.email = contact_target
-#         elif verification_data.purpose == "phone_verification":
-#             current_user.is_phone_verified = True
-#             current_user.phone_number = contact_target
-
-#         current_user.updated_at = now_th()
-#         db.commit()
-
-#         logger.info(
-#             f"Contact verified - User: {current_user.id} - Type: {verification_data.purpose} - Request ID: {request_id}")
-
-#         return create_standard_response(
-#             status="success",
-#             message="Contact method verified successfully",
-#             data={
-#                 "verified": True,
-#                 "contact_type": verification_data.purpose,
-#                 "contact_target": contact_target
-#             },
-#             request_id=request_id
-#         )
-
-#     except Exception as e:
-#         db.rollback()
-#         logger.error(
-#             f"Contact verification failed: {str(e)} - Request ID: {request_id}")
-#         raise HTTPException(
-#             status_code=500, detail="Failed to verify contact method")
 
 @app.post("/api/v1/auth/verify-contact", tags=["authentication"])
 @limiter.limit("3/minute")
