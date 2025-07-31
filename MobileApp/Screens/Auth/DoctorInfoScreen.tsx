@@ -132,6 +132,10 @@ export default function PatientInfoScreen({ navigation, route }: { navigation: a
       console.error('Registration error:', error.response?.data || error.message);
     } finally {
       setLoading(false); // Stop loading indicator
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
     }
   }
 
