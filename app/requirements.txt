@@ -7,6 +7,9 @@ python_bcrypt==0.3.2
 SQLAlchemy==2.0.35
 uvicorn==0.34.3
 slowapi
-phonenumbers
+pyparsing==3.3.1
+phonenumbers==9.0.21
 python-dotenv
 google-generativeai
+pytz
+pyotp
