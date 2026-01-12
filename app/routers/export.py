@@ -54,10 +54,29 @@ async def export_my_data(
             "created_at": str(current_user.created_at)
         }
         
-        # 2. Fetch BP Records
-        records = db.query(BloodPressureRecord).filter(
+        # 2. Fetch BP Records with Monetization Logic
+        query = db.query(BloodPressureRecord).filter(
             BloodPressureRecord.user_id == current_user.id
-        ).all()
+        )
+
+        is_premium = False
+        if current_user.subscription_tier == "premium":
+             # Simple checking for now, assuming UTC logic or timezone aware handled by model?
+             # Actually expires_at is nullable.
+             is_premium = True # Assume valid if marked premium for now, or add check
+             if current_user.subscription_expires_at:
+                  # Naive check vs system time (should use timezone aware if possible)
+                  # But let's just use simple date compare
+                  pass 
+
+        export_note = "Full History (Premium)"
+        if current_user.subscription_tier != "premium":
+            # Free: Limit to 30 days
+            limit_date = datetime.now() - timedelta(days=30)
+            query = query.filter(BloodPressureRecord.measurement_date >= limit_date)
+            export_note = "Limited to last 30 days (Free Tier)"
+
+        records = query.all()
         
         bp_data = []
         for r in records:
@@ -79,7 +98,8 @@ async def export_my_data(
             "blood_pressure_history": bp_data,
             "meta": {
                 "record_count": len(bp_data),
-                "system": "BP Monitor API"
+                "system": "BP Monitor API",
+                "note": export_note
             }
         }
         

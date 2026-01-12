@@ -56,6 +56,29 @@ async def get_bp_records(
     if end_date:
         query = query.filter(BloodPressureRecord.measurement_date <= end_date)
 
+    # --- Monetization Logic: Free Tier Limit (Last 30 Days) ---
+    is_premium = False
+    if current_user.subscription_tier == "premium":
+        # Check expiry
+        if current_user.subscription_expires_at and current_user.subscription_expires_at > now_th():
+            is_premium = True
+        else:
+            # Expired, fallback to free
+            is_premium = False
+    
+    if not is_premium:
+        # Free User: Restrict to latest 30 records
+        # limit() applies to the result set. Since we sort by date desc later, 
+        # we need to be careful. Ideally we apply the limit on the query that is ORDERED.
+        # But SQLAlchemy limit applies to the returned rows.
+        # If we just want to HIDE records > 30:
+        # We can just check the total count or restricted view.
+        # Simple implementation: Let pagination handle naturally, but set a conceptual max.
+        # Actually, user wants "Last 30 Records".
+        # So we just ensure the user can't paginate past record 30.
+        pass
+    # ----------------------------------------------------------
+
     # Get total count for pagination
     total = query.count()
 
@@ -70,6 +93,18 @@ async def get_bp_records(
         .offset((page - 1) * per_page)\
         .limit(per_page)\
         .all()
+        
+    if not is_premium:
+        # Strict Limit: 30 Records Max
+        start_idx = (page - 1) * per_page
+        if start_idx >= 30:
+            records = []
+        else:
+            # If requesting overlapping range (e.g. 20-40), cut off at 30
+            end_idx = start_idx + len(records)
+            if end_idx > 30:
+                allowed_count = 30 - start_idx
+                records = records[:allowed_count]
 
     # Convert to response model
     data = [BloodPressureRecordResponse.model_validate(
@@ -78,8 +113,8 @@ async def get_bp_records(
     pagination = PaginationMeta(
         current_page=page,
         per_page=per_page,
-        total=total,
-        total_pages=total_pages
+        total=total if is_premium else min(total, 30), # Cap reported total
+        total_pages=total_pages if is_premium else (min(total, 30) + per_page - 1) // per_page
     )
 
     return create_standard_response(
@@ -100,6 +135,19 @@ async def create_bp_record(
 ):
     """Create a new blood pressure record manually"""
     request_id = generate_request_id()
+    
+    # Duplicate Check
+    existing = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id,
+        BloodPressureRecord.measurement_date == record.measurement_date,
+        BloodPressureRecord.measurement_time == record.measurement_time,
+        BloodPressureRecord.systolic == record.systolic,
+        BloodPressureRecord.diastolic == record.diastolic,
+        BloodPressureRecord.pulse == record.pulse
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=409, detail="Record already exists (Duplicate ignored)")
 
     new_record = BloodPressureRecord(
         user_id=current_user.id,
@@ -233,21 +281,38 @@ async def get_bp_stats(
     """Get blood pressure statistics (avg, min, max)"""
     request_id = generate_request_id()
 
-    start_date = now_th() - timedelta(days=days)
+    # If Free Tier, standard is limit to latest 30 records (not days)
+    # Logic: Get Latest N records, then stats them.
+    
+    query = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id
+    )
+    
+    # Use 'days' roughly as 'count' limit for stats if Free
+    limit_count = 30 
+    
+    records = query.order_by(desc(BloodPressureRecord.measurement_date))\
+                   .limit(limit_count)\
+                   .all()
 
-    records = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.user_id == current_user.id,
-        BloodPressureRecord.measurement_date >= start_date
-    ).all()
+    # Get total all time count (Always calculate this)
+    total_all_time = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id
+    ).count()
 
     if not records:
         return create_standard_response(
             status="success",
             message=f"No records found in last {days} days",
             data={
-                "count": 0,
-                "period_days": days,
-                "stats": None
+                "period_days": days, # Fix key consistency
+                "stats": {
+                    "systolic": {"avg": 0, "min": 0, "max": 0},
+                    "diastolic": {"avg": 0, "min": 0, "max": 0},
+                    "pulse": {"avg": 0, "min": 0, "max": 0},
+                    "total_records_period": 0,
+                    "total_records_all_time": total_all_time
+                }
             },
             request_id=request_id
         )
@@ -258,10 +323,9 @@ async def get_bp_stats(
     diastolic_values = [r.diastolic for r in records]
     pulse_values = [r.pulse for r in records]
 
-    # Get total all time count
-    total_all_time = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.user_id == current_user.id
-    ).count()
+    pulse_values = [r.pulse for r in records]
+
+    # total_all_time is already calculated above
 
     stats = {
         "systolic": {

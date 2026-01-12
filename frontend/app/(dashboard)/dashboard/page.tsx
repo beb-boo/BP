@@ -1,10 +1,9 @@
-
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
-import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X } from "lucide-react";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -39,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BPChart } from "@/components/bp-chart";
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -121,7 +121,9 @@ export default function DashboardPage() {
 
 function PatientView({ user }: { user: any }) {
     const [stats, setStats] = useState<any>(null);
-    const [records, setRecords] = useState<any[]>([]);
+    const [graphRecords, setGraphRecords] = useState<any[]>([]);
+    const [tableRecords, setTableRecords] = useState<any[]>([]);
+    const [pagination, setPagination] = useState<any>({ current_page: 1, total_pages: 1 });
     const [loadingData, setLoadingData] = useState(true);
     const [isAddOpen, setIsAddOpen] = useState(false);
 
@@ -139,18 +141,25 @@ function PatientView({ user }: { user: any }) {
     const [measureTime, setMeasureTime] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
+        setLoadingData(true);
         try {
             const [statsRes, recordsRes] = await Promise.all([
                 api.get("/stats/summary?days=30"),
-                api.get("/bp-records?per_page=5")
+                api.get("/bp-records?per_page=30&page=1")
             ]);
 
             if (statsRes.data.data.stats) {
                 setStats(statsRes.data.data.stats);
             }
 
-            setRecords(recordsRes.data.data.records);
+            const records = recordsRes.data.data.records;
+            const meta = recordsRes.data.meta.pagination;
+
+            setGraphRecords(records); // Graph always shows latest 30
+            setTableRecords(records); // Table starts with page 1
+            setPagination(meta);
+
         } catch (error) {
             console.error("Failed to fetch data", error);
         } finally {
@@ -158,8 +167,18 @@ function PatientView({ user }: { user: any }) {
         }
     };
 
+    const fetchTablePage = async (page: number) => {
+        try {
+            const res = await api.get(`/bp-records?per_page=30&page=${page}`);
+            setTableRecords(res.data.data.records);
+            setPagination(res.data.meta.pagination);
+        } catch (error) {
+            console.error("Failed to fetch page", error);
+        }
+    };
+
     useEffect(() => {
-        fetchData();
+        fetchInitialData();
         // Set default date/time when dialog opens (only if empty)
         if (isAddOpen && !measureDate) {
             const now = new Date();
@@ -239,7 +258,7 @@ function PatientView({ user }: { user: any }) {
             setSys(""); setDia(""); setPulse("");
             setPreviewUrl(null);
             setActiveTab("photo");
-            fetchData();
+            fetchInitialData(); // Refresh both table and graph
         } catch (error: any) {
             toast.error(error.response?.data?.detail || "Failed to add record");
         } finally {
@@ -248,7 +267,7 @@ function PatientView({ user }: { user: any }) {
     };
 
     // Derived values
-    const lastReading = records.length > 0 ? records[0] : null;
+    const lastReading = graphRecords.length > 0 ? graphRecords[0] : null; // Uses graphRecords (latest)
     const avgPulse = stats ? Math.round(stats.pulse.avg) : "-";
 
     return (
@@ -275,7 +294,7 @@ function PatientView({ user }: { user: any }) {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{avgPulse} bpm</div>
-                        <p className="text-xs text-slate-500">Last 30 days</p>
+                        <p className="text-xs text-slate-500">Last 30 records</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -401,49 +420,94 @@ function PatientView({ user }: { user: any }) {
                 </Button>
             </div>
 
+            {/* Trends Chart */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>Blood Pressure Trends (Last 30 Records)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loadingData ? (
+                        <div className="h-[350px] flex items-center justify-center text-slate-500">Loading chart...</div>
+                    ) : graphRecords.length > 0 ? (
+                        <BPChart data={graphRecords} />
+                    ) : (
+                        <div className="h-[350px] flex items-center justify-center text-slate-500">No data available</div>
+                    )}
+                </CardContent>
+            </Card>
+
             <Card className="col-span-4">
                 <CardHeader>
-                    <CardTitle>Recent History</CardTitle>
+                    <div className="flex items-center justify-between">
+                        <CardTitle>History</CardTitle>
+                        <span className="text-sm text-slate-500">
+                            Page {pagination?.current_page} of {pagination?.total_pages} (Total {pagination?.total})
+                        </span>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {loadingData ? (
                         <div className="text-slate-500 text-sm">Loading records...</div>
-                    ) : records.length === 0 ? (
-                        <div className="text-slate-500 text-sm">No records found.</div>
+                    ) : tableRecords.length === 0 ? (
+                        <div className="text-slate-500 text-sm">No records found. Start measuring!</div>
                     ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Date</TableHead>
-                                    <TableHead>Systolic</TableHead>
-                                    <TableHead>Diastolic</TableHead>
-                                    <TableHead>Pulse</TableHead>
-                                    <TableHead>
-                                        <span className="hidden md:inline">Source</span>
-                                        <span className="md:hidden">Src</span>
-                                    </TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {records.map((r, i) => (
-                                    <TableRow key={r.id || i}>
-                                        <TableCell>
-                                            <div className="flex flex-col">
-                                                <span>{new Date(r.measurement_date).toLocaleDateString()}</span>
-                                                <span className="text-xs text-slate-500 md:hidden">{r.measurement_time}</span>
-                                            </div>
-                                            <span className="hidden md:inline pl-1">{r.measurement_time}</span>
-                                        </TableCell>
-                                        <TableCell className="font-medium">{r.systolic}</TableCell>
-                                        <TableCell>{r.diastolic}</TableCell>
-                                        <TableCell>{r.pulse}</TableCell>
-                                        <TableCell className="text-slate-500 text-xs md:text-sm">
-                                            {r.notes || "Manual"}
-                                        </TableCell>
+                        <>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Systolic</TableHead>
+                                        <TableHead>Diastolic</TableHead>
+                                        <TableHead>Pulse</TableHead>
+                                        <TableHead>
+                                            <span className="hidden md:inline">Source</span>
+                                            <span className="md:hidden">Src</span>
+                                        </TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                </TableHeader>
+                                <TableBody>
+                                    {tableRecords.map((r, i) => (
+                                        <TableRow key={r.id || i}>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span>{new Date(r.measurement_date).toLocaleDateString()}</span>
+                                                    <span className="text-xs text-slate-500 md:hidden">{r.measurement_time}</span>
+                                                </div>
+                                                <span className="hidden md:inline pl-1">{r.measurement_time}</span>
+                                            </TableCell>
+                                            <TableCell className="font-medium">{r.systolic}</TableCell>
+                                            <TableCell>{r.diastolic}</TableCell>
+                                            <TableCell>{r.pulse}</TableCell>
+                                            <TableCell className="text-slate-500 text-xs md:text-sm">
+                                                {r.notes || "Manual"}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+
+                            {/* Pagination Controls */}
+                            <div className="flex items-center justify-end space-x-2 py-4">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fetchTablePage(pagination.current_page - 1)}
+                                    disabled={pagination.current_page <= 1}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fetchTablePage(pagination.current_page + 1)}
+                                    disabled={pagination.current_page >= pagination.total_pages}
+                                >
+                                    Next
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </>
                     )}
                 </CardContent>
             </Card>

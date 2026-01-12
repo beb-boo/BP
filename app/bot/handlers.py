@@ -32,6 +32,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
     
+    # 0. Check for Deep Link (verify_TOKEN)
+    if context.args and context.args[0].startswith("verify_"):
+        token = context.args[0].replace("verify_", "")
+        linked_user = BotService.process_connection_token(token, chat_id)
+        
+        if linked_user:
+            await update.message.reply_text(
+                f"✅ **Account Connected!**\n"
+                f"Welcome, {linked_user.full_name}.\n"
+                "Your Telegram is now linked to your web account.",
+                reply_markup=ReplyKeyboardRemove(),
+                parse_mode="Markdown"
+            )
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("❌ Connection link is invalid or expired.")
+    
     # 1. Check if already linked
     linked_user = BotService.get_user_by_telegram_id(chat_id)
     
@@ -203,7 +220,15 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("⚠️ Please /start and link your account first.")
         return ConversationHandler.END
 
-    photo_file = await update.message.photo[-1].get_file()
+    photo_file = None
+    if update.message.document:
+        photo_file = await update.message.document.get_file()
+    elif update.message.photo:
+        photo_file = await update.message.photo[-1].get_file()
+    else:
+        await update.message.reply_text("❌ No image found.")
+        return ConversationHandler.END
+
     processing_msg = await update.message.reply_text("🔍 Analyzing image...")
     
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
@@ -235,15 +260,21 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Format Date/Time for display
         dt_display = "Unknown"
+        date_warning = ""
+        
         if ocr_result.measurement_date and ocr_result.measurement_time:
              dt_display = f"{ocr_result.measurement_date} {ocr_result.measurement_time}"
+             
+             # Check if it was a fallback for DATE specifically
+             if "Date: Fallback" in ocr_result.raw_response:
+                 date_warning = "\n⚠️ **Date not found in image**, using current date."
 
         # Ask for confirmation
         msg = f"**Read Result:**\n" \
               f"❤️ SYS: **{ocr_result.systolic}**\n" \
               f"💙 DIA: **{ocr_result.diastolic}**\n" \
               f"💓 PULSE: **{ocr_result.pulse}**\n" \
-              f"📅 Time: **{dt_display}**\n\n" \
+              f"📅 Time: **{dt_display}** {date_warning}\n\n" \
               f"Is this correct?"
               
         keyboard = [
@@ -288,7 +319,7 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # I'll update BotService in the next step. For now, let's write this handler code assuming BotService is updated.
         
-        BotService.create_bp_record(
+        record, is_new = BotService.create_bp_record(
             user_id=ocr_data['user_id'],
             systolic=ocr_data['sys'],
             diastolic=ocr_data['dia'],
@@ -297,7 +328,12 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             measurement_date=ocr_data.get('date'),
             measurement_time=ocr_data.get('time')
         )
-        await query.edit_message_text("✅ **Record Saved Successfully!**", parse_mode="Markdown")
+        
+        if is_new:
+             await query.edit_message_text("✅ **Record Saved Successfully!**", parse_mode="Markdown")
+        else:
+             await query.edit_message_text("⚠️ **Record already exists!** (Duplicate ignored)", parse_mode="Markdown")
+             
         return ConversationHandler.END
         
     elif data == "edit_ocr":
@@ -379,9 +415,10 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     avg_dia = int(avg.avg_dia) if avg.avg_dia else 0
     avg_pulse = int(avg.avg_pulse) if avg.avg_pulse else 0
     
-    msg = f"📊 **Your BP Stats** (Last 30)\n" \
-          f"Average: {avg_sys}/{avg_dia} mmHg (Pulse {avg_pulse})\n\n" \
-          f"**Recent 5 Records:**\n"
+    msg = f"**Your BP Profile**\n" \
+          f"**Average** (Last 30 Records):\n" \
+          f"{avg_sys}/{avg_dia} mmHg (Pulse {avg_pulse})\n\n" \
+          f"**Latest Entries** (Log):\n"
           
     if not recent:
         msg += "- No records found."
@@ -392,3 +429,39 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})\n"
             
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send a help message."""
+    msg = (
+        "**Need Help?**\n\n"
+        "Here are the commands I know:\n"
+        "/start - Register or Connect Account\n"
+        "/stats - View your Blood Pressure trends\n"
+        "/help - Show this message\n\n"
+        "**To Record BP**: Just send me a photo of your monitor!\n"
+        "**To Typo**: Send a photo, then click 'Edit' if numbers differ."
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reply to unknown messages."""
+    await update.message.reply_text(
+        "🤔 I didn't understand that.\n"
+        "Type /help to see what I can do, or send a photo to record BP!"
+    )
+
+def get_ocr_handler():
+    return ConversationHandler(
+        entry_points=[MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_photo_entry)],
+        states={
+            OCR_CONFIRM: [CallbackQueryHandler(ocr_confirm_callback)],
+            OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+# ... inside main setup in main.py, we need to register these ...
+# Wait, I am editing handlers.py, I need to make sure these are EXPORTED or used.
+# The `main.py` likely imports specific functions or a setup function.
+# Let me verify `app/bot/main.py` next to see how handlers are attached.
+# For now, I'll add the functions here.

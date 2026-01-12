@@ -27,8 +27,12 @@ SMS_FROM = os.getenv("SMS_FROM", "BPMonitor")
 def send_email_otp(recipient_email: str, otp: str, purpose: str):
     """Send OTP via email"""
     if not EMAIL_USER or not EMAIL_PASSWORD:
-        logger.warning("Email credentials not configured")
-        return False
+        logger.warning(f"Email credentials not configured. MOCK MODE: OTP for {recipient_email} is {otp}")
+        print(f"============================================")
+        print(f" [MOCK EMAIL] To: {recipient_email}")
+        print(f" [MOCK EMAIL] OTP: {otp} ({purpose})")
+        print(f"============================================")
+        return True
 
     try:
         subject_map = {
@@ -72,9 +76,14 @@ def send_email_otp(recipient_email: str, otp: str, purpose: str):
 
 def send_sms_otp(phone: str, otp: str, purpose: str):
     """Send OTP via SMS"""
+    """Send OTP via SMS"""
     if not SMS_API_URL or not SMS_API_KEY:
-        logger.warning("SMS credentials not configured")
-        return False
+        logger.warning(f"SMS credentials not configured. MOCK MODE: OTP for {phone} is {otp}")
+        print(f"============================================")
+        print(f" [MOCK SMS] To: {phone}")
+        print(f" [MOCK SMS] OTP: {otp} ({purpose})")
+        print(f"============================================")
+        return True
 
     try:
         message_map = {

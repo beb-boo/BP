@@ -12,7 +12,7 @@ from ..utils.security import (
     verify_api_key, get_current_user, lock_account, is_account_locked,
     now_th, ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from ..utils.encryption import encrypt_value
+from ..utils.encryption import encrypt_value, hash_value
 from ..utils.tmc_checker import verify_doctor_with_tmc
 import hashlib
 
@@ -20,8 +20,9 @@ from ..utils.notification import send_email_otp, send_sms_otp, OTP_EXPIRE_MINUTE
 import logging
 import uuid
 import secrets
+import os
 from datetime import timedelta
-from ..otp_service import OTPService
+from ..otp_service import otp_service
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -29,17 +30,7 @@ from slowapi.util import get_remote_address
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
 
-# Note: In a real app, limiter should be initialized in main and passed down, 
-# or we use a global instance. For this refactor, we instantiate a dummy one 
-# or import if we move it to common. 
-# Better strategy: creating a common "limiter" dependency in utils/common.py is best 
-# but for now to minimize changes, I will re-declare it or skip it on router level 
-# if it requires app state.
-# Slowapi limits apply to decorators. If we don't attach it to app, it won't work.
-# We will need to attach this router to app with limiter state.
 limiter = Limiter(key_func=get_remote_address)
-
-otp_service = OTPService()
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())
@@ -125,7 +116,7 @@ async def verify_otp(
 async def register_user(
     request: Request,
     user_data: UserRegister,
-    background_tasks: BackgroundTasks, # Add this
+    background_tasks: BackgroundTasks, 
     api_key: str = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
@@ -142,54 +133,54 @@ async def register_user(
             detail="Please verify your contact information with OTP first"
         )
 
-    # Check for existing users
+    # Check for existing users using HASH lookup
     if user_data.email:
-        if db.query(User).filter(User.email == user_data.email).first():
+        email_h = hash_value(user_data.email)
+        if db.query(User).filter(User.email_hash == email_h).first():
             raise HTTPException(
-                status_code=400, detail="Email already registered")
+                status_code=400, detail="This email is already registered. Please log in.")
 
     if user_data.phone_number:
-        if db.query(User).filter(User.phone_number == user_data.phone_number).first():
+        phone_h = hash_value(user_data.phone_number)
+        if db.query(User).filter(User.phone_number_hash == phone_h).first():
             raise HTTPException(
-                status_code=400, detail="Phone number already registered")
-
-    # Hash helpers
-    def get_hash(val):
-        return hashlib.sha256(val.encode()).hexdigest() if val else None
+                status_code=400, detail="This phone number is already in use.")
 
     # Check for existing citizen_id (via hash)
     if user_data.citizen_id:
-        c_hash = get_hash(user_data.citizen_id)
+        c_hash = hash_value(user_data.citizen_id)
         if db.query(User).filter(User.citizen_id_hash == c_hash).first():
-            raise HTTPException(status_code=400, detail="Citizen ID already registered")
+            raise HTTPException(status_code=400, detail="This Citizen ID is already registered.")
 
     if user_data.role == "doctor" and user_data.medical_license:
-        m_hash = get_hash(user_data.medical_license)
+        m_hash = hash_value(user_data.medical_license)
         if db.query(User).filter(User.medical_license_hash == m_hash).first():
             raise HTTPException(
-                status_code=400, detail="Medical license already registered")
+                status_code=400, detail="This Medical License is already registered.")
 
     try:
+        # Note: We rely on the User model setters to handle encryption/hashing transparently!
         new_user = User(
-            email=user_data.email,
-            phone_number=user_data.phone_number,
+            email=user_data.email, # Setter handles email_encrypted / email_hash
+            phone_number=user_data.phone_number, # Setter handles phone_number_encrypted / phone_number_hash
             password_hash=hash_password(user_data.password),
-            full_name=user_data.full_name,
+            full_name=user_data.full_name, # Setter handles full_name_encrypted / full_name_hash
             role=user_data.role,
             verification_status="pending" if user_data.role == "doctor" else "verified", # Auto-verify patients, pending for doctors
-            # Encrypt sensitive fields
-            citizen_id_encrypted=encrypt_value(user_data.citizen_id),
-            citizen_id_hash=get_hash(user_data.citizen_id),
-            medical_license_encrypted=encrypt_value(user_data.medical_license),
-            medical_license_hash=get_hash(user_data.medical_license),
-
-            date_of_birth=user_data.date_of_birth,
+            
+            # Using properties for transparent encryption
+            citizen_id=user_data.citizen_id, 
+            medical_license=user_data.medical_license,
+            date_of_birth=user_data.date_of_birth, # Setup takes date, converts to iso str -> encrypts
+            
             gender=user_data.gender,
             blood_type=user_data.blood_type,
             height=user_data.height,
             weight=user_data.weight,
+            
             is_email_verified=bool(user_data.email),
             is_phone_verified=bool(user_data.phone_number),
+            
             created_at=now_th(),
             updated_at=now_th()
         )
@@ -200,7 +191,12 @@ async def register_user(
 
         if new_user.role == "doctor":
              from ..utils.background_tasks import verify_doctor_background
-             background_tasks.add_task(verify_doctor_background, new_user.id, new_user.full_name.split()[0], new_user.full_name.split()[-1], db)
+             # Accessing properties decrypts them for usage
+             full_name_clean = new_user.full_name
+             if full_name_clean:
+                 fname = full_name_clean.split()[0]
+                 lname = full_name_clean.split()[-1] if len(full_name_clean.split()) > 1 else ""
+                 background_tasks.add_task(verify_doctor_background, new_user.id, fname, lname, db)
 
         logger.info(
             f"New user registered: {contact_target} - Role: {new_user.role} - Request ID: {request_id}"
@@ -238,13 +234,14 @@ async def login(
     """User login with email or phone number"""
     request_id = generate_request_id()
 
-    # Find user by email or phone
+    # Find user by email or phone via HASH
     if user_credentials.email:
+        email_h = hash_value(user_credentials.email)
         user = db.query(User).filter(
-            User.email == user_credentials.email).first()
+            User.email_hash == email_h).first()
     else:
-        user = db.query(User).filter(User.phone_number ==
-                                     user_credentials.phone_number).first()
+        phone_h = hash_value(user_credentials.phone_number)
+        user = db.query(User).filter(User.phone_number_hash == phone_h).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -263,13 +260,13 @@ async def login(
         if user.failed_login_attempts >= 5:
             lock_account(user, db)
             logger.warning(
-                f"Account locked due to failed attempts: {user.email or user.phone_number} - Request ID: {request_id}")
+                f"Account locked due to failed attempts (ID: {user.id}) - Request ID: {request_id}")
             raise HTTPException(
                 status_code=423, detail="Account locked due to multiple failed attempts")
 
         db.commit()
         logger.warning(
-            f"Failed login attempt: {user.email or user.phone_number} - Attempts: {user.failed_login_attempts} - Request ID: {request_id}")
+            f"Failed login attempt (ID: {user.id}) - Attempts: {user.failed_login_attempts} - Request ID: {request_id}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.is_active:
@@ -282,6 +279,7 @@ async def login(
     db.commit()
 
     # Create tokens
+    # Access properties to get decrypted email/phone for token payload (if needed) or just ID
     token_data = {"user_id": user.id, "email": user.email}
 
     if user_credentials.remember_me:
@@ -307,7 +305,7 @@ async def login(
     db.commit()
 
     logger.info(
-        f"Successful login: {user.email or user.phone_number} - Request ID: {request_id}")
+        f"Successful login (ID: {user.id}) - Request ID: {request_id}")
 
     return create_standard_response(
         status="success",
@@ -324,7 +322,8 @@ async def login(
                 "role": user.role,
                 "full_name": user.full_name,
                 "is_email_verified": user.is_email_verified,
-                "is_phone_verified": user.is_phone_verified
+                "is_phone_verified": user.is_phone_verified,
+                "subscription_tier": user.subscription_tier # New field
             }
         },
         request_id=request_id
@@ -350,7 +349,7 @@ async def logout(
     db.commit()
 
     logger.info(
-        f"User logged out: {current_user.email or current_user.phone_number} - Request ID: {request_id}")
+        f"User logged out: {current_user.id} - Request ID: {request_id}")
 
     return create_standard_response(
         status="success",
@@ -389,7 +388,7 @@ async def change_password(
         db.commit()
 
         logger.info(
-            f"Password changed for user: {current_user.email or current_user.phone_number} - Request ID: {request_id}")
+            f"Password changed for user: {current_user.id} - Request ID: {request_id}")
 
         return create_standard_response(
             status="success",
@@ -416,12 +415,13 @@ async def reset_password(
     """Reset password via OTP verification"""
     request_id = generate_request_id()
 
-    # Find user by email or phone
+    # Find user by email or phone via HASH
     if reset_data.email:
-        user = db.query(User).filter(User.email == reset_data.email).first()
+        email_h = hash_value(reset_data.email)
+        user = db.query(User).filter(User.email_hash == email_h).first()
     else:
-        user = db.query(User).filter(User.phone_number ==
-                                     reset_data.phone_number).first()
+        phone_h = hash_value(reset_data.phone_number)
+        user = db.query(User).filter(User.phone_number_hash == phone_h).first()
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -445,7 +445,7 @@ async def reset_password(
         db.commit()
 
         logger.info(
-            f"Password reset successful for user: {contact_target} - Request ID: {request_id}"
+            f"Password reset successful for user: {user.id} - Request ID: {request_id}"
         )
 
         return create_standard_response(
@@ -481,9 +481,10 @@ async def verify_contact_method(
 
     try:
         # Update user verification flags and contact info
+        # Note: Setters handle encryption/hashing
         if verification_data.purpose == "email_verification":
             current_user.is_email_verified = True
-            current_user.email = contact_target
+            current_user.email = contact_target 
         elif verification_data.purpose == "phone_verification":
             current_user.is_phone_verified = True
             current_user.phone_number = contact_target
@@ -512,3 +513,32 @@ async def verify_contact_method(
             f"Contact verification failed: {str(e)} - Request ID: {request_id}")
         raise HTTPException(
             status_code=500, detail="Failed to verify contact method")
+
+
+@router.post("/telegram/generate-link", tags=["authentication"])
+async def generate_telegram_link(
+    current_user: User = Depends(get_current_user),
+    api_key: str = Depends(verify_api_key)
+):
+    """Generate a deep link to connect Telegram account"""
+    request_id = generate_request_id()
+    
+    # Create a short-lived token for verification (10 minutes)
+    token_data = {
+        "user_id": current_user.id, 
+        "purpose": "telegram_connect"
+    }
+    token = create_access_token(token_data, expires_delta=timedelta(minutes=10))
+    
+    # Replace with your actual Bot Username
+    # In production, this should be in env or config
+    bot_username = os.getenv("TELEGRAM_BOT_USERNAME", "BPMonitor_Bot") 
+    
+    link = f"https://t.me/{bot_username}?start=verify_{token}"
+    
+    return create_standard_response(
+        status="success",
+        message="Link generated",
+        data={"link": link},
+        request_id=request_id
+    )

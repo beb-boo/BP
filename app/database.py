@@ -7,13 +7,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database setup
+# Default to SQLite for local development
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./blood_pressure.db")
-# For SQLite interaction (if used)
-if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-else:
-    connect_args = {}
 
+# Vercel/Postgres fix: Vercel might give "postgres://" but SQLAlchemy needs "postgresql://"
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# Connection args
+connect_args = {}
+
+if DATABASE_URL.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
+# Create engine
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

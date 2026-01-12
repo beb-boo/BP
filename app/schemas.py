@@ -9,6 +9,8 @@ from phonenumbers import NumberParseException
 def validate_phone_number(phone: str) -> str:
     """Validate phone number format using phonenumbers library"""
     try:
+        if not phone or phone.strip() == "":
+            return None
         # Parse phone number (assuming international format or Thai number)
         parsed = phonenumbers.parse(phone, "TH")  # Default to Thailand
         if not phonenumbers.is_valid_number(parsed):
@@ -86,7 +88,7 @@ class OTPRequest(BaseModel):
     email: Optional[EmailStr] = None
     phone_number: Optional[str] = None
     purpose: Literal["registration", "login", "password_reset",
-                     "phone_verification", "email_verification"]
+                     "phone_verification", "email_verification", "update_profile"]
 
     # validators
 
@@ -103,7 +105,7 @@ class OTPVerification(BaseModel):
     phone_number: Optional[str] = None
     otp_code: str = Field(..., min_length=4, max_length=4)
     purpose: Literal["registration", "login", "password_reset",
-                     "phone_verification", "email_verification"]
+                     "phone_verification", "email_verification", "update_profile"]
 
     # validators
 
@@ -137,6 +139,7 @@ class UserProfileResponse(BaseModel):
     phone_number: Optional[str] = None
     full_name: str
     role: str
+    telegram_id: Optional[int] = None
     citizen_id: Optional[str] = None
     medical_license: Optional[str] = None
     date_of_birth: Optional[datetime] = None
@@ -156,23 +159,49 @@ class UserProfileResponse(BaseModel):
 
 
 class UserProfileUpdate(BaseModel):
+    email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone_number: Optional[str] = None
     citizen_id: Optional[str] = None
-    date_of_birth: Optional[datetime] = None
+    date_of_birth: Optional[Union[datetime, str]] = None
     gender: Optional[Literal["male", "female", "other"]] = None
     blood_type: Optional[Literal["A", "B", "AB", "O", "A+",
                                  "B+", "AB+", "O+", "A-", "B-", "AB-", "O-"]] = None
     height: Optional[float] = Field(None, gt=0, le=300)
     weight: Optional[float] = Field(None, gt=0, le=500)
     medical_license: Optional[str] = None
+    current_password: Optional[str] = None # Required when changing sensitive info
+    otp_code: Optional[str] = None # Required if user has email and changes phone
 
     # validators
 
+    # Validators
+    
+    @model_validator(mode="before")
+    @classmethod
+    def pre_validate_empty_strings(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            fields_to_check = ['email', 'phone_number', 'citizen_id', 'medical_license', 'date_of_birth', 'gender', 'blood_type']
+            for field in fields_to_check:
+                if data.get(field) == "":
+                    data[field] = None
+        return data
+
     @model_validator(mode="after")
-    def validate_all(self) -> 'UserProfileUpdate':
-        self.phone_number = validate_phone_number(
-            self.phone_number) if self.phone_number else None
+    def validate_logic(self) -> 'UserProfileUpdate':
+        # Phone validation
+        if self.phone_number:
+            self.phone_number = validate_phone_number(self.phone_number)
+        
+        # Parse Date if string
+        if isinstance(self.date_of_birth, str):
+            try:
+                # Expect YYYY-MM-DD or partial ISO
+                parsed = datetime.strptime(self.date_of_birth.split("T")[0], "%Y-%m-%d")
+                self.date_of_birth = parsed
+            except ValueError:
+                raise ValueError("Date of birth must be YYYY-MM-DD")
+                
         return self
 
 

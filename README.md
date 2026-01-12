@@ -1,12 +1,11 @@
-
 # 🩸 Blood Pressure Monitor & Telemedicine Platform
 
 A comprehensive platform for tracking blood pressure, managing doctor-patient relationships, and empowering users with their health data.
 
 **Key Components:**
-1.  **Backend API**: Fast, Secure (Fernet Encryption), and Scalable (FastAPI).
-2.  **Telegram Bot**: AI-powered OCR for effortless BP recording.
-3.  **Web Application**: Modern dashboard for Patients and Doctors (Next.js).
+17.  **Backend API**: Fast, Secure (Fernet Encryption), and Scalable (FastAPI).
+8.  **Telegram Bot**: AI-powered OCR with "Human-in-the-loop" confirmation for accuracy.
+9.  **Web Application**: Modern dashboard with visual analytics and Smart OCR integration.
 
 ---
 
@@ -60,10 +59,10 @@ python3 -m app.bot.main
 ```
 *   **Use it**: Open your bot in Telegram.
 *   **Commands**:
-    *   `/start` - Welcome & Status.
-    *   `/login <email> <password>` - Link Telegram to your account.
-    *   `/stats` - View recent 5 records.
-    *   **[Send Photo]** - Auto-extract BP values and save.
+     *   `/start` - Welcome & Status.
+     *   `/login <email> <password>` - Link Telegram to your account.
+     *   `/stats` - View stats (Last 30 days) & recent 5 records.
+     *   **[Send Photo]** - Auto-extract BP values -> Confirm/Edit -> Save.
 
 ### 4️⃣ Running the Web Application 🌐
 Dashboard for patients and doctors.
@@ -87,14 +86,20 @@ npm run dev
 *   **Data Portability**: Users can export their full history via `/api/v1/export/my-data`.
 
 ### 🩺 For Patients
-*   **Easy Recording**: Manual entry or AI Camera (OCR).
-*   **Trends**: View stats (Avg, Min, Max).
+### 🩺 For Patients
+*   **Smart Recording**:
+    *   **Scan Photo**: Upload image or file -> AI extracts Sys/Dia/Pulse & Date/Time.
+    *   **Duplicate Prevention**: Automatically detects and ignores duplicate uploads (Same User + Date/Time + Values).
+    *   **Intelligent Timestamp**: Auto-detects time from Screen (OCR) -> EXIF -> Fallback.
+*   **Trends & History**: 
+    *   **Free Level**: View latest 30 records & statistics.
+    *   **Premium Level**: Unlimited history access.
 *   **Doctor Access**: Grant or revoke access for doctors to view your data.
 
 ### 👨‍⚕️ For Doctors
 *   **Patient List**: View all authorized patients.
 *   **Access Request**: Request access to a patient's data by email/ID.
-*   **Monitoring**: View patient graphs and history.
+*   **Monitoring**: View patient graphs and history (Full History Access).
 
 ---
 

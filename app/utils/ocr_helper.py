@@ -80,9 +80,16 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
     prompt = """
     Analyze this blood pressure monitor screen image:
     1. Extract Systolic, Diastolic, and Pulse values.
+       - Note: Standard vertical layout is usually Systolic (Top), Diastolic (Middle), Pulse (Bottom).
+       - Note: Pulse is often smaller or at the very bottom.
     2. Extract Date and Time IF visible on the screen.
+       - LOOK CAREFULLY: Date/Time might be small, in a corner, or faint.
+       - Formats can vary: "YYYY/MM/DD", "DD/MM", "MM-DD", "HH:MM", "AM/PM".
+       - If you see a clock or calendar icon, the numbers next to it are likely time/date.
     3. Return ONLY a JSON object: {"systolic": int, "diastolic": int, "pulse": int, "date": "YYYY-MM-DD", "time": "HH:MM"}
-    4. If any value is not visible, use null.
+       - Convert date to YYYY-MM-DD. Use current year if year is missing.
+       - Convert time to 24-hour HH:MM.
+    4. If any value is completely illegible, use null.
     """
 
     try:
@@ -97,57 +104,69 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
             result_data = json.loads(raw_text)
             metadata = get_image_metadata(image_path)
             
-            # --- Timestamp Logic Priority ---
+            # --- Timestamp Logic Priority (Granular) ---
             final_date = None
             final_time = None
-            source_notes = []
-
-            # 1. OCR Date key
+            date_source = "Unknown"
+            time_source = "Unknown"
+            
+            # 1. OCR (Try individual components)
             ocr_date = result_data.get("date")
             ocr_time = result_data.get("time")
-            
-            if ocr_date and ocr_time:
-                try:
-                    # Validating parsed values (simple check)
-                    datetime.strptime(f"{ocr_date} {ocr_time}", "%Y-%m-%d %H:%M")
-                    final_date = ocr_date
-                    final_time = ocr_time
-                    source_notes.append("OCR Screen Timestamp")
-                except ValueError:
-                    source_notes.append("OCR Timestamp Invalid")
 
-            # 2. EXIF Data (if step 1 failed or partial)
+            if ocr_date:
+                try:
+                    datetime.strptime(ocr_date, "%Y-%m-%d") # Validate format
+                    final_date = ocr_date
+                    date_source = "OCR"
+                except ValueError:
+                    pass
+
+            if ocr_time:
+                try:
+                    datetime.strptime(ocr_time, "%H:%M") # Validate format
+                    final_time = ocr_time
+                    time_source = "OCR"
+                except ValueError:
+                    pass
+
+            # 2. EXIF Data (Fill gaps)
+            exif_dt = None
             if not final_date or not final_time:
                 exif_dt = extract_exif_datetime(metadata)
-                if exif_dt:
-                    if not final_date:
-                        final_date = exif_dt.strftime("%Y-%m-%d")
-                    if not final_time:
-                        # Round to HH:MM for simplicity in UI
-                        final_time = exif_dt.strftime("%H:%M")
-                    source_notes.append("EXIF Data")
             
-            # 3. File Creation Time (if still missing)
+            if exif_dt:
+                if not final_date:
+                    final_date = exif_dt.strftime("%Y-%m-%d")
+                    date_source = "EXIF"
+                if not final_time:
+                    final_time = exif_dt.strftime("%H:%M")
+                    time_source = "EXIF"
+
+            # 3. File Creation Time (Fill gaps)
             if not final_date or not final_time:
                  try:
                     creation_time = os.path.getctime(image_path)
                     ct_dt = datetime.fromtimestamp(creation_time)
                     if not final_date:
                         final_date = ct_dt.strftime("%Y-%m-%d")
+                        date_source = "File Create"
                     if not final_time:
                         final_time = ct_dt.strftime("%H:%M")
-                    source_notes.append("File Creation Time")
+                        time_source = "File Create"
                  except Exception:
                      pass
 
             # 4. Current Time (Fallback)
-            if not final_date or not final_time:
-                now = now_th()
-                if not final_date:
-                    final_date = now.strftime("%Y-%m-%d")
-                if not final_time:
-                    final_time = now.strftime("%H:%M")
-                source_notes.append("Upload Time (Fallback)")
+            now = now_th()
+            if not final_date:
+                final_date = now.strftime("%Y-%m-%d")
+                date_source = "Fallback"
+            if not final_time:
+                final_time = now.strftime("%H:%M")
+                time_source = "Fallback"
+
+            source_notes = [f"Date: {date_source}", f"Time: {time_source}"]
 
             return OCRResult(
                 systolic=result_data.get("systolic"),

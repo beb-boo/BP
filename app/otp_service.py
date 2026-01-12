@@ -78,3 +78,6 @@ class OTPService:
                 if current_time - otp_data['created_at'] > otp_data['expiration']:
                     del self.otp_storage[target]
             time.sleep(120)
+
+# Global Instance
+otp_service = OTPService()

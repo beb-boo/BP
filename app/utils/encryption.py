@@ -2,6 +2,7 @@
 from cryptography.fernet import Fernet
 import os
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -38,5 +39,17 @@ def decrypt_value(value: str) -> str:
         decrypted_text = cipher_suite.decrypt(value.encode())
         return decrypted_text.decode()
     except Exception as e:
-        logger.error(f"Decryption failed: {e}")
+        logger.error(f"Decryption failed of value: {e}") # Don't log the val
+        return None
+
+def hash_value(value: str) -> str:
+    """Hash a value using SHA-256 for exact match search/indexing."""
+    if not value:
+        return None
+    try:
+        # Standardize input: lowercase and strip whitespace
+        normalized = value.strip().lower()
+        return hashlib.sha256(normalized.encode()).hexdigest()
+    except Exception as e:
+        logger.error(f"Hashing failed: {e}")
         return None

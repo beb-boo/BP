@@ -1,11 +1,13 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Request, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from ..database import get_db
 from ..models import User
 from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate
-from ..utils.security import verify_api_key, get_current_user, now_th
-from ..utils.encryption import decrypt_value, encrypt_value
+from ..utils.security import verify_api_key, get_current_user, now_th, verify_password
+from ..utils.encryption import decrypt_value, encrypt_value, hash_value
+from ..otp_service import otp_service
 import hashlib
 import logging
 import uuid
@@ -34,13 +36,14 @@ async def get_current_user_profile(
     """Get current user profile"""
     request_id = generate_request_id()
 
+    # Note: Pydantic model_validate will access properties (like .email, .full_name)
+    # which automatically triggers the @property getter that DECRYPTS the value.
     user_profile = UserProfileResponse.model_validate(current_user)
     
-    # Manually decrypt sensitive fields
     user_data = user_profile.dict()
-    user_data['citizen_id'] = decrypt_value(current_user.citizen_id_encrypted)
-    user_data['medical_license'] = decrypt_value(current_user.medical_license_encrypted)
-
+    # Explicitly handle decrypted fields if manual override needed, 
+    # but the Model properties should handle it.
+    
     return create_standard_response(
         status="success",
         message="Profile retrieved successfully",
@@ -57,42 +60,77 @@ async def update_user_profile(
 ):
     """Update user profile"""
     request_id = generate_request_id()
+    
+    # 1. Check for sensitive changes (Email/Phone) -> Require Password
+    sensitive_changed = False
+    if user_update.email is not None and user_update.email != current_user.email:
+        sensitive_changed = True
+    if user_update.phone_number is not None and user_update.phone_number != current_user.phone_number:
+        sensitive_changed = True
+        
+    if sensitive_changed:
+        if not user_update.current_password or not verify_password(user_update.current_password, current_user.password_hash):
+            raise HTTPException(
+                status_code=403, 
+                detail="Security Check Failed: Incorrect current password."
+            )
+
+    # 2. Strong Security: Check if Email-based 2FA is possible and required (Phone Change)
+    if user_update.phone_number and user_update.phone_number != current_user.phone_number:
+         # If user has an email, enforce OTP for phone change
+         if current_user.email:
+             if not user_update.otp_code:
+                 raise HTTPException(
+                     status_code=403,
+                     detail="2FA Required: Please enter the OTP sent to your email to change phone number."
+                 )
+             
+             # Verify OTP
+             is_valid_otp = otp_service.confirm_otp(
+                 contact_target=current_user.email,
+                 otp=user_update.otp_code
+             )
+             if not is_valid_otp:
+                 raise HTTPException(status_code=403, detail="Invalid or expired OTP.")
 
     # Check if phone number is already taken by another user
     if user_update.phone_number and user_update.phone_number != current_user.phone_number:
-        # Require contact verification
-        if not current_user.is_phone_verified:
-            raise HTTPException(
-                status_code=400, detail="Please verify your phone number before updating it")
-
+        # Check uniqueness via HASH
+        phone_h = hash_value(user_update.phone_number)
         existing_user = db.query(User).filter(
-            User.phone_number == user_update.phone_number,
+            User.phone_number_hash == phone_h,
             User.id != current_user.id
         ).first()
         if existing_user:
             raise HTTPException(
                 status_code=400, detail="Phone number already taken")
+        
+        # Phone changed: Reset verification and unlink Telegram
+        current_user.is_phone_verified = False
+        current_user.telegram_id = None
 
     # Check if email is already taken by another user
     if user_update.email and user_update.email != current_user.email:
-        if not current_user.is_email_verified:
-            raise HTTPException(
-                status_code=400, detail="Please verify your email before updating it")
-
+        email_h = hash_value(user_update.email)
         existing_user = db.query(User).filter(
-            User.email == user_update.email,
+            User.email_hash == email_h,
             User.id != current_user.id
         ).first()
         if existing_user:
             raise HTTPException(
                 status_code=400, detail="Email already taken")
+        
+        # Reset email verification status
+        current_user.is_email_verified = False
 
     # Check if medical license is already taken (for doctors)
     if (user_update.medical_license and
         current_user.role == "doctor" and
             user_update.medical_license != current_user.medical_license):
+        
+        med_h = hash_value(user_update.medical_license)
         existing_doctor = db.query(User).filter(
-            User.medical_license == user_update.medical_license,
+            User.medical_license_hash == med_h,
             User.id != current_user.id
         ).first()
         if existing_doctor:
@@ -101,41 +139,36 @@ async def update_user_profile(
 
     # Check for citizen_id via hash if updating
     if user_update.citizen_id:
-        c_hash = hashlib.sha256(user_update.citizen_id.encode()).hexdigest()
-        existing = db.query(User).filter(User.citizen_id_hash == c_hash, User.id != current_user.id).first()
-        if existing:
-             raise HTTPException(status_code=400, detail="Citizen ID already registered")
-
+        c_hash = hash_value(user_update.citizen_id)
+        if c_hash:
+            existing = db.query(User).filter(User.citizen_id_hash == c_hash, User.id != current_user.id).first()
+            if existing:
+                 raise HTTPException(status_code=400, detail="Citizen ID already registered")
 
     try:
         # Update fields
         update_data = user_update.dict(exclude_unset=True)
-        # Update fields
-        update_data = user_update.dict(exclude_unset=True)
+        # Remove partial fields
+        update_data.pop('current_password', None)
+        update_data.pop('otp_code', None)
+        
         for field, value in update_data.items():
-            if field == "citizen_id":
-                current_user.citizen_id_encrypted = encrypt_value(value)
-                current_user.citizen_id_hash = hashlib.sha256(value.encode()).hexdigest() if value else None
-            elif field == "medical_license":
-                current_user.medical_license_encrypted = encrypt_value(value)
-                current_user.medical_license_hash = hashlib.sha256(value.encode()).hexdigest() if value else None
-            else:
-                setattr(current_user, field, value)
+            # Use setattr on the Model property
+            # This triggers the @property setter which Encrypts and Hashes automatically
+            # Example: current_user.full_name = "..." -> encrypts full_name_encrypted, hashes full_name_hash
+            setattr(current_user, field, value)
 
         current_user.updated_at = now_th()
         db.commit()
         db.refresh(current_user)
 
         logger.info(
-            f"Profile updated for user: {current_user.email} - Request ID: {request_id}")
+            f"Profile updated for user: {current_user.id} - Request ID: {request_id}")
 
         user_profile = UserProfileResponse.model_validate(current_user)
-        
-        # Helper to attach decrypted
         user_data = user_profile.dict()
-        user_data['citizen_id'] = decrypt_value(current_user.citizen_id_encrypted)
-        user_data['medical_license'] = decrypt_value(current_user.medical_license_encrypted)
-
+        
+        # Ensure sensitive fields are returned decrypted (Properties handle this)
         return create_standard_response(
             status="success",
             message="Profile updated successfully",
@@ -146,7 +179,7 @@ async def update_user_profile(
     except Exception as e:
         db.rollback()
         logger.error(
-            f"Profile update failed for user {current_user.email}: {str(e)} - Request ID: {request_id}")
+            f"Profile update failed for user {current_user.id}: {str(e)} - Request ID: {request_id}")
         raise HTTPException(status_code=500, detail="Profile update failed")
 
 @router.get("/search", response_model=StandardResponse)
@@ -158,11 +191,23 @@ async def search_users(
     db: Session = Depends(get_db)
 ):
     # Search users mainly for doctor to find patient or vice versa
-    # This was at the end of main.py, let's include it here.
     request_id = generate_request_id()
     
-    # Simple search implementation based on name
-    users_query = db.query(User).filter(User.full_name.ilike(f"%{query}%"))
+    # Exact Match Search via Hash
+    # Supports: Full Name, Phone, Email
+    query_hash = hash_value(query)
+    
+    if not query_hash:
+        # Empty query
+        return create_standard_response(status="success", message="Empty query", data={"users": []})
+
+    users_query = db.query(User).filter(
+        or_(
+            User.full_name_hash == query_hash,
+            User.phone_number_hash == query_hash,
+            User.email_hash == query_hash
+        )
+    )
     
     if role:
         users_query = users_query.filter(User.role == role)
@@ -171,10 +216,12 @@ async def search_users(
     
     results = []
     for u in users:
+        # Access properties to decrypt
         results.append({
             "id": u.id,
             "full_name": u.full_name,
-            "role": u.role
+            "role": u.role,
+            "phone_number": u.phone_number
         })
         
     return create_standard_response(

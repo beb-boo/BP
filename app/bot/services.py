@@ -1,11 +1,12 @@
 
 from sqlalchemy.orm import Session
 from app.models import User
-from app.utils.security import verify_password, hash_password, now_th
-from app.utils.encryption import encrypt_value
+from app.utils.security import verify_password, hash_password, now_th, SECRET_KEY, ALGORITHM
+from app.utils.encryption import encrypt_value, hash_value
 from app.utils.tmc_checker import verify_doctor_with_tmc
 from app.database import SessionLocal
 import logging
+import jwt
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,9 @@ class BotService:
     @staticmethod
     def get_user_by_telegram_id(telegram_id: int):
         """Find a user by their linked Telegram ID."""
+        t_hash = hash_value(str(telegram_id))
         with SessionLocal() as db:
-            return db.query(User).filter(User.telegram_id == telegram_id).first()
+            return db.query(User).filter(User.telegram_id_hash == t_hash).first()
 
     @staticmethod
     def get_user_by_phone(phone_number: str):
@@ -49,7 +51,34 @@ class BotService:
                 user.telegram_id = telegram_id
                 db.commit()
                 return True
+            if user:
+                user.telegram_id = telegram_id
+                # Linking via valid token implies verification
+                user.is_phone_verified = True 
+                db.commit()
+                return True
             return False
+
+    @staticmethod
+    def process_connection_token(token: str, telegram_id: int):
+        """Process a JWT token from Deep Link to connect account."""
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            if payload.get("purpose") != "telegram_connect":
+                return None
+                
+            user_id = payload.get("user_id")
+            if not user_id:
+                return None
+                
+            BotService.link_telegram_account(user_id, telegram_id)
+            
+            with SessionLocal() as db:
+                return db.query(User).filter(User.id == user_id).first()
+                
+        except (jwt.ExpiredSignatureError, jwt.PyJWTError) as e:
+            logger.error(f"Token error: {e}")
+            return None
 
     @staticmethod
     async def register_new_user(user_data: dict, telegram_id: int):
@@ -129,6 +158,19 @@ class BotService:
             final_time = measurement_time
 
         with SessionLocal() as db:
+            # Check for duplicate
+            existing = db.query(BloodPressureRecord).filter(
+                BloodPressureRecord.user_id == user_id,
+                BloodPressureRecord.measurement_date == final_date,
+                BloodPressureRecord.measurement_time == final_time,
+                BloodPressureRecord.systolic == systolic,
+                BloodPressureRecord.diastolic == diastolic,
+                BloodPressureRecord.pulse == pulse
+            ).first()
+            
+            if existing:
+                return existing, False
+
             record = BloodPressureRecord(
                 user_id=user_id,
                 systolic=systolic,
@@ -141,7 +183,7 @@ class BotService:
             )
             db.add(record)
             db.commit()
-            return record
+            return record, True
 
     @staticmethod
     def get_user_stats(user_id: int, days: int = 30):
@@ -158,16 +200,25 @@ class BotService:
                 .limit(5)\
                 .all()
                 
-            # Get average of last N days
-            start_date = now_th() - timedelta(days=days)
+            # Get average of last N RECORDS (Count-based, aligning with Web Logic)
+            # Use 'days' param as 'limit_count'
+            limit_count = 30
             
+            # Complex query: We need to average the "Latest 30". 
+            # SQLite/SQLAlchemy: It's easier to fetch the Last 30 IDs then Average them.
+            
+            subquery = db.query(BloodPressureRecord.id)\
+                .filter(BloodPressureRecord.user_id == user_id)\
+                .order_by(BloodPressureRecord.measurement_date.desc())\
+                .limit(limit_count)\
+                .subquery()
+                
             avg = db.query(
                 func.avg(BloodPressureRecord.systolic).label('avg_sys'),
                 func.avg(BloodPressureRecord.diastolic).label('avg_dia'),
                 func.avg(BloodPressureRecord.pulse).label('avg_pulse')
             ).filter(
-                BloodPressureRecord.user_id == user_id,
-                BloodPressureRecord.measurement_date >= start_date
+                BloodPressureRecord.id.in_(subquery)
             ).first()
             
             return {
