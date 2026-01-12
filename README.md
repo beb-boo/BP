@@ -159,3 +159,51 @@ BP/
 │   └── lib/              # API Client
 └── tests/                # (Placeholder for tests)
 ```
+
+---
+
+## 📜 License
+
+This project is **dual-licensed**:
+
+### Open Source License (AGPL-3.0)
+For open source use, this software is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0).
+
+This means:
+- ✅ Free to use, modify, and distribute
+- ✅ Must keep source code open
+- ⚠️ **Network use is distribution** - If you run a modified version as a network service, you must make the source code available to users of that service
+
+See [LICENSE](LICENSE) for the full AGPL-3.0 text.
+
+### Commercial License
+For proprietary or commercial use where you **cannot or do not want to** comply with AGPL-3.0 terms, a Commercial License is available.
+
+**You need a Commercial License if you:**
+- Deploy for paying customers without releasing source code
+- Integrate into proprietary software
+- Offer as a SaaS/managed service without open-sourcing your modifications
+- Use within a for-profit healthcare organization
+
+**Commercial License includes:**
+- Use without AGPL-3.0 obligations
+- Optional support packages
+- SLA for response times
+
+📧 **Contact for licensing:** [GitHub Profile](https://github.com/kaebmoo)
+
+See [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) for terms.
+
+---
+
+## Quick Reference
+
+| Use Case | License Needed | Cost |
+|----------|---------------|------|
+| Personal/educational use | AGPL-3.0 | Free |
+| Open source project (AGPL-compatible) | AGPL-3.0 | Free |
+| Internal company use (source stays private) | Commercial | Contact |
+| SaaS offering | Commercial | Contact |
+| Hospital/clinic deployment | Commercial | Contact |
+
+---
