@@ -1,17 +1,14 @@
-
-from fastapi import APIRouter, HTTPException, Depends, Request, status, UploadFile, File
-from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models import User, BloodPressureRecord
-from ..schemas import StandardResponse, OCRResult, BloodPressureRecordResponse
-from ..utils.security import verify_api_key, get_current_user, now_th
-from ..utils.ocr_helper import read_blood_pressure_with_gemini
 import logging
 import uuid
 import tempfile
 import os
+
+from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from ..schemas import StandardResponse, OCRResult
+from ..utils.ocr_helper import read_blood_pressure_with_gemini
 
 router = APIRouter(prefix="/api/v1", tags=["blood pressure"])
 logger = logging.getLogger(__name__)
@@ -103,58 +100,3 @@ async def process_bp_image(
             status_code=500, detail="Internal server error processing image")
 
 
-@router.post("/bp-records/save-from-ocr", response_model=StandardResponse)
-async def save_bp_from_ocr(
-    ocr_data: OCRResult,
-    current_user: User = Depends(get_current_user),
-    api_key: str = Depends(verify_api_key),
-    db: Session = Depends(get_db)
-):
-    """Save record from confirmed OCR data"""
-    request_id = generate_request_id()
-
-    if not all([ocr_data.systolic, ocr_data.diastolic, ocr_data.pulse]):
-        raise HTTPException(
-            status_code=400, detail="Missing required blood pressure values")
-
-    try:
-        # Create record
-        # Note: In the new structure, we need to ensure models are imported correctly
-        # We handle measurement_time logic here or in frontend? 
-        # Original code likely had this logic. Let's assume passed in OCRResult
-        
-        # Prepare data
-        measurement_date = now_th()
-        # If OCR returned time, we might want to use it combined with date? 
-        # Simple approach: use current time if not provided or just store as string
-        
-        new_record = BloodPressureRecord(
-            user_id=current_user.id,
-            systolic=ocr_data.systolic,
-            diastolic=ocr_data.diastolic,
-            pulse=ocr_data.pulse,
-            measurement_date=measurement_date,
-            measurement_time=ocr_data.time or measurement_date.strftime("%H:%M"),
-            ocr_confidence=ocr_data.confidence,
-            created_at=now_th()
-        )
-
-        db.add(new_record)
-        db.commit()
-        db.refresh(new_record)
-
-        logger.info(
-            f"BP record saved from OCR: {new_record.id} - Request ID: {request_id}")
-
-        return create_standard_response(
-            status="success",
-            message="Record saved successfully",
-            data={"record": BloodPressureRecordResponse.model_validate(
-                new_record).dict()},
-            request_id=request_id
-        )
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error saving OCR record: {e} - Request ID: {request_id}")
-        raise HTTPException(status_code=500, detail="Failed to save record")

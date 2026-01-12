@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User, UserSession
@@ -12,6 +12,10 @@ from ..utils.security import (
     verify_api_key, get_current_user, lock_account, is_account_locked,
     now_th, ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from ..utils.encryption import encrypt_value
+from ..utils.tmc_checker import verify_doctor_with_tmc
+import hashlib
+
 from ..utils.notification import send_email_otp, send_sms_otp, OTP_EXPIRE_MINUTES
 import logging
 import uuid
@@ -121,6 +125,7 @@ async def verify_otp(
 async def register_user(
     request: Request,
     user_data: UserRegister,
+    background_tasks: BackgroundTasks, # Add this
     api_key: str = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
@@ -148,8 +153,19 @@ async def register_user(
             raise HTTPException(
                 status_code=400, detail="Phone number already registered")
 
+    # Hash helpers
+    def get_hash(val):
+        return hashlib.sha256(val.encode()).hexdigest() if val else None
+
+    # Check for existing citizen_id (via hash)
+    if user_data.citizen_id:
+        c_hash = get_hash(user_data.citizen_id)
+        if db.query(User).filter(User.citizen_id_hash == c_hash).first():
+            raise HTTPException(status_code=400, detail="Citizen ID already registered")
+
     if user_data.role == "doctor" and user_data.medical_license:
-        if db.query(User).filter(User.medical_license == user_data.medical_license).first():
+        m_hash = get_hash(user_data.medical_license)
+        if db.query(User).filter(User.medical_license_hash == m_hash).first():
             raise HTTPException(
                 status_code=400, detail="Medical license already registered")
 
@@ -160,8 +176,13 @@ async def register_user(
             password_hash=hash_password(user_data.password),
             full_name=user_data.full_name,
             role=user_data.role,
-            citizen_id=user_data.citizen_id,
-            medical_license=user_data.medical_license,
+            verification_status="pending" if user_data.role == "doctor" else "verified", # Auto-verify patients, pending for doctors
+            # Encrypt sensitive fields
+            citizen_id_encrypted=encrypt_value(user_data.citizen_id),
+            citizen_id_hash=get_hash(user_data.citizen_id),
+            medical_license_encrypted=encrypt_value(user_data.medical_license),
+            medical_license_hash=get_hash(user_data.medical_license),
+
             date_of_birth=user_data.date_of_birth,
             gender=user_data.gender,
             blood_type=user_data.blood_type,
@@ -176,6 +197,10 @@ async def register_user(
         db.add(new_user)
         db.commit()
         db.refresh(new_user)
+
+        if new_user.role == "doctor":
+             from ..utils.background_tasks import verify_doctor_background
+             background_tasks.add_task(verify_doctor_background, new_user.id, new_user.full_name.split()[0], new_user.full_name.split()[-1], db)
 
         logger.info(
             f"New user registered: {contact_target} - Role: {new_user.role} - Request ID: {request_id}"

@@ -5,7 +5,7 @@ from sqlalchemy import desc, func
 from ..database import get_db
 from ..models import User, BloodPressureRecord
 from ..schemas import (
-    StandardResponse, BloodPressureRecordCreate, 
+    StandardResponse, BloodPressureRecordCreate,
     BloodPressureRecordResponse, BloodPressureRecordUpdate, PaginationMeta
 )
 from ..utils.security import verify_api_key, get_current_user, now_th
@@ -15,6 +15,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/v1/bp-records", tags=["blood pressure"])
+stats_router = APIRouter(prefix="/api/v1/stats", tags=["blood pressure"])
 logger = logging.getLogger(__name__)
 
 def generate_request_id() -> str:
@@ -222,7 +223,7 @@ async def delete_bp_record(
         request_id=request_id
     )
 
-@router.get("/stats/summary", response_model=StandardResponse)  # Path updated from /api/v1/stats/summary
+@stats_router.get("/summary", response_model=StandardResponse)
 async def get_bp_stats(
     days: int = 30,
     current_user: User = Depends(get_current_user),
@@ -252,27 +253,34 @@ async def get_bp_stats(
         )
 
     # Calculate stats
+    # Calculate stats
     systolic_values = [r.systolic for r in records]
     diastolic_values = [r.diastolic for r in records]
     pulse_values = [r.pulse for r in records]
 
+    # Get total all time count
+    total_all_time = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id
+    ).count()
+
     stats = {
         "systolic": {
-            "avg": sum(systolic_values) / len(records),
-            "min": min(systolic_values),
-            "max": max(systolic_values)
+            "avg": sum(systolic_values) / len(records) if records else 0,
+            "min": min(systolic_values) if records else 0,
+            "max": max(systolic_values) if records else 0
         },
         "diastolic": {
-            "avg": sum(diastolic_values) / len(records),
-            "min": min(diastolic_values),
-            "max": max(diastolic_values)
+            "avg": sum(diastolic_values) / len(records) if records else 0,
+            "min": min(diastolic_values) if records else 0,
+            "max": max(diastolic_values) if records else 0
         },
         "pulse": {
-            "avg": sum(pulse_values) / len(records),
-            "min": min(pulse_values),
-            "max": max(pulse_values)
+            "avg": sum(pulse_values) / len(records) if records else 0,
+            "min": min(pulse_values) if records else 0,
+            "max": max(pulse_values) if records else 0
         },
-        "total_records": len(records)
+        "total_records_period": len(records),
+        "total_records_all_time": total_all_time
     }
 
     return create_standard_response(

@@ -1,0 +1,498 @@
+
+"use client";
+
+import { useEffect, useState, useRef } from "react";
+import Cookies from "js-cookie";
+import { useRouter } from "next/navigation";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X } from "lucide-react";
+import api from "@/lib/api";
+import { toast } from "sonner";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+
+export default function DashboardPage() {
+    const router = useRouter();
+    const [user, setUser] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const userCookie = Cookies.get("user");
+        if (!userCookie) {
+            router.push("/auth/login");
+            return;
+        }
+        try {
+            setUser(JSON.parse(userCookie));
+        } catch (e) {
+            router.push("/auth/login");
+        } finally {
+            setLoading(false);
+        }
+    }, [router]);
+
+    const handleLogout = async () => {
+        try {
+            await api.post("/auth/logout");
+        } catch (e) {
+            console.error("Logout failed", e);
+        }
+        Cookies.remove("token");
+        Cookies.remove("user");
+        router.push("/auth/login");
+        toast.success("Logged out successfully");
+    };
+
+    if (loading) return <div className="p-8">Loading...</div>;
+    if (!user) return null;
+
+    return (
+        <div className="p-6 md:p-8 space-y-8 min-h-screen bg-slate-50 dark:bg-slate-950">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <p className="text-slate-500">Welcome back, {user.full_name}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                                <Avatar className="h-10 w-10">
+                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${user.full_name}`} />
+                                    <AvatarFallback>{user.full_name[0]}</AvatarFallback>
+                                </Avatar>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-56" align="end" forceMount>
+                            <DropdownMenuLabel className="font-normal">
+                                <div className="flex flex-col space-y-1">
+                                    <p className="text-sm font-medium leading-none">{user.full_name}</p>
+                                    <p className="text-xs leading-none text-muted-foreground">{user.role}</p>
+                                </div>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => router.push('/settings')}>
+                                <Settings className="mr-2 h-4 w-4" />
+                                <span>Settings</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                                <LogOut className="mr-2 h-4 w-4" />
+                                <span>Log out</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+            </div>
+
+            {user.role === "patient" ? <PatientView user={user} /> : <DoctorView user={user} />}
+        </div>
+    );
+}
+
+function PatientView({ user }: { user: any }) {
+    const [stats, setStats] = useState<any>(null);
+    const [records, setRecords] = useState<any[]>([]);
+    const [loadingData, setLoadingData] = useState(true);
+    const [isAddOpen, setIsAddOpen] = useState(false);
+
+    // OCR & Form states
+    const [activeTab, setActiveTab] = useState("photo");
+    const [ocrLoading, setOcrLoading] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Form fields
+    const [sys, setSys] = useState("");
+    const [dia, setDia] = useState("");
+    const [pulse, setPulse] = useState("");
+    const [measureDate, setMeasureDate] = useState("");
+    const [measureTime, setMeasureTime] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+
+    const fetchData = async () => {
+        try {
+            const [statsRes, recordsRes] = await Promise.all([
+                api.get("/stats/summary?days=30"),
+                api.get("/bp-records?per_page=5")
+            ]);
+
+            if (statsRes.data.data.stats) {
+                setStats(statsRes.data.data.stats);
+            }
+
+            setRecords(recordsRes.data.data.records);
+        } catch (error) {
+            console.error("Failed to fetch data", error);
+        } finally {
+            setLoadingData(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+        // Set default date/time when dialog opens (only if empty)
+        if (isAddOpen && !measureDate) {
+            const now = new Date();
+            setMeasureDate(now.toISOString().split('T')[0]);
+            setMeasureTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+        }
+    }, [isAddOpen]); // Depend on isAddOpen to reset defaults
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.[0]) return;
+
+        const file = e.target.files[0];
+        // Create preview
+        const objectUrl = URL.createObjectURL(file);
+        setPreviewUrl(objectUrl);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        setOcrLoading(true);
+        try {
+            const res = await api.post("/ocr/process-image", formData, {
+                headers: { "Content-Type": "multipart/form-data" }
+            });
+
+            const { ocr_result } = res.data.data;
+
+            if (ocr_result.error) {
+                toast.error("OCR Error: " + ocr_result.error);
+                return;
+            }
+
+            // Pre-fill form
+            if (ocr_result.systolic) setSys(ocr_result.systolic.toString());
+            if (ocr_result.diastolic) setDia(ocr_result.diastolic.toString());
+            if (ocr_result.pulse) setPulse(ocr_result.pulse.toString());
+
+            // Use derived timestamp priority
+            if (ocr_result.measurement_date) setMeasureDate(ocr_result.measurement_date);
+            if (ocr_result.measurement_time) setMeasureTime(ocr_result.measurement_time);
+
+            toast.success("Read successful! Please verify numbers and time.");
+            setActiveTab("manual"); // Switch to manual tab for review
+
+        } catch (error: any) {
+            console.error("OCR Failed", error);
+            toast.error("Failed to process image. Please enter manually.");
+        } finally {
+            setOcrLoading(false);
+            if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input so same file can be selected again
+        }
+    };
+
+    const clearPreview = () => {
+        setPreviewUrl(null);
+        setSys(""); setDia(""); setPulse("");
+    };
+
+    const handleAddRecord = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            // Construct ISO string from date and time inputs
+            const specificDate = new Date(`${measureDate}T${measureTime}:00`);
+
+            await api.post("/bp-records", {
+                systolic: parseInt(sys),
+                diastolic: parseInt(dia),
+                pulse: parseInt(pulse),
+                measurement_date: specificDate.toISOString(),
+                measurement_time: measureTime,
+                notes: "Web Entry"
+            });
+            toast.success("Record added successfully");
+            setIsAddOpen(false);
+            // Reset form
+            setSys(""); setDia(""); setPulse("");
+            setPreviewUrl(null);
+            setActiveTab("photo");
+            fetchData();
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || "Failed to add record");
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    // Derived values
+    const lastReading = records.length > 0 ? records[0] : null;
+    const avgPulse = stats ? Math.round(stats.pulse.avg) : "-";
+
+    return (
+        <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Last Reading</CardTitle>
+                        <Activity className="h-4 w-4 text-slate-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">
+                            {lastReading ? `${lastReading.systolic}/${lastReading.diastolic}` : "--/--"}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                            {lastReading ? new Date(lastReading.measurement_date).toLocaleDateString() : "No data"}
+                        </p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Average Pulse</CardTitle>
+                        <Activity className="h-4 w-4 text-red-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{avgPulse} bpm</div>
+                        <p className="text-xs text-slate-500">Last 30 days</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Records</CardTitle>
+                        <FilePlus className="h-4 w-4 text-blue-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{stats ? stats.total_records_all_time : 0}</div>
+                        <p className="text-xs text-slate-500">All time records</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div className="flex gap-4">
+                <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+                    <DialogTrigger asChild>
+                        <Button className="gap-2">
+                            <FilePlus className="w-4 h-4" /> Add Record
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                            <DialogTitle>Add Blood Pressure Record</DialogTitle>
+                            <DialogDescription>
+                                Monitor your health by adding a new reading.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                            <TabsList className="grid w-full grid-cols-2">
+                                <TabsTrigger value="photo">Scan Photo</TabsTrigger>
+                                <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+                            </TabsList>
+
+                            <TabsContent value="photo" className="space-y-4 py-4">
+                                <div className="grid w-full items-center gap-4">
+                                    {previewUrl ? (
+                                        <div className="relative w-full h-48 bg-black/5 rounded-lg overflow-hidden flex items-center justify-center">
+                                            <img src={previewUrl} alt="Preview" className="h-full object-contain" />
+                                            <Button
+                                                variant="secondary"
+                                                size="icon"
+                                                className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/80 hover:bg-white"
+                                                onClick={clearPreview}
+                                            >
+                                                <X className="h-4 w-4 text-slate-700" />
+                                            </Button>
+                                            {ocrLoading && (
+                                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-10">
+                                                    <Loader2 className="h-10 w-10 animate-spin text-white" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg border-slate-300 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors cursor-pointer"
+                                            onClick={() => !ocrLoading && fileInputRef.current?.click()}
+                                        >
+                                            <Camera className="h-10 w-10 text-slate-400 mb-2" />
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Tap to Scan / Upload</span>
+                                            <span className="text-xs text-slate-500 mt-1">Supports JPG, PNG</span>
+                                        </div>
+                                    )}
+
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        className="hidden"
+                                        ref={fileInputRef}
+                                        onChange={handleFileChange}
+                                        disabled={ocrLoading}
+                                    />
+
+                                    <div className="text-center">
+                                        <p className="text-xs text-muted-foreground">
+                                            AI reads Date/Time from screen, EXIF, or fallback.
+                                        </p>
+                                    </div>
+                                </div>
+                            </TabsContent>
+
+                            <TabsContent value="manual">
+                                <form onSubmit={handleAddRecord}>
+                                    <div className="grid gap-4 py-4">
+                                        {previewUrl && (
+                                            <div className="flex justify-center mb-4">
+                                                <img src={previewUrl} alt="Reference" className="h-20 w-auto rounded border" />
+                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="date" className="text-right">Date</Label>
+                                            <Input id="date" value={measureDate} onChange={e => setMeasureDate(e.target.value)} type="date" className="col-span-3" required />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="time" className="text-right">Time</Label>
+                                            <Input id="time" value={measureTime} onChange={e => setMeasureTime(e.target.value)} type="time" className="col-span-3" required />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="sys" className="text-right">Systolic</Label>
+                                            <Input id="sys" value={sys} onChange={e => setSys(e.target.value)} type="number" placeholder="120" className="col-span-3" required />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="dia" className="text-right">Diastolic</Label>
+                                            <Input id="dia" value={dia} onChange={e => setDia(e.target.value)} type="number" placeholder="80" className="col-span-3" required />
+                                        </div>
+                                        <div className="grid grid-cols-4 items-center gap-4">
+                                            <Label htmlFor="pulse" className="text-right">Pulse</Label>
+                                            <Input id="pulse" value={pulse} onChange={e => setPulse(e.target.value)} type="number" placeholder="72" className="col-span-3" required />
+                                        </div>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button type="submit" disabled={submitting}>Save Record</Button>
+                                    </DialogFooter>
+                                </form>
+                            </TabsContent>
+                        </Tabs>
+                    </DialogContent>
+                </Dialog>
+
+                <Button variant="outline" className="gap-2" onClick={() => toast.info("Manage Doctors feature coming soon!")}>
+                    <Users className="w-4 h-4" /> Manage Doctors
+                </Button>
+            </div>
+
+            <Card className="col-span-4">
+                <CardHeader>
+                    <CardTitle>Recent History</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {loadingData ? (
+                        <div className="text-slate-500 text-sm">Loading records...</div>
+                    ) : records.length === 0 ? (
+                        <div className="text-slate-500 text-sm">No records found.</div>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Systolic</TableHead>
+                                    <TableHead>Diastolic</TableHead>
+                                    <TableHead>Pulse</TableHead>
+                                    <TableHead>
+                                        <span className="hidden md:inline">Source</span>
+                                        <span className="md:hidden">Src</span>
+                                    </TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {records.map((r, i) => (
+                                    <TableRow key={r.id || i}>
+                                        <TableCell>
+                                            <div className="flex flex-col">
+                                                <span>{new Date(r.measurement_date).toLocaleDateString()}</span>
+                                                <span className="text-xs text-slate-500 md:hidden">{r.measurement_time}</span>
+                                            </div>
+                                            <span className="hidden md:inline pl-1">{r.measurement_time}</span>
+                                        </TableCell>
+                                        <TableCell className="font-medium">{r.systolic}</TableCell>
+                                        <TableCell>{r.diastolic}</TableCell>
+                                        <TableCell>{r.pulse}</TableCell>
+                                        <TableCell className="text-slate-500 text-xs md:text-sm">
+                                            {r.notes || "Manual"}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+function DoctorView({ user }: { user: any }) {
+    return (
+        <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
+                        <Users className="h-4 w-4 text-slate-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">12</div>
+                        <p className="text-xs text-slate-500">Active monitoring</p>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Pending Requests</CardTitle>
+                        <Calendar className="h-4 w-4 text-orange-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">3</div>
+                        <p className="text-xs text-slate-500">Requires approval</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Tabs defaultValue="patients" className="space-y-4">
+                <TabsList>
+                    <TabsTrigger value="patients">My Patients</TabsTrigger>
+                    <TabsTrigger value="requests">Access Requests</TabsTrigger>
+                </TabsList>
+                <TabsContent value="patients" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Patient List</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-slate-500 text-sm">Loading patients... (Demo)</div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+        </div>
+    );
+}

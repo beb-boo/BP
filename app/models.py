@@ -19,18 +19,30 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, default="patient")  # patient, doctor, staff
     full_name = Column(String, nullable=False)
+    telegram_id = Column(Integer, unique=True, index=True, nullable=True) # New telegram_id
+    
     
     # Personal Info
-    citizen_id = Column(String, unique=True, nullable=True)
+    citizen_id_encrypted = Column(String, nullable=True) # Encrypted
+    citizen_id_hash = Column(String, unique=True, index=True, nullable=True) # Hashed for search/unique check
+    
+    # citizen_id = Column(String, unique=True, nullable=True) # Deprecated
+    
     date_of_birth = Column(DateTime, nullable=True)
     gender = Column(String, nullable=True)  # male, female, other
     blood_type = Column(String, nullable=True)
     height = Column(Float, nullable=True)
     weight = Column(Float, nullable=True)
-    medical_license = Column(String, unique=True, nullable=True)  # For doctors
+    medical_license_encrypted = Column(String, nullable=True) # Encrypted
+    medical_license_hash = Column(String, unique=True, index=True, nullable=True) # Hashed
+    
+    # medical_license = Column(String, unique=True, nullable=True) # Deprecated
+      # For doctors
 
     # Status
     is_active = Column(Boolean, default=True)
+    verification_status = Column(String, default="pending") # pending, verified, rejected
+    verification_logs = Column(Text, nullable=True) # Logs from TMC check
     is_email_verified = Column(Boolean, default=False)
     is_phone_verified = Column(Boolean, default=False)
     failed_login_attempts = Column(Integer, default=0)

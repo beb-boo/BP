@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from .database import engine, Base
 
 # Import routers
-from .routers import auth, users, bp_records, ocr, doctor
+from .routers import auth, users, bp_records, ocr, doctor, export
 
 # Load environment variables
 load_dotenv()
@@ -59,8 +59,10 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(bp_records.router)
+app.include_router(bp_records.stats_router)
 app.include_router(ocr.router)
 app.include_router(doctor.router)
+app.include_router(export.router)
 
 
 @app.get("/")

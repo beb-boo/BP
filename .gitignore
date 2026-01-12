@@ -41,3 +41,5 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
  637af66b47d3af5888a77272bf16f74c71966723
+*.bak
+*.bak2

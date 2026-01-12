@@ -5,6 +5,8 @@ from ..database import get_db
 from ..models import User
 from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate
 from ..utils.security import verify_api_key, get_current_user, now_th
+from ..utils.encryption import decrypt_value, encrypt_value
+import hashlib
 import logging
 import uuid
 from typing import Optional
@@ -33,11 +35,16 @@ async def get_current_user_profile(
     request_id = generate_request_id()
 
     user_profile = UserProfileResponse.model_validate(current_user)
+    
+    # Manually decrypt sensitive fields
+    user_data = user_profile.dict()
+    user_data['citizen_id'] = decrypt_value(current_user.citizen_id_encrypted)
+    user_data['medical_license'] = decrypt_value(current_user.medical_license_encrypted)
 
     return create_standard_response(
         status="success",
         message="Profile retrieved successfully",
-        data={"profile": user_profile.dict()},
+        data={"profile": user_data},
         request_id=request_id
     )
 
@@ -92,11 +99,28 @@ async def update_user_profile(
             raise HTTPException(
                 status_code=400, detail="Medical license already taken")
 
+    # Check for citizen_id via hash if updating
+    if user_update.citizen_id:
+        c_hash = hashlib.sha256(user_update.citizen_id.encode()).hexdigest()
+        existing = db.query(User).filter(User.citizen_id_hash == c_hash, User.id != current_user.id).first()
+        if existing:
+             raise HTTPException(status_code=400, detail="Citizen ID already registered")
+
+
     try:
         # Update fields
         update_data = user_update.dict(exclude_unset=True)
+        # Update fields
+        update_data = user_update.dict(exclude_unset=True)
         for field, value in update_data.items():
-            setattr(current_user, field, value)
+            if field == "citizen_id":
+                current_user.citizen_id_encrypted = encrypt_value(value)
+                current_user.citizen_id_hash = hashlib.sha256(value.encode()).hexdigest() if value else None
+            elif field == "medical_license":
+                current_user.medical_license_encrypted = encrypt_value(value)
+                current_user.medical_license_hash = hashlib.sha256(value.encode()).hexdigest() if value else None
+            else:
+                setattr(current_user, field, value)
 
         current_user.updated_at = now_th()
         db.commit()
@@ -106,11 +130,16 @@ async def update_user_profile(
             f"Profile updated for user: {current_user.email} - Request ID: {request_id}")
 
         user_profile = UserProfileResponse.model_validate(current_user)
+        
+        # Helper to attach decrypted
+        user_data = user_profile.dict()
+        user_data['citizen_id'] = decrypt_value(current_user.citizen_id_encrypted)
+        user_data['medical_license'] = decrypt_value(current_user.medical_license_encrypted)
 
         return create_standard_response(
             status="success",
             message="Profile updated successfully",
-            data={"profile": user_profile.dict()},
+            data={"profile": user_data},
             request_id=request_id
         )
 

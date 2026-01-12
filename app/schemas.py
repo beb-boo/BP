@@ -13,8 +13,11 @@ def validate_phone_number(phone: str) -> str:
         parsed = phonenumbers.parse(phone, "TH")  # Default to Thailand
         if not phonenumbers.is_valid_number(parsed):
             raise ValueError("Invalid phone number")
-        # Return in international format
-        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        # Return in international format (without + to match DB)
+        formatted = phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        if formatted.startswith("+"):
+            return formatted[1:]
+        return formatted
     except NumberParseException:
         raise ValueError("Invalid phone number format")
 
@@ -253,7 +256,8 @@ class OCRResult(BaseModel):
     systolic: Optional[int] = None
     diastolic: Optional[int] = None
     pulse: Optional[int] = None
-    time: Optional[str] = None
+    measurement_date: Optional[str] = None # ISO Format YYYY-MM-DD
+    measurement_time: Optional[str] = None # HH:MM
     confidence: Optional[float] = None
     image_metadata: Optional[dict] = None
     error: Optional[str] = None
