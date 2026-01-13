@@ -2,7 +2,8 @@
 import logging
 import os
 from dotenv import load_dotenv
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes, TypeHandler
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
 from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown
@@ -20,16 +21,31 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+# Track connection state
+IS_CONNECTION_LOST = False
+
+async def connection_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Monitor successfully received updates to log reconnection."""
+    global IS_CONNECTION_LOST
+    if IS_CONNECTION_LOST:
+        logger.info("✅ Connection restored! Resuming update processing...")
+        IS_CONNECTION_LOST = False
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and handle connection issues gracefully."""
+    global IS_CONNECTION_LOST
+    
     # If it's a network error, we can just log a simple message
     if isinstance(context.error, NetworkError):
-        logger.warning(f"⚠️ Network Error detected: {context.error}. Retrying...")
-        # run_polling handles retries automatically, no need to restart manually.
+        if not IS_CONNECTION_LOST:
+            logger.warning(f"⚠️ Network Error detected: {context.error}. Retrying...")
+            IS_CONNECTION_LOST = True
         return
 
     if isinstance(context.error, TimedOut):
-        logger.warning("⚠️ Request Timed Out. Retrying...")
+        if not IS_CONNECTION_LOST:
+            logger.warning("⚠️ Request Timed Out. Retrying...")
+            IS_CONNECTION_LOST = True
         return
     
     # For other errors, you might want to notify yourself or log more details
@@ -50,6 +66,9 @@ def main():
     )
 
     application = ApplicationBuilder().token(token).request(request).build()
+    
+    # Monitor connection state (Runs first)
+    application.add_handler(TypeHandler(Update, connection_monitor), group=-1)
 
     # Add Error Handler
     application.add_error_handler(error_handler)

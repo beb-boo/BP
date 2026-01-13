@@ -205,20 +205,28 @@ class BotService:
             limit_count = 30
             
             # Complex query: We need to average the "Latest 30". 
-            # SQLite/SQLAlchemy: It's easier to fetch the Last 30 IDs then Average them.
+            # Fix SAWarning: Fetch IDs first (List) then filter. Safer and cleaner for small limits.
             
-            subquery = db.query(BloodPressureRecord.id)\
+            recent_ids_result = db.query(BloodPressureRecord.id)\
                 .filter(BloodPressureRecord.user_id == user_id)\
                 .order_by(BloodPressureRecord.measurement_date.desc())\
                 .limit(limit_count)\
-                .subquery()
+                .all()
+            
+            recent_ids = [r[0] for r in recent_ids_result]
+            
+            if not recent_ids:
+                 return {
+                    "recent": recent, # from earlier query
+                    "average": None
+                 }
                 
             avg = db.query(
                 func.avg(BloodPressureRecord.systolic).label('avg_sys'),
                 func.avg(BloodPressureRecord.diastolic).label('avg_dia'),
                 func.avg(BloodPressureRecord.pulse).label('avg_pulse')
             ).filter(
-                BloodPressureRecord.id.in_(subquery)
+                BloodPressureRecord.id.in_(recent_ids)
             ).first()
             
             return {
