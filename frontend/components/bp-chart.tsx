@@ -1,4 +1,3 @@
-
 "use client"
 
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
@@ -16,6 +15,29 @@ interface BPChartProps {
     data: BPRecord[];
 }
 
+// Moved outside component to prevent re-creation on render
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-lg text-xs">
+                <p className="font-semibold mb-2">
+                    {new Date(label).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                {payload.map((entry: any, index: number) => (
+                    <div key={index} className="flex items-center gap-2 mb-1" style={{ color: entry.color }}>
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="capitalize">{entry.name}:</span>
+                        <span className="font-bold">{entry.value}</span>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    return null;
+};
+
 export function BPChart({ data }: BPChartProps) {
     const { theme } = useTheme();
 
@@ -28,26 +50,6 @@ export function BPChart({ data }: BPChartProps) {
         ...d,
         fullDate: `${d.measurement_date}`
     }));
-
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-lg text-xs">
-                    <p className="font-semibold mb-2">
-                        {new Date(label).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </p>
-                    {payload.map((entry: any, index: number) => (
-                        <div key={index} className="flex items-center gap-2 mb-1" style={{ color: entry.color }}>
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-                            <span className="capitalize">{entry.name}:</span>
-                            <span className="font-bold">{entry.value}</span>
-                        </div>
-                    ))}
-                </div>
-            );
-        }
-        return null;
-    };
 
     return (
         <ResponsiveContainer width="100%" height={350}>

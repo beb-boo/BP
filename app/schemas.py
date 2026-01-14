@@ -60,6 +60,7 @@ class UserRegister(BaseModel):
                           description="Password must be at least 8 characters")
     full_name: str = Field(..., min_length=2, max_length=100)
     role: Literal["patient", "doctor"]
+    language: Optional[Literal["th", "en"]] = "th"
 
     # Patient specific fields
     citizen_id: Optional[str] = None
@@ -139,6 +140,7 @@ class UserProfileResponse(BaseModel):
     phone_number: Optional[str] = None
     full_name: str
     role: str
+    language: str = "th"
     telegram_id: Optional[int] = None
     citizen_id: Optional[str] = None
     medical_license: Optional[str] = None
@@ -161,6 +163,7 @@ class UserProfileResponse(BaseModel):
 class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
+    language: Optional[Literal["th", "en"]] = None
     phone_number: Optional[str] = None
     citizen_id: Optional[str] = None
     date_of_birth: Optional[Union[datetime, str]] = None

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
-import { User, Lock, Save, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
+import { Lock, Loader2, AlertCircle, ArrowLeft } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -13,8 +13,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function SettingsPage() {
+    const { t } = useLanguage();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
@@ -47,7 +49,6 @@ export default function SettingsPage() {
     // Security Confirmation
     const [confirmCurrentPassword, setConfirmCurrentPassword] = useState("");
     const [otpCode, setOtpCode] = useState("");
-    const [isOtpSent, setIsOtpSent] = useState(false);
     const [otpTimer, setOtpTimer] = useState(0);
 
     // Email Verification State
@@ -118,7 +119,7 @@ export default function SettingsPage() {
             }
 
             await api.put("/users/me", payload);
-            toast.success("Profile updated successfully");
+            toast.success(t('common.success', "Profile updated successfully"));
 
             // Refresh cookie if needed (optional, but good for consistency)
             const cookieUser = JSON.parse(Cookies.get("user") || "{}");
@@ -126,7 +127,7 @@ export default function SettingsPage() {
             router.refresh();
 
         } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to update profile");
+            toast.error(error.response?.data?.detail || t('common.error'));
             console.error(error);
         } finally {
             setIsSaving(false);
@@ -141,7 +142,6 @@ export default function SettingsPage() {
                 purpose: "update_profile"
             });
             toast.success("OTP sent to your email!");
-            setIsOtpSent(true);
             setOtpTimer(300); // 5 minutes
         } catch (error: any) {
             toast.error(error.response?.data?.detail || "Failed to send OTP");
@@ -199,7 +199,7 @@ export default function SettingsPage() {
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
         if (newPassword !== confirmPassword) {
-            toast.error("New passwords do not match");
+            toast.error(t('settings.passwords_mismatch'));
             return;
         }
 
@@ -209,14 +209,14 @@ export default function SettingsPage() {
                 current_password: currentPassword,
                 new_password: newPassword
             });
-            toast.success("Password changed successfully");
+            toast.success(t('settings.password_changed'));
 
             // Clear fields
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
         } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to change password");
+            toast.error(error.response?.data?.detail || t('common.error'));
         } finally {
             setIsChangingPwd(false);
         }
@@ -237,7 +237,7 @@ export default function SettingsPage() {
     };
 
     if (loading) {
-        return <div className="p-8 flex items-center justify-center">Loading settings...</div>;
+        return <div className="p-8 flex items-center justify-center">{t('common.loading')}</div>;
     }
 
     return (
@@ -247,30 +247,30 @@ export default function SettingsPage() {
                     <ArrowLeft className="h-4 w-4" />
                 </Button>
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-                    <p className="text-slate-500">Manage your account settings and preferences.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">{t('settings.title')}</h1>
+                    <p className="text-slate-500">{t('settings.desc')}</p>
                 </div>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList>
-                    <TabsTrigger value="profile">Profile</TabsTrigger>
-                    <TabsTrigger value="security">Security</TabsTrigger>
+                    <TabsTrigger value="profile">{t('settings.profile')}</TabsTrigger>
+                    <TabsTrigger value="security">{t('settings.security')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="profile">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Profile Information</CardTitle>
+                            <CardTitle>{t('settings.profile_info')}</CardTitle>
                             <CardDescription>
-                                Update your personal details. Sensitive ID fields are encrypted securely.
+                                {t('settings.profile_desc')}
                             </CardDescription>
                         </CardHeader>
                         <form onSubmit={handleUpdateProfile}>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="fullName">Full Name</Label>
+                                        <Label htmlFor="fullName">{t('settings.full_name')}</Label>
                                         <Input
                                             id="fullName"
                                             value={fullName}
@@ -279,11 +279,11 @@ export default function SettingsPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="role">Role</Label>
+                                        <Label htmlFor="role">{t('settings.role')}</Label>
                                         <Input id="role" value={user?.role} disabled className="bg-slate-100" />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="email">Email</Label>
+                                        <Label htmlFor="email">{t('settings.email')}</Label>
                                         <Input
                                             id="email"
                                             type="email"
@@ -296,7 +296,7 @@ export default function SettingsPage() {
                                             <div className="mt-2 text-sm text-amber-600 bg-amber-50 p-2 rounded-md border border-amber-200">
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <AlertCircle className="w-4 h-4" />
-                                                    <span>Email not verified</span>
+                                                    <span>{t('settings.email_not_verified')}</span>
                                                     {!isVerifyingEmail && (
                                                         <Button
                                                             variant="link"
@@ -304,7 +304,7 @@ export default function SettingsPage() {
                                                             type="button"
                                                             onClick={handleStartEmailVerification}
                                                         >
-                                                            Verify Now
+                                                            {t('settings.verify_now')}
                                                         </Button>
                                                     )}
                                                 </div>
@@ -319,7 +319,7 @@ export default function SettingsPage() {
                                                             maxLength={4}
                                                         />
                                                         <Button type="button" size="sm" onClick={handleConfirmEmailVerification}>
-                                                            Confirm
+                                                            {t('common.confirm')}
                                                         </Button>
                                                         <Button
                                                             type="button"
@@ -328,7 +328,7 @@ export default function SettingsPage() {
                                                             disabled={emailOtpTimer > 0}
                                                             onClick={handleStartEmailVerification}
                                                         >
-                                                            {emailOtpTimer > 0 ? `${emailOtpTimer}s` : "Resend"}
+                                                            {emailOtpTimer > 0 ? `${emailOtpTimer}s` : t('common.resend', 'Resend')}
                                                         </Button>
                                                     </div>
                                                 )}
@@ -336,12 +336,12 @@ export default function SettingsPage() {
                                         )}
                                         {user?.is_email_verified && (
                                             <div className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                                                ✓ Verified
+                                                ✓ {t('settings.verified')}
                                             </div>
                                         )}
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="phone">Phone Number</Label>
+                                        <Label htmlFor="phone">{t('settings.phone')}</Label>
                                         <Input
                                             id="phone"
                                             value={phone}
@@ -350,28 +350,28 @@ export default function SettingsPage() {
                                         />
                                         {phone !== user?.phone_number && (
                                             <div className="text-xs text-amber-600 mt-1">
-                                                ⚠️ Changing phone number will unlink Telegram
+                                                {t('settings.changing_phone_warning')}
                                             </div>
                                         )}
                                     </div>
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2">
-                                            <Label htmlFor="citizenId">Citizen ID</Label>
+                                            <Label htmlFor="citizenId">{t('settings.citizen_id')}</Label>
                                             <Lock className="w-3 h-3 text-slate-400" />
                                         </div>
                                         <Input
                                             id="citizenId"
                                             value={citizenId}
                                             onChange={e => setCitizenId(e.target.value)}
-                                            placeholder="Encrypted storage"
+                                            placeholder={t('settings.encrypted_storage')}
                                         />
-                                        <p className="text-xs text-slate-500">Only visible to authorized personnel.</p>
+                                        <p className="text-xs text-slate-500">{t('settings.visible_to_auth')}</p>
                                     </div>
 
                                     {user?.role === 'doctor' && (
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2">
-                                                <Label htmlFor="license">Medical License</Label>
+                                                <Label htmlFor="license">{t('settings.medical_license')}</Label>
                                                 <Lock className="w-3 h-3 text-slate-400" />
                                             </div>
                                             <Input
@@ -383,7 +383,7 @@ export default function SettingsPage() {
                                     )}
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="dob">Date of Birth</Label>
+                                        <Label htmlFor="dob">{t('settings.dob')}</Label>
                                         <Input
                                             id="dob"
                                             type="date"
@@ -392,28 +392,28 @@ export default function SettingsPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="gender">Gender</Label>
+                                        <Label htmlFor="gender">{t('settings.gender')}</Label>
                                         <select
                                             id="gender"
                                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                             value={gender}
                                             onChange={e => setGender(e.target.value)}
                                         >
-                                            <option value="">Select Gender</option>
-                                            <option value="male">Male</option>
-                                            <option value="female">Female</option>
-                                            <option value="other">Other</option>
+                                            <option value="">{t('settings.select_gender')}</option>
+                                            <option value="male">{t('settings.male')}</option>
+                                            <option value="female">{t('settings.female')}</option>
+                                            <option value="other">{t('settings.other')}</option>
                                         </select>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label htmlFor="blood">Blood Type</Label>
+                                        <Label htmlFor="blood">{t('settings.blood_type')}</Label>
                                         <select
                                             id="blood"
                                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                             value={bloodType}
                                             onChange={e => setBloodType(e.target.value)}
                                         >
-                                            <option value="">Select Blood Type</option>
+                                            <option value="">{t('settings.select_blood')}</option>
                                             <option value="A">A</option>
                                             <option value="B">B</option>
                                             <option value="AB">AB</option>
@@ -422,7 +422,7 @@ export default function SettingsPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label htmlFor="height">Height (cm)</Label>
+                                            <Label htmlFor="height">{t('settings.height')}</Label>
                                             <Input
                                                 id="height"
                                                 type="number"
@@ -431,7 +431,7 @@ export default function SettingsPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor="weight">Weight (kg)</Label>
+                                            <Label htmlFor="weight">{t('settings.weight')}</Label>
                                             <Input
                                                 id="weight"
                                                 type="number"
@@ -447,12 +447,12 @@ export default function SettingsPage() {
                                     <div className="space-y-4 mt-4">
                                         <Alert className="bg-amber-50 border-amber-200">
                                             <Lock className="h-4 w-4" />
-                                            <AlertTitle>Security Verification Required</AlertTitle>
+                                            <AlertTitle>{t('settings.security_verification')}</AlertTitle>
                                             <AlertDescription className="space-y-3">
-                                                <p>You are changing sensitive contact information. Please confirm your current password.</p>
+                                                <p>{t('settings.sensitive_change_msg')}</p>
                                                 <Input
                                                     type="password"
-                                                    placeholder="Enter Request Password"
+                                                    placeholder={t('settings.enter_req_pwd')}
                                                     value={confirmCurrentPassword}
                                                     onChange={(e) => setConfirmCurrentPassword(e.target.value)}
                                                     className="bg-white"
@@ -464,9 +464,9 @@ export default function SettingsPage() {
                                         {phone !== user?.phone_number && user?.email && (
                                             <Alert className="bg-blue-50 border-blue-200">
                                                 <AlertCircle className="h-4 w-4" />
-                                                <AlertTitle>Two-Factor Authentication (OTP)</AlertTitle>
+                                                <AlertTitle>{t('settings.two_factor_auth')}</AlertTitle>
                                                 <AlertDescription className="space-y-3">
-                                                    <p>To change your phone number, please enter the OTP sent to your registered email: <strong>{user.email}</strong></p>
+                                                    <p>{t('settings.otp_change_phone')}: <strong>{user.email}</strong></p>
                                                     <div className="flex gap-2">
                                                         <Input
                                                             placeholder="Enter 4-digit OTP"
@@ -481,7 +481,7 @@ export default function SettingsPage() {
                                                             onClick={handleRequestOtp}
                                                             disabled={otpTimer > 0}
                                                         >
-                                                            {otpTimer > 0 ? `Resend in ${otpTimer}s` : "Request OTP"}
+                                                            {otpTimer > 0 ? `${t('settings.resend_in')} ${otpTimer}s` : t('settings.request_otp')}
                                                         </Button>
                                                     </div>
                                                 </AlertDescription>
@@ -495,7 +495,7 @@ export default function SettingsPage() {
                             <CardFooter>
                                 <Button type="submit" disabled={isSaving}>
                                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Save Changes
+                                    {t('settings.save_changes')}
                                 </Button>
                             </CardFooter>
                         </form>
@@ -513,7 +513,7 @@ export default function SettingsPage() {
                         <form onSubmit={handleChangePassword}>
                             <CardContent className="space-y-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="current">Current Password</Label>
+                                    <Label htmlFor="current">{t('settings.current_password')}</Label>
                                     <Input
                                         id="current"
                                         type="password"
@@ -523,7 +523,7 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="new">New Password</Label>
+                                    <Label htmlFor="new">{t('settings.new_password')}</Label>
                                     <Input
                                         id="new"
                                         type="password"
@@ -533,7 +533,7 @@ export default function SettingsPage() {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="confirm">Confirm New Password</Label>
+                                    <Label htmlFor="confirm">{t('settings.confirm_new_password')}</Label>
                                     <Input
                                         id="confirm"
                                         type="password"
@@ -546,7 +546,7 @@ export default function SettingsPage() {
                             <CardFooter>
                                 <Button type="submit" disabled={isChangingPwd}>
                                     {isChangingPwd && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                    Change Password
+                                    {t('settings.change_password')}
                                 </Button>
                             </CardFooter>
                         </form>
@@ -556,12 +556,12 @@ export default function SettingsPage() {
                         <Alert variant="default" className={user?.is_email_verified ? "bg-green-50 border-green-200" : "bg-blue-50 border-blue-200"}>
                             <AlertCircle className={user?.is_email_verified ? "h-4 w-4 text-green-600" : "h-4 w-4 text-blue-600"} />
                             <AlertTitle className={user?.is_email_verified ? "text-green-800" : "text-blue-800"}>
-                                {user?.is_email_verified ? "Two-Factor Authentication is Active (Email)" : "Enable Two-Factor Authentication"}
+                                {user?.is_email_verified ? t('settings.otp_active') : t('settings.enable_otp')}
                             </AlertTitle>
                             <AlertDescription className={user?.is_email_verified ? "text-green-700" : "text-blue-700"}>
                                 {user?.is_email_verified
-                                    ? "Your account is protected. We will require an OTP from your verified email for sensitive profile changes (e.g. changing phone number)."
-                                    : "To enable OTP protection for sensitive actions, please verify your email address."}
+                                    ? t('settings.otp_active_desc')
+                                    : t('settings.otp_inactive_desc')}
                                 <br />
                                 {!user?.is_email_verified && (
                                     <Button
@@ -569,7 +569,7 @@ export default function SettingsPage() {
                                         className="p-0 h-auto font-semibold text-blue-800 underline mt-1"
                                         onClick={() => setActiveTab("profile")}
                                     >
-                                        Go to Profile Verification
+                                        {t('settings.go_to_verify')}
                                     </Button>
                                 )}
                             </AlertDescription>
@@ -579,22 +579,22 @@ export default function SettingsPage() {
                     <div className="mt-4">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Telegram Integration</CardTitle>
+                                <CardTitle>{t('settings.telegram_integration')}</CardTitle>
                                 <CardDescription>
-                                    Connect your Telegram account to receive notifications and manage BP logs via bot.
+                                    {t('settings.telegram_desc')}
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {user?.telegram_id ? (
                                     <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-md border border-green-200">
                                         <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                                        <span className="font-medium">Connected with Telegram</span>
+                                        <span className="font-medium">{t('settings.connected_telegram')}</span>
                                         <span className="text-xs opacity-75">(ID: {user.telegram_id})</span>
                                     </div>
                                 ) : (
                                     <Button onClick={handleConnectTelegram} disabled={isGeneratingLink}>
                                         {isGeneratingLink && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Connect Telegram
+                                        {t('settings.connect_telegram')}
                                     </Button>
                                 )}
                             </CardContent>

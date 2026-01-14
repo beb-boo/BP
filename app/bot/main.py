@@ -6,7 +6,13 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes, TypeHandler
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
-from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown
+from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown, language_command, language_callback
+from .payment_handlers import get_payment_handler, subscription_command
+import warnings
+from telegram.warnings import PTBUserWarning
+
+# Suppress PTBUserWarning about CallbackQueryHandler in ConversationHandler
+warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*CallbackQueryHandler.*")
 
 load_dotenv()
 
@@ -76,12 +82,22 @@ def main():
     # Auth & Registration Conversation
     application.add_handler(get_auth_handler())
     
+    # Payment / Subscription (New)
+    application.add_handler(get_payment_handler())
+    application.add_handler(CommandHandler("subscription", subscription_command))
+    
+    # OCR & Record Logic (New ConversationHandler)
+    
     # OCR & Record Logic (New ConversationHandler)
     application.add_handler(get_ocr_handler())
     
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("help", help_command))
+    
+    # Language (New)
+    application.add_handler(CommandHandler("language", language_command))
+    application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
 
     # Fallback for unknown messages (Must be last)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))

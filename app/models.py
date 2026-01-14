@@ -25,6 +25,7 @@ class User(Base):
     
     password_hash = Column(String, nullable=False)
     role = Column(String, default="patient")  # patient, doctor, staff
+    language = Column(String, default="th")    # th, en
     
     full_name_encrypted = Column(String, nullable=True)
     full_name_hash = Column(String, index=True, nullable=True) # Not unique
@@ -85,6 +86,7 @@ class User(Base):
 
     # Relations
     bp_records = relationship("BloodPressureRecord", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
     doctor_patients = relationship(
         "DoctorPatient", foreign_keys="DoctorPatient.doctor_id", back_populates="doctor")
     patient_doctors = relationship(
@@ -246,3 +248,28 @@ class AccessRequest(Base):
 
     doctor = relationship("User", foreign_keys=[doctor_id])
     patient = relationship("User", foreign_keys=[patient_id])
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    trans_ref = Column(String, index=True)
+    trans_ref_hash = Column(String, unique=True, index=True)
+    amount = Column(Float)
+    plan_type = Column(String)
+    plan_amount = Column(Float)
+    sending_bank = Column(String, nullable=True)
+    sender_name_encrypted = Column(String, nullable=True)
+    receiver_name = Column(String, nullable=True)
+    trans_date = Column(String, nullable=True)
+    trans_time = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending, verified, failed
+    error_code = Column(String, nullable=True)
+    error_message = Column(String, nullable=True)
+    verification_response = Column(Text, nullable=True)  # JSON string
+    created_at = Column(DateTime, default=now_th())
+    verified_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", back_populates="payments")

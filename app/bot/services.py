@@ -49,12 +49,19 @@ class BotService:
             user = db.query(User).filter(User.id == user_id).first()
             if user:
                 user.telegram_id = telegram_id
+                # Linking via valid token implies verification
+                user.is_phone_verified = True
                 db.commit()
                 return True
+            return False
+
+    @staticmethod
+    def update_user_language(user_id: int, language: str):
+        """Update user language preference."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
             if user:
-                user.telegram_id = telegram_id
-                # Linking via valid token implies verification
-                user.is_phone_verified = True 
+                user.language = language
                 db.commit()
                 return True
             return False
@@ -234,3 +241,135 @@ class BotService:
                 "average": avg
             }
 
+
+    @staticmethod
+    def get_subscription_status(user_id: int):
+        """Get user subscription status."""
+        from datetime import datetime
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            
+            is_active = False
+            days_remaining = 0
+            
+            if user.subscription_tier == "premium" and user.subscription_expires_at:
+                if user.subscription_expires_at > now_th():
+                    is_active = True
+                    days_remaining = (user.subscription_expires_at - now_th()).days
+            
+            return {
+                "tier": user.subscription_tier,
+                "is_active": is_active,
+                "expires_at": user.subscription_expires_at.strftime("%Y-%m-%d") if user.subscription_expires_at else "-",
+                "days_remaining": days_remaining,
+                "language": user.language or "th"
+            }
+
+    @staticmethod
+    def verify_slip_payment(user_id: int, image_bytes: bytes, plan_type: str):
+        """Verify slip and upgrade user."""
+        from app.services.slipok import slipok_service
+        from app.config.pricing import get_plan, is_valid_amount
+        from app.models import Payment
+        import uuid
+        import json
+        from datetime import timedelta
+
+        # 1. Get User Config
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return {"success": False, "error": "User not found"}
+            
+            lang = user.language or "th"
+            
+            # 2. Validate Plan
+            plan = get_plan(plan_type)
+            if not plan:
+                return {"success": False, "error": "Invalid Plan"}
+
+            # 3. Check Service
+            if not slipok_service.api_key:
+                return {"success": False, "error": "Payment Service Unavailable"}
+
+            # 4. Verify with SlipOK
+            expected_amount = plan["price"]
+            result = slipok_service.verify_slip_image(image_bytes, expected_amount, language=lang)
+            
+            if not result.success:
+                 # Log Failure
+                payment = Payment(
+                    user_id=user_id,
+                    trans_ref=f"FAILED-{uuid.uuid4()}",
+                    trans_ref_hash=hash_value(f"FAILED-{uuid.uuid4()}-{now_th()}"),
+                    amount=0,
+                    plan_type=plan_type,
+                    plan_amount=expected_amount,
+                    status="failed",
+                    error_code=result.error_code,
+                    error_message=result.error_message,
+                    verification_response=json.dumps(result.raw_response) if result.raw_response else None
+                )
+                db.add(payment)
+                db.commit()
+                return {"success": False, "error": result.error_message}
+
+            # 5. Check Duplicate
+            trans_ref_hash = hash_value(result.trans_ref)
+            existing = db.query(Payment).filter(
+                Payment.trans_ref_hash == trans_ref_hash,
+                Payment.status == "verified"
+            ).first()
+
+            if existing:
+                msg = "Slip already used" if lang == "en" else "สลิปนี้เคยใช้ชำระเงินแล้ว"
+                return {"success": False, "error": msg}
+
+            # 6. Verify Amount
+            if not is_valid_amount(expected_amount, result.amount):
+                msg = f"Amount mismatch ({result.amount} vs {expected_amount})" if lang == "en" \
+                      else f"ยอดเงิน ({result.amount} บาท) ไม่ตรงกับราคาแพลน ({expected_amount} บาท)"
+                return {"success": False, "error": msg}
+
+            # 7. Success - Save Payment
+            payment = Payment(
+                user_id=user_id,
+                trans_ref=result.trans_ref,
+                trans_ref_hash=trans_ref_hash,
+                amount=result.amount,
+                sending_bank=result.sending_bank,
+                sender_name_encrypted=encrypt_value(result.sender_name) if result.sender_name else None,
+                receiver_name=result.receiver_name,
+                trans_date=result.trans_date,
+                trans_time=result.trans_time,
+                plan_type=plan_type,
+                plan_amount=expected_amount,
+                status="verified",
+                verification_response=json.dumps(result.raw_response),
+                verified_at=now_th()
+            )
+            db.add(payment)
+
+            # 8. Upgrade User
+            duration_days = plan["duration_days"]
+            if (user.subscription_tier == "premium" and
+                user.subscription_expires_at and
+                user.subscription_expires_at > now_th()):
+                new_expiry = user.subscription_expires_at + timedelta(days=duration_days)
+            else:
+                new_expiry = now_th() + timedelta(days=duration_days)
+
+            user.subscription_tier = "premium"
+            user.subscription_expires_at = new_expiry
+            user.updated_at = now_th()
+
+            db.commit()
+            
+            return {
+                "success": True,
+                "amount": result.amount,
+                "expires_at": new_expiry.strftime("%Y-%m-%d"),
+                "plan_name": plan['name']
+            }

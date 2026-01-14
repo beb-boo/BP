@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
-import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight, Crown } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -39,11 +39,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BPChart } from "@/components/bp-chart";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export default function DashboardPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const { t, setLanguage } = useLanguage();
 
     useEffect(() => {
         const userCookie = Cookies.get("user");
@@ -52,13 +55,17 @@ export default function DashboardPage() {
             return;
         }
         try {
-            setUser(JSON.parse(userCookie));
+            const userData = JSON.parse(userCookie);
+            setUser(userData);
+            if (userData.language) {
+                setLanguage(userData.language);
+            }
         } catch (e) {
             router.push("/auth/login");
         } finally {
             setLoading(false);
         }
-    }, [router]);
+    }, [router, setLanguage]);
 
     const handleLogout = async () => {
         try {
@@ -79,10 +86,11 @@ export default function DashboardPage() {
         <div className="p-6 md:p-8 space-y-8 min-h-screen bg-slate-50 dark:bg-slate-950">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-                    <p className="text-slate-500">Welcome back, {user.full_name}</p>
+                    <h1 className="text-3xl font-bold tracking-tight">{t('common.dashboard')}</h1>
+                    <p className="text-slate-500">{t('dashboard.welcome')} {user.full_name}</p>
                 </div>
                 <div className="flex items-center gap-4">
+                    <LanguageSwitcher />
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -102,12 +110,16 @@ export default function DashboardPage() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => router.push('/settings')}>
                                 <Settings className="mr-2 h-4 w-4" />
-                                <span>Settings</span>
+                                <span>{t('common.settings')}</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push('/subscription')}>
+                                <Crown className="mr-2 h-4 w-4 text-yellow-500" />
+                                <span>{t('common.subscription')}</span>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={handleLogout} className="text-red-600">
                                 <LogOut className="mr-2 h-4 w-4" />
-                                <span>Log out</span>
+                                <span>{t('common.logout')}</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -120,6 +132,7 @@ export default function DashboardPage() {
 }
 
 function PatientView({ user }: { user: any }) {
+    const { t } = useLanguage();
     const [stats, setStats] = useState<any>(null);
     const [graphRecords, setGraphRecords] = useState<any[]>([]);
     const [tableRecords, setTableRecords] = useState<any[]>([]);
@@ -275,7 +288,7 @@ function PatientView({ user }: { user: any }) {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Last Reading</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('dashboard.last_reading', 'Last Reading')}</CardTitle>
                         <Activity className="h-4 w-4 text-slate-500" />
                     </CardHeader>
                     <CardContent>
@@ -283,13 +296,13 @@ function PatientView({ user }: { user: any }) {
                             {lastReading ? `${lastReading.systolic}/${lastReading.diastolic}` : "--/--"}
                         </div>
                         <p className="text-xs text-slate-500">
-                            {lastReading ? new Date(lastReading.measurement_date).toLocaleDateString() : "No data"}
+                            {lastReading ? new Date(lastReading.measurement_date).toLocaleDateString() : t('common.no_data', 'No data')}
                         </p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Average Pulse</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('dashboard.avg_pulse')}</CardTitle>
                         <Activity className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
@@ -299,7 +312,7 @@ function PatientView({ user }: { user: any }) {
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Records</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('dashboard.total_records', 'Total Records')}</CardTitle>
                         <FilePlus className="h-4 w-4 text-blue-500" />
                     </CardHeader>
                     <CardContent>
@@ -313,21 +326,21 @@ function PatientView({ user }: { user: any }) {
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
                         <Button className="gap-2">
-                            <FilePlus className="w-4 h-4" /> Add Record
+                            <FilePlus className="w-4 h-4" /> {t('dashboard.add_record')}
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[500px]">
                         <DialogHeader>
-                            <DialogTitle>Add Blood Pressure Record</DialogTitle>
+                            <DialogTitle>{t('record.add_title')}</DialogTitle>
                             <DialogDescription>
-                                Monitor your health by adding a new reading.
+                                {t('record.add_desc')}
                             </DialogDescription>
                         </DialogHeader>
 
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="photo">Scan Photo</TabsTrigger>
-                                <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+                                <TabsTrigger value="photo">{t('dashboard.scan_ocr')}</TabsTrigger>
+                                <TabsTrigger value="manual">{t('dashboard.manual_entry')}</TabsTrigger>
                             </TabsList>
 
                             <TabsContent value="photo" className="space-y-4 py-4">
@@ -386,28 +399,28 @@ function PatientView({ user }: { user: any }) {
                                             </div>
                                         )}
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="date" className="text-right">Date</Label>
+                                            <Label htmlFor="date" className="text-right">{t('record.date')}</Label>
                                             <Input id="date" value={measureDate} onChange={e => setMeasureDate(e.target.value)} type="date" className="col-span-3" required />
                                         </div>
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="time" className="text-right">Time</Label>
+                                            <Label htmlFor="time" className="text-right">{t('record.time')}</Label>
                                             <Input id="time" value={measureTime} onChange={e => setMeasureTime(e.target.value)} type="time" className="col-span-3" required />
                                         </div>
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="sys" className="text-right">Systolic</Label>
+                                            <Label htmlFor="sys" className="text-right">{t('record.systolic')}</Label>
                                             <Input id="sys" value={sys} onChange={e => setSys(e.target.value)} type="number" placeholder="120" className="col-span-3" required />
                                         </div>
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="dia" className="text-right">Diastolic</Label>
+                                            <Label htmlFor="dia" className="text-right">{t('record.diastolic')}</Label>
                                             <Input id="dia" value={dia} onChange={e => setDia(e.target.value)} type="number" placeholder="80" className="col-span-3" required />
                                         </div>
                                         <div className="grid grid-cols-4 items-center gap-4">
-                                            <Label htmlFor="pulse" className="text-right">Pulse</Label>
+                                            <Label htmlFor="pulse" className="text-right">{t('record.pulse')}</Label>
                                             <Input id="pulse" value={pulse} onChange={e => setPulse(e.target.value)} type="number" placeholder="72" className="col-span-3" required />
                                         </div>
                                     </div>
                                     <DialogFooter>
-                                        <Button type="submit" disabled={submitting}>Save Record</Button>
+                                        <Button type="submit" disabled={submitting}>{t('common.save')}</Button>
                                     </DialogFooter>
                                 </form>
                             </TabsContent>
@@ -415,23 +428,23 @@ function PatientView({ user }: { user: any }) {
                     </DialogContent>
                 </Dialog>
 
-                <Button variant="outline" className="gap-2" onClick={() => toast.info("Manage Doctors feature coming soon!")}>
-                    <Users className="w-4 h-4" /> Manage Doctors
+                <Button variant="outline" className="gap-2" onClick={() => toast.info(t('common.coming_soon'))}>
+                    <Users className="w-4 h-4" /> {t('common.manage_doctors')}
                 </Button>
             </div>
 
             {/* Trends Chart */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Blood Pressure Trends (Last 30 Records)</CardTitle>
+                    <CardTitle>{t('dashboard.bp_trends', 'Blood Pressure Trends')} (Last 30)</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {loadingData ? (
-                        <div className="h-[350px] flex items-center justify-center text-slate-500">Loading chart...</div>
+                        <div className="h-[350px] flex items-center justify-center text-slate-500">{t('common.loading')}</div>
                     ) : graphRecords.length > 0 ? (
                         <BPChart data={graphRecords} />
                     ) : (
-                        <div className="h-[350px] flex items-center justify-center text-slate-500">No data available</div>
+                        <div className="h-[350px] flex items-center justify-center text-slate-500">{t('common.no_data')}</div>
                     )}
                 </CardContent>
             </Card>
@@ -439,29 +452,29 @@ function PatientView({ user }: { user: any }) {
             <Card className="col-span-4">
                 <CardHeader>
                     <div className="flex items-center justify-between">
-                        <CardTitle>History</CardTitle>
+                        <CardTitle>{t('common.history')}</CardTitle>
                         <span className="text-sm text-slate-500">
-                            Page {pagination?.current_page} of {pagination?.total_pages} (Total {pagination?.total})
+                            Page {pagination?.current_page} / {pagination?.total_pages}
                         </span>
                     </div>
                 </CardHeader>
                 <CardContent>
                     {loadingData ? (
-                        <div className="text-slate-500 text-sm">Loading records...</div>
+                        <div className="text-slate-500 text-sm">{t('common.loading')}</div>
                     ) : tableRecords.length === 0 ? (
-                        <div className="text-slate-500 text-sm">No records found. Start measuring!</div>
+                        <div className="text-slate-500 text-sm">{t('common.no_data')}</div>
                     ) : (
                         <>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Date</TableHead>
-                                        <TableHead>Systolic</TableHead>
-                                        <TableHead>Diastolic</TableHead>
-                                        <TableHead>Pulse</TableHead>
+                                        <TableHead>{t('record.date')}</TableHead>
+                                        <TableHead>{t('record.systolic')}</TableHead>
+                                        <TableHead>{t('record.diastolic')}</TableHead>
+                                        <TableHead>{t('record.pulse')}</TableHead>
                                         <TableHead>
-                                            <span className="hidden md:inline">Source</span>
-                                            <span className="md:hidden">Src</span>
+                                            <span className="hidden md:inline">{t('record.notes', 'Notes')}</span>
+                                            <span className="md:hidden">Note</span>
                                         </TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -495,7 +508,7 @@ function PatientView({ user }: { user: any }) {
                                     disabled={pagination.current_page <= 1}
                                 >
                                     <ChevronLeft className="h-4 w-4" />
-                                    Previous
+                                    {t('common.previous')}
                                 </Button>
                                 <Button
                                     variant="outline"
@@ -503,7 +516,7 @@ function PatientView({ user }: { user: any }) {
                                     onClick={() => fetchTablePage(pagination.current_page + 1)}
                                     disabled={pagination.current_page >= pagination.total_pages}
                                 >
-                                    Next
+                                    {t('common.next')}
                                     <ChevronRight className="h-4 w-4" />
                                 </Button>
                             </div>
@@ -516,43 +529,44 @@ function PatientView({ user }: { user: any }) {
 }
 
 function DoctorView({ user }: { user: any }) {
+    const { t } = useLanguage();
     return (
         <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('doctor.total_patients')}</CardTitle>
                         <Users className="h-4 w-4 text-slate-500" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">12</div>
-                        <p className="text-xs text-slate-500">Active monitoring</p>
+                        <p className="text-xs text-slate-500">{t('doctor.active_monitoring')}</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Pending Requests</CardTitle>
+                        <CardTitle className="text-sm font-medium">{t('doctor.pending_requests')}</CardTitle>
                         <Calendar className="h-4 w-4 text-orange-500" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">3</div>
-                        <p className="text-xs text-slate-500">Requires approval</p>
+                        <p className="text-xs text-slate-500">{t('doctor.requires_approval')}</p>
                     </CardContent>
                 </Card>
             </div>
 
             <Tabs defaultValue="patients" className="space-y-4">
                 <TabsList>
-                    <TabsTrigger value="patients">My Patients</TabsTrigger>
-                    <TabsTrigger value="requests">Access Requests</TabsTrigger>
+                    <TabsTrigger value="patients">{t('doctor.my_patients')}</TabsTrigger>
+                    <TabsTrigger value="requests">{t('doctor.access_requests')}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="patients" className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Patient List</CardTitle>
+                            <CardTitle>{t('doctor.patient_list')}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-slate-500 text-sm">Loading patients... (Demo)</div>
+                            <div className="text-slate-500 text-sm">{t('common.loading')} (Demo)</div>
                         </CardContent>
                     </Card>
                 </TabsContent>

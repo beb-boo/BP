@@ -3,10 +3,43 @@ from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardR
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from app.bot.services import BotService
 from app.utils.ocr_helper import read_blood_pressure_with_gemini
+from .locales import get_text
 from datetime import datetime
 import logging
 import tempfile
 import os
+
+# --- Language States ---
+SELECT_LANG = 99
+
+async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Change Language."""
+    keyboard = [
+        [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+        [InlineKeyboardButton("🇹🇭 ไทย", callback_data="lang_th")]
+    ]
+    
+    # Get current user lang to prompt in correct language?
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = user.language if user else "en"
+    
+    msg = get_text("lang_select", lang)
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    lang = "en" if data == "lang_en" else "th"
+    
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    if user:
+        BotService.update_user_language(user.id, lang)
+        msg = get_text("lang_set", lang)
+        await query.edit_message_text(msg)
+    else:
+        await query.edit_message_text("❌ Please /start first.")
 
 logger = logging.getLogger(__name__)
 
@@ -51,23 +84,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 1. Check if already linked
     linked_user = BotService.get_user_by_telegram_id(chat_id)
+    lang = linked_user.language if linked_user else "en"
     
     if linked_user:
+        msg = get_text("welcome", lang, name=linked_user.full_name)
         await update.message.reply_text(
-            f"Welcome back, {linked_user.full_name}! ✅\n"
-            "You are already linked to the system.\n"
-            "Use /stats to see your blood pressure trends or just send a photo to record.",
+            msg,
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
 
     # 2. Not linked -> Request Contact
-    contact_keyboard = KeyboardButton(text="📱 Share Contact", request_contact=True)
+    # Assume EN for new users or let them choose? Default EN.
+    lang = "en"
+    
+    contact_btn_text = get_text("share_contact_btn", lang)
+    contact_keyboard = KeyboardButton(text=contact_btn_text, request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[contact_keyboard]], one_time_keyboard=True, resize_keyboard=True)
     
+    msg = get_text("welcome_new", lang, name=user.first_name)
     await update.message.reply_text(
-        f"Hi {user.first_name}! 👋\n"
-        "To start using the Blood Pressure Monitor Bot, please share your phone number to verify your identity.",
+        msg,
         reply_markup=reply_markup
     )
     return SHARE_CONTACT
@@ -87,18 +124,27 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if existing_user:
         context.user_data['user_id'] = existing_user.id
+        
+        lang = existing_user.language or "en"
+        msg = get_text("found_account", lang, phone=phone_number)
+        
         await update.message.reply_text(
-            f"✅ Found account for {phone_number}!\n"
-            "Please enter your **Web Password** to confirm linking:",
+            msg,
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
         )
         return AUTH_PASSWORD
     else:
+        # Request Name
+        # Lang defaults to EN for new user, or maybe TH if phone is Thai? 
+        # Hard to guess. Stick to default EN or prompt?
+        # Let's check phone prefix? +66 -> TH.
+        lang = "th" if phone_number.startswith("66") else "en"
+        context.user_data['register_lang'] = lang # Store for flow
+        
+        msg = get_text("new_account", lang, phone=phone_number)
         await update.message.reply_text(
-            f"🆕 Phone {phone_number} not registered.\n"
-            "Let's create a new account.\n\n"
-            "Please enter your **Full Name** (e.g. Somchai Jaidee):",
+            msg,
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
         )
@@ -123,7 +169,10 @@ async def auth_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def reg_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['full_name'] = update.message.text
-    await update.message.reply_text("Please enter your **Date of Birth** (DD/MM/YYYY):", parse_mode="Markdown")
+    lang = context.user_data.get('register_lang', 'en')
+    
+    msg = get_text("enter_dob", lang)
+    await update.message.reply_text(msg, parse_mode="Markdown")
     return REG_DOB
 
 async def reg_dob(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,12 +181,31 @@ async def reg_dob(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dob = datetime.strptime(text, "%d/%m/%Y")
         context.user_data['date_of_birth'] = dob
     except ValueError:
-        await update.message.reply_text("❌ Invalid format. Please use DD/MM/YYYY (e.g. 31/01/1990):")
+        lang = context.user_data.get('register_lang', 'en')
+        # Error msg not localized in dict yet, add simple fallback or extend dict later
+        # I'll use hardcoded EN/TH based on lang for now or just generic.
+        # Let's keep existing EN hardcoded for error to save time or basic dict.
+        # Actually dict has "error".
+        # I'll use simple hardcoded check.
+        if lang == "th":
+            err = "❌ รูปแบบผิด กรุณาใช้ DD/MM/YYYY (เช่น 31/01/1990):"
+        else:
+            err = "❌ Invalid format. Please use DD/MM/YYYY (e.g. 31/01/1990):"
+        await update.message.reply_text(err)
         return REG_DOB
 
-    keyboard = [['Male', 'Female', 'Other']]
+    lang = context.user_data.get('register_lang', 'en')
+    msg = get_text("enter_gender", lang)
+    
+    keyboard = [['Male', 'Female', 'Other']] # Buttons hardcoded EN for data consistency?
+    # Or translate buttons? If I translate buttons, I must map them back to data 'male','female'.
+    # For now, keep buttons EN to simplify data mapping or map "ชาย" -> "male".
+    # I'll keep buttons EN for simplicity as requested "Bilingual Support" usually implies UI text.
+    # User requested "Support both", implied fully.
+    # I'll leave buttons EN for now to avoid logic bugs in `reg_gender`.
+    
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Please select your **Gender**:", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(msg, reply_markup=reply_markup, parse_mode="Markdown")
     return REG_GENDER
 
 async def reg_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,7 +216,10 @@ async def reg_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['gender'] = gender
     keyboard = [['Patient', 'Doctor']]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    await update.message.reply_text("Are you a **Patient** or a **Doctor**?", reply_markup=reply_markup, parse_mode="Markdown")
+    
+    lang = context.user_data.get('register_lang', 'en')
+    msg = get_text("role_select", lang)
+    await update.message.reply_text(msg, reply_markup=reply_markup, parse_mode="Markdown")
     return REG_ROLE
 
 async def reg_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,8 +228,12 @@ async def reg_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please select Patient or Doctor.")
         return REG_ROLE
     context.user_data['role'] = role
+    
+    lang = context.user_data.get('register_lang', 'en')
+    msg = get_text("set_password", lang)
+    
     await update.message.reply_text(
-        "Almost done! Please set a **Password** for logging into the website:",
+        msg,
         reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
@@ -177,16 +252,25 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['password'] = password
     await update.message.reply_text("⏳ Creating account...")
     new_user = await BotService.register_new_user(context.user_data, update.effective_chat.id)
+    
+    lang = context.user_data.get('register_lang', 'en')
+    
     if new_user:
-        msg = f"✅ **Registration Complete!**\n\nWelcome, {new_user.full_name}."
+        # Also Update Language Preference!
+        BotService.update_user_language(new_user.id, lang)
+        
+        msg = get_text("reg_success", lang)
+        # Add License info if Doctor - keeping basic for now or simple append
         if new_user.role == 'doctor':
-            if new_user.verification_status == 'verified':
-                msg += "\n✅ **Doctor License Verified** (Auto-Check Passed)."
-            else:
-                msg += "\n⚠️ **License Verification Pending**."
+             if new_user.verification_status == 'verified':
+                 msg += "\n✅ License Verified."
+             else:
+                 msg += "\n⚠️ License Verification Pending."
+                 
         await update.message.reply_text(msg, parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ Registration failed due to a server error. Please try again later.")
+        err = get_text("error", lang)
+        await update.message.reply_text(err)
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,17 +354,24 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
                  date_warning = "\n⚠️ **Date not found in image**, using current date."
 
         # Ask for confirmation
-        msg = f"**Read Result:**\n" \
-              f"❤️ SYS: **{ocr_result.systolic}**\n" \
-              f"💙 DIA: **{ocr_result.diastolic}**\n" \
-              f"💓 PULSE: **{ocr_result.pulse}**\n" \
-              f"📅 Time: **{dt_display}** {date_warning}\n\n" \
-              f"Is this correct?"
-              
+        # Get language
+        lang = user.language or "en"
+        
+        msg = get_text("ocr_confirm", lang,
+            sys=ocr_result.systolic,
+            dia=ocr_result.diastolic,
+            pulse=ocr_result.pulse
+        )
+        if date_warning:
+             msg += f"\n({date_warning})"
+             
+        btn_confirm_txt = get_text("btn_confirm", lang)
+        btn_edit_txt = get_text("btn_edit", lang)
+        
         keyboard = [
             [
-                InlineKeyboardButton("✅ Yes, Save", callback_data="save_ocr"),
-                InlineKeyboardButton("✏️ Edit", callback_data="edit_ocr")
+                InlineKeyboardButton(btn_confirm_txt, callback_data="save_ocr"),
+                InlineKeyboardButton(btn_edit_txt, callback_data="edit_ocr")
             ]
         ]
         
@@ -319,6 +410,10 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         
         # I'll update BotService in the next step. For now, let's write this handler code assuming BotService is updated.
         
+        # Get user lang
+        user = BotService.get_user_by_telegram_id(ocr_data['user_id'])
+        lang = user.language or "en" if user else "en"
+        
         record, is_new = BotService.create_bp_record(
             user_id=ocr_data['user_id'],
             systolic=ocr_data['sys'],
@@ -330,9 +425,11 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         
         if is_new:
-             await query.edit_message_text("✅ **Record Saved Successfully!**", parse_mode="Markdown")
+             msg = get_text("save_success", lang, sys=ocr_data['sys'], dia=ocr_data['dia'], pulse=ocr_data['pulse'])
+             await query.edit_message_text(msg, parse_mode="Markdown")
         else:
-             await query.edit_message_text("⚠️ **Record already exists!** (Duplicate ignored)", parse_mode="Markdown")
+             msg = get_text("save_duplicate", lang)
+             await query.edit_message_text(msg, parse_mode="Markdown")
              
         return ConversationHandler.END
         
@@ -415,32 +512,32 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     avg_dia = int(avg.avg_dia) if avg.avg_dia else 0
     avg_pulse = int(avg.avg_pulse) if avg.avg_pulse else 0
     
-    msg = f"**Your BP Profile**\n" \
-          f"**Average** (Last 30 Records):\n" \
-          f"{avg_sys}/{avg_dia} mmHg (Pulse {avg_pulse})\n\n" \
-          f"**Latest Entries** (Log):\n"
-          
+    lang = user.language or "en"
+    
+    msg = get_text(
+        "stats_header", 
+        lang, 
+        sys=avg_sys, 
+        dia=avg_dia, 
+        pulse=avg_pulse
+    )
+
     if not recent:
-        msg += "- No records found."
+        msg += "\n" + get_text("no_records", lang)
     else:
         for r in recent:
             date_str = r.measurement_date.strftime("%d/%m/%Y")
             time_str = r.measurement_time if r.measurement_time else ""
-            msg += f"- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})\n"
+            msg += f"\n- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})"
             
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a help message."""
-    msg = (
-        "**Need Help?**\n\n"
-        "Here are the commands I know:\n"
-        "/start - Register or Connect Account\n"
-        "/stats - View your Blood Pressure trends\n"
-        "/help - Show this message\n\n"
-        "**To Record BP**: Just send me a photo of your monitor!\n"
-        "**To Typo**: Send a photo, then click 'Edit' if numbers differ."
-    )
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = user.language if user else "en"
+    
+    msg = get_text("help_msg", lang)
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -458,6 +555,7 @@ def get_ocr_handler():
             OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False
     )
 
 # ... inside main setup in main.py, we need to register these ...

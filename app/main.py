@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from .database import engine, Base
 
 # Import routers
-from .routers import auth, users, bp_records, ocr, doctor, export
+from .routers import auth, users, bp_records, ocr, doctor, export, payment
 
 # Load environment variables
 load_dotenv()
@@ -47,6 +47,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
 origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+# Ensure localhost is allowed for dev
+if "http://localhost:3000" not in origins:
+    origins.append("http://localhost:3000")
+if "http://localhost:3001" not in origins:
+    origins.append("http://localhost:3001")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -63,6 +69,7 @@ app.include_router(bp_records.stats_router)
 app.include_router(ocr.router)
 app.include_router(doctor.router)
 app.include_router(export.router)
+app.include_router(payment.router)
 
 
 @app.get("/")
