@@ -2,6 +2,7 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from app.bot.services import BotService
+from app.bot.log_service import BotLogService
 from app.utils.ocr_helper import read_blood_pressure_with_gemini
 from .locales import get_text
 from datetime import datetime
@@ -92,6 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg,
             reply_markup=ReplyKeyboardRemove()
         )
+        BotLogService.log(user.id, "OUT", "welcome", "Welcome back message sent", linked_user.id)
         return ConversationHandler.END
 
     # 2. Not linked -> Request Contact
@@ -268,6 +270,7 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  msg += "\n⚠️ License Verification Pending."
                  
         await update.message.reply_text(msg, parse_mode="Markdown")
+        BotLogService.log(update.effective_chat.id, "OUT", "registration", "User Registered successfully", new_user.id)
     else:
         err = get_text("error", lang)
         await update.message.reply_text(err)
@@ -360,7 +363,9 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         msg = get_text("ocr_confirm", lang,
             sys=ocr_result.systolic,
             dia=ocr_result.diastolic,
-            pulse=ocr_result.pulse
+            pulse=ocr_result.pulse,
+            date=ocr_result.measurement_date,
+            time=ocr_result.measurement_time
         )
         if date_warning:
              msg += f"\n({date_warning})"
@@ -427,6 +432,7 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if is_new:
              msg = get_text("save_success", lang, sys=ocr_data['sys'], dia=ocr_data['dia'], pulse=ocr_data['pulse'])
              await query.edit_message_text(msg, parse_mode="Markdown")
+             BotLogService.log(ocr_data['user_id'], "OUT", "save_ocr", "OCR Record Saved", ocr_data['user_id'])
         else:
              msg = get_text("save_duplicate", lang)
              await query.edit_message_text(msg, parse_mode="Markdown")
@@ -474,6 +480,7 @@ async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 measurement_time=m_time
             )
             await update.message.reply_text("✅ **Record Saved Successfully!**", parse_mode="Markdown")
+            BotLogService.log(user_id, "OUT", "save_manual", "Manual Record Saved", user_id)
             return ConversationHandler.END
         else:
             await update.message.reply_text("⚠️ Invalid format. Try: 120/80 72")
@@ -531,6 +538,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"\n- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})"
             
     await update.message.reply_text(msg, parse_mode="Markdown")
+    BotLogService.log(chat_id, "OUT", "stats", "Stats sent", user.id)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a help message."""

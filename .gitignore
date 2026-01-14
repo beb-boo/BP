@@ -45,3 +45,4 @@ yarn-error.*
 *.bak2
 PRICING-GUIDE-INTERNAL.md
 *.JPG
+*.log

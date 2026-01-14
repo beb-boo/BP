@@ -82,14 +82,17 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
     1. Extract Systolic, Diastolic, and Pulse values.
        - Note: Standard vertical layout is usually Systolic (Top), Diastolic (Middle), Pulse (Bottom).
        - Note: Pulse is often smaller or at the very bottom.
-    2. Extract Date and Time IF visible on the screen.
+    2. Extract Date and Time ONLY IF explicitly visible on the screen.
        - LOOK CAREFULLY: Date/Time might be small, in a corner, or faint.
        - Formats can vary: "YYYY/MM/DD", "DD/MM", "MM-DD", "HH:MM", "AM/PM".
        - If you see a clock or calendar icon, the numbers next to it are likely time/date.
-    3. Return ONLY a JSON object: {"systolic": int, "diastolic": int, "pulse": int, "date": "YYYY-MM-DD", "time": "HH:MM"}
-       - Convert date to YYYY-MM-DD. Use current year if year is missing.
+       - DO NOT GUESS the date or year if it is not shown.
+       - If only Time is shown, return Date as null.
+       - If only Date is shown, return Time as null.
+    3. Return ONLY a JSON object: {"systolic": int, "diastolic": int, "pulse": int, "date": "YYYY-MM-DD" or null, "time": "HH:MM" or null}
+       - Convert date to YYYY-MM-DD. Use current year ONLY if month/day is visible but year is missing.
        - Convert time to 24-hour HH:MM.
-    4. If any value is completely illegible, use null.
+    4. If any value is completely illegible or missing, use null.
     """
 
     try:

@@ -14,6 +14,42 @@ from telegram.warnings import PTBUserWarning
 # Suppress PTBUserWarning about CallbackQueryHandler in ConversationHandler
 warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*CallbackQueryHandler.*")
 
+from .log_service import BotLogService
+
+async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log all incoming updates."""
+    try:
+        user = update.effective_user
+        if not user:
+            return
+
+        msg_type = "unknown"
+        content = ""
+        
+        if update.message:
+            if update.message.text:
+                msg_type = "text"
+                content = update.message.text
+            elif update.message.photo:
+                msg_type = "photo"
+                content = "User sent a photo"
+            elif update.message.contact:
+                msg_type = "contact"
+                content = f"Contact: {update.message.contact.phone_number}"
+        elif update.callback_query:
+            msg_type = "callback"
+            content = f"Data: {update.callback_query.data}"
+        
+        if content:
+            BotLogService.log(
+                telegram_id=user.id,
+                direction="IN",
+                message_type=msg_type,
+                content=content
+            )
+    except Exception as e:
+        logger.error(f"Logging Error: {e}")
+
 load_dotenv()
 
 # Configure Logging
@@ -75,6 +111,9 @@ def main():
     
     # Monitor connection state (Runs first)
     application.add_handler(TypeHandler(Update, connection_monitor), group=-1)
+    
+    # Log Middleware (Runs in separate group to ensure execution)
+    application.add_handler(TypeHandler(Update, log_middleware), group=-5)
 
     # Add Error Handler
     application.add_error_handler(error_handler)
