@@ -58,13 +58,17 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         return typeof current === 'string' ? current : path;
     };
 
-    if (!isLoaded) {
-        return <>{children}</>;
-    }
-
     return (
         <LanguageContext.Provider value={{ language, setLanguage, t }}>
-            {children}
+            {/* Prevent flash of wrong language content if needed, or just render */}
+            {!isLoaded ? (
+                // Optional: Render nothing or a loader if you want strict sync before show
+                // But for now, let's just render children to avoid the Context Error.
+                // Or better, just let it render with default 'en' until loaded.
+                children
+            ) : (
+                children
+            )}
         </LanguageContext.Provider>
     );
 }
