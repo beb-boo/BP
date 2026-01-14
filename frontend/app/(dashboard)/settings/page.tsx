@@ -505,9 +505,9 @@ export default function SettingsPage() {
                 <TabsContent value="security">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Password</CardTitle>
+                            <CardTitle>{t('settings.password_title')}</CardTitle>
                             <CardDescription>
-                                Change your password. Use a strong password to keep your account secure.
+                                {t('settings.password_desc')}
                             </CardDescription>
                         </CardHeader>
                         <form onSubmit={handleChangePassword}>

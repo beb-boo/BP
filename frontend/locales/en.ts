@@ -103,6 +103,8 @@ export const en = {
         request_otp: "Request OTP",
         resend_in: "Resend in",
         save_changes: "Save Changes",
+        password_title: "Password",
+        password_desc: "Change your password. Use a strong password to keep your account secure.",
         change_password: "Change Password",
         current_password: "Current Password",
         new_password: "New Password",

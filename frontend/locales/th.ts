@@ -103,6 +103,8 @@ export const th = {
         request_otp: "ขอรหัส OTP",
         resend_in: "ขอใหม่ใน",
         save_changes: "บันทึกข้อมูล",
+        password_title: "รหัสผ่าน",
+        password_desc: "เปลี่ยนรหัสผ่านของคุณ ใช้รหัสผ่านที่คาดเดายากเพื่อความปลอดภัยของบัญชี",
         change_password: "เปลี่ยนรหัสผ่าน",
         current_password: "รหัสผ่านปัจจุบัน",
         new_password: "รหัสผ่านใหม่",
