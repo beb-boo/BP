@@ -22,8 +22,7 @@ LOCALES = {
         "save_duplicate": "⚠️ Duplicate Record.\nYou already recorded this recently.",
         "stats_header": "**Your BP Profile**\n**Average** (Last 30 Records):\n{sys}/{dia} mmHg (Pulse {pulse})\n\n**Latest Entries**:",
         "no_records": "- No records found.",
-        "help_msg": "**Need Help?** 🤖\n\n**General Commands:**\n/start - Register or Connect Account\n/language - Change Language (English/Thai)\n/stats - View your Blood Pressure trends\n/help - Show this message\n/cancel - Cancel current operation\n\n**Subscription & Premium:** 💎\n/upgrade - Upgrade to Premium Plan\n/subscription - Check Subscription Status\n\n**How to Record BP:**\nJust send a photo of your monitor! 📸\n(If numbers are wrong, click 'Edit' to fix them)",
-        "lang_select": "Please select your language / กรุณาเลือกภาษา:",
+        "help_msg": "**Need Help?** 🤖\n\n**General Commands:**\n/start - Register or Connect Account\n/settings - Manage Settings (Language/Timezone)\n/stats - View your Blood Pressure trends\n/help - Show this message\n/cancel - Cancel current operation\n\n**Subscription & Premium:** 💎\n/upgrade - Upgrade to Premium Plan\n/subscription - Check Subscription Status\n\n**How to Record BP:**\nJust send a photo of your monitor! 📸\n(If numbers are wrong, click 'Edit' to fix them)",        "lang_select": "Please select your language / กรุณาเลือกภาษา:",
         "lang_set": "✅ Language set to English.",
         "cancel": "Cancelled.",
         "error": "❌ An error occurred. Please try again.",
@@ -57,7 +56,7 @@ LOCALES = {
         "save_duplicate": "⚠️ ข้อมูลซ้ำ\nคุณเพิ่งบันทึกค่านี้ไปเมื่อสักครู่นี้เองครับ",
         "stats_header": "**ข้อมูลสุขภาพของคุณ**\n**ค่าเฉลี่ย** (30 ครั้งล่าสุด):\n{sys}/{dia} mmHg (ชีพจร {pulse})\n\n**รายการล่าสุด**:",
         "no_records": "- ไม่พบประวัติการบันทึก",
-        "help_msg": "**ช่วยเหลือ** 🤖\n\n**คำสั่งทั่วไป:**\n/start - เริ่มต้น / เชื่อมต่อบัญชี\n/language - เปลี่ยนภาษา (ไทย/English)\n/stats - ดูสถิติความดันโลหิต\n/help - แสดงข้อความนี้\n/cancel - ยกเลิกรายการ\n\n**สมาชิก & พรีเมียม:** 💎\n/upgrade - อัพเกรดเป็นพรีเมียม\n/subscription - เช็คสถานะวันหมดอายุ\n\n**วิธีบันทึกค่าความดัน:**\nเพียงแค่ **ส่งรูปถ่าย** หน้าจอเครื่องวัดมาที่นี่! 📸\n(ถ้าเลขผิด สามารถกดปุ่ม 'แก้ไข' ได้ครับ)",
+        "help_msg": "**ช่วยเหลือ** 🤖\n\n**คำสั่งทั่วไป:**\n/start - เริ่มต้น / เชื่อมต่อบัญชี\n/settings - ตั้งค่า (เปลี่ยนภาษา / เขตเวลา)\n/stats - ดูสถิติความดันโลหิต\n/help - แสดงข้อความนี้\n/cancel - ยกเลิกรายการ\n\n**สมาชิก & พรีเมียม:** 💎\n/upgrade - อัพเกรดเป็นพรีเมียม\n/subscription - เช็คสถานะวันหมดอายุ\n\n**วิธีบันทึกค่าความดัน:**\nเพียงแค่ **ส่งรูปถ่าย** หน้าจอเครื่องวัดมาที่นี่! 📸\n(ถ้าเลขผิด สามารถกดปุ่ม 'แก้ไข' ได้ครับ)",
         "lang_select": "กรุณาเลือกภาษา / Please select your language:",
         "lang_set": "✅ เปลี่ยนภาษาเป็น ภาษาไทย เรียบร้อยครับ",
         "cancel": "ยกเลิกรายการแล้ว",
@@ -73,13 +72,13 @@ LOCALES = {
     }
 }
 
-def get_text(key: str, lang: str = "th", **kwargs) -> str:
+def get_text(key: str, lookup_lang: str = "th", **kwargs) -> str:
     """Get localized text formatted with kwargs"""
     # Fallback to English if key missing in desired lang
-    if lang not in LOCALES:
-        lang = "en"
+    if lookup_lang not in LOCALES:
+        lookup_lang = "en"
     
-    text = LOCALES.get(lang, {}).get(key)
+    text = LOCALES.get(lookup_lang, {}).get(key)
     
     if not text:
         # Fallback to English key
