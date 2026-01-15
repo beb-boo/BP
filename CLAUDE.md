@@ -125,6 +125,7 @@ ENCRYPTION_KEY=<fernet-key>
 API_KEYS=bp-mobile-app-key,bp-web-app-key
 GOOGLE_AI_API_KEY=<gemini-api-key>
 TELEGRAM_BOT_TOKEN=<bot-token>
+APP_TIMEZONE=Asia/Bangkok  # Default timezone for server (IANA format)
 ```
 
 ## API Response Format
@@ -143,10 +144,18 @@ TELEGRAM_BOT_TOKEN=<bot-token>
 
 **MobileApp - ไม่อยู่ในขอบเขตการพัฒนา:** โฟลเดอร์ `MobileApp/` ยังไม่มีแผนพัฒนาในตอนนี้ ไม่ต้องวิเคราะห์หรือแก้ไข code ใน MobileApp
 
+## Timezone Configuration
+
+Users can set their preferred timezone:
+- **Backend:** `app/utils/timezone.py` provides centralized timezone handling
+- **User Model:** `timezone` field stores user preference (IANA format, default: Asia/Bangkok)
+- **API:** Users can update timezone via `PUT /users/me`
+- **Telegram Bot:** `/settings` command allows timezone selection
+- **Frontend:** Settings page has timezone selector
+
 ## Known Limitations
 
 - No automated test suite (critical gap)
-- No Alembic migrations - schema changes are manual
+- No Alembic migrations - schema changes are manual (use `migrations/` scripts)
 - CORS allows all origins (`*`) - restrict in production
-- Timezone hardcoded to Asia/Bangkok
 - Image audit trail not implemented (images deleted after OCR)

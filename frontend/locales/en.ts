@@ -126,6 +126,10 @@ export const en = {
         go_to_verify: "Go to Profile Verification",
         male: "Male",
         female: "Female",
-        other: "Other"
+        other: "Other",
+        timezone: "Timezone",
+        timezone_desc: "Set your preferred timezone for displaying dates and times.",
+        select_timezone: "Select Timezone",
+        timezone_updated: "Timezone updated successfully"
     }
 };

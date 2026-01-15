@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHea
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User
-from pytz import timezone
+from .timezone import now_tz
 import logging
 
 load_from_dotenv = True # Assumed loaded in main
@@ -23,12 +23,7 @@ API_KEY_HEADER = "X-API-Key"
 VALID_API_KEYS = os.getenv(
     "API_KEYS", "bp-mobile-app-key,bp-web-app-key").split(",")
 
-THAI_TZ = timezone("Asia/Bangkok")
-
 logger = logging.getLogger(__name__)
-
-def now_th():
-    return datetime.now(THAI_TZ)
 
 security = HTTPBearer()
 api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
@@ -45,9 +40,9 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = now_th() + expires_delta
+        expire = now_tz() + expires_delta
     else:
-        expire = now_th() + \
+        expire = now_tz() + \
             timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "type": "access_token"})
@@ -58,7 +53,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 def create_refresh_token(data: dict):
     to_encode = data.copy()
     # Refresh token expires in 30 days
-    expire = now_th() + timedelta(days=30)
+    expire = now_tz() + timedelta(days=30)
     to_encode.update({"exp": expire, "type": "refresh_token"})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -118,7 +113,7 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Account deactivated")
 
     # Check if account is locked
-    if user.account_locked_until and user.account_locked_until > now_th():
+    if user.account_locked_until and user.account_locked_until > now_tz():
         logger.warning(f"Account locked: {user_id}")
         raise HTTPException(
             status_code=423, detail="Account temporarily locked")
@@ -127,13 +122,13 @@ def get_current_user(
 
 def is_account_locked(user: User) -> bool:
     """Check if user account is locked due to failed login attempts"""
-    if user.account_locked_until and user.account_locked_until > now_th():
+    if user.account_locked_until and user.account_locked_until > now_tz():
         return True
     return False
 
 
 def lock_account(user: User, db: Session):
     """Lock user account for 30 minutes after too many failed attempts"""
-    user.account_locked_until = now_th() + timedelta(minutes=30)
+    user.account_locked_until = now_tz() + timedelta(minutes=30)
     user.failed_login_attempts = 0  # Reset counter
     db.commit()

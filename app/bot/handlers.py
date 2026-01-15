@@ -30,14 +30,96 @@ async def language_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     data = query.data
     lang = "en" if data == "lang_en" else "th"
-    
+
     user = BotService.get_user_by_telegram_id(update.effective_user.id)
     if user:
         BotService.update_user_language(user.id, lang)
         msg = get_text("lang_set", lang)
+        await query.edit_message_text(msg)
+    else:
+        await query.edit_message_text("❌ Please /start first.")
+
+
+async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show settings menu."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text("⚠️ Please /start and link your account first.")
+        return
+
+    lang = user.language or "en"
+    user_tz = user.timezone or "Asia/Bangkok"
+    lang_display = "English" if lang == "en" else "ภาษาไทย"
+
+    msg = get_text("settings_title", lang) + "\n\n"
+    msg += get_text("settings_language", lang, lang=lang_display) + "\n"
+    msg += get_text("settings_timezone", lang, tz=user_tz)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(get_text("btn_change_lang", lang), callback_data="settings_lang"),
+            InlineKeyboardButton(get_text("btn_change_tz", lang), callback_data="settings_tz")
+        ]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+
+async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle settings menu callbacks."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    if not user:
+        await query.edit_message_text("❌ Please /start first.")
+        return
+
+    lang = user.language or "en"
+
+    if data == "settings_lang":
+        keyboard = [
+            [InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")],
+            [InlineKeyboardButton("🇹🇭 ไทย", callback_data="lang_th")]
+        ]
+        msg = get_text("lang_select", lang)
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "settings_tz":
+        # Show timezone selection
+        tz_choices = BotService.get_timezone_choices()
+        keyboard = []
+        for tz_value, label_en, label_th in tz_choices[:8]:  # Show first 8 common timezones
+            label = label_th if lang == "th" else label_en
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"tz_{tz_value}")])
+
+        msg = get_text("tz_select", lang)
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle timezone selection callback."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    if not data.startswith("tz_"):
+        return
+
+    tz_value = data[3:]  # Remove "tz_" prefix
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+
+    if user:
+        success = BotService.update_user_timezone(user.id, tz_value)
+        lang = user.language or "en"
+        if success:
+            msg = get_text("tz_set", lang, tz=tz_value)
+        else:
+            msg = get_text("error", lang)
         await query.edit_message_text(msg)
     else:
         await query.edit_message_text("❌ Please /start first.")

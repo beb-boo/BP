@@ -126,6 +126,10 @@ export const th = {
         go_to_verify: "ไปหน้ายืนยันตัวตน",
         male: "ชาย",
         female: "หญิง",
-        other: "อื่นๆ"
+        other: "อื่นๆ",
+        timezone: "เขตเวลา",
+        timezone_desc: "ตั้งค่าเขตเวลาสำหรับการแสดงวันที่และเวลา",
+        select_timezone: "เลือกเขตเวลา",
+        timezone_updated: "อัปเดตเขตเวลาสำเร็จ"
     }
 };

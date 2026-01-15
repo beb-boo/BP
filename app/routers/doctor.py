@@ -8,7 +8,8 @@ from ..schemas import (
     StandardResponse, DoctorAuthorizationInput, AccessRequestInput,
     BloodPressureRecordResponse, PaginationMeta
 )
-from ..utils.security import verify_api_key, get_current_user, now_th
+from ..utils.security import verify_api_key, get_current_user
+from ..utils.timezone import now_th
 import logging
 import uuid
 

@@ -1,9 +1,10 @@
 
 from sqlalchemy.orm import Session
 from app.models import User
-from app.utils.security import verify_password, hash_password, now_th, SECRET_KEY, ALGORITHM
+from app.utils.security import verify_password, hash_password, SECRET_KEY, ALGORITHM
 from app.utils.encryption import encrypt_value, hash_value
 from app.utils.tmc_checker import verify_doctor_with_tmc
+from app.utils.timezone import now_tz, TIMEZONE_CHOICES, is_valid_timezone, format_datetime
 from app.database import SessionLocal
 import logging
 import jwt
@@ -65,6 +66,24 @@ class BotService:
                 db.commit()
                 return True
             return False
+
+    @staticmethod
+    def update_user_timezone(user_id: int, timezone: str):
+        """Update user timezone preference."""
+        if not is_valid_timezone(timezone):
+            return False
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.timezone = timezone
+                db.commit()
+                return True
+            return False
+
+    @staticmethod
+    def get_timezone_choices():
+        """Get available timezone choices for UI."""
+        return TIMEZONE_CHOICES
 
     @staticmethod
     def process_connection_token(token: str, telegram_id: int):
@@ -130,8 +149,10 @@ class BotService:
                     is_active=True,
                     verification_status=verification_status,
                     verification_logs=verification_logs,
-                    created_at=now_th(),
-                    updated_at=now_th()
+                    language=user_data.get('register_lang', 'th'),
+                    timezone=user_data.get('timezone', 'Asia/Bangkok'),
+                    created_at=now_tz(),
+                    updated_at=now_tz()
                 )
                 
                 db.add(new_user)
@@ -148,9 +169,9 @@ class BotService:
         """Create a new blood pressure record."""
         from app.models import BloodPressureRecord # Local import to avoid circular dependency
         from datetime import datetime
-        
-        final_date = now_th()
-        final_time = now_th().strftime("%H:%M")
+
+        final_date = now_tz()
+        final_time = now_tz().strftime("%H:%M")
         
         if measurement_date:
             if isinstance(measurement_date, str):
@@ -186,7 +207,7 @@ class BotService:
                 measurement_date=final_date,
                 measurement_time=final_time,
                 notes=notes,
-                created_at=now_th()
+                created_at=now_tz()
             )
             db.add(record)
             db.commit()
@@ -255,16 +276,17 @@ class BotService:
             days_remaining = 0
             
             if user.subscription_tier == "premium" and user.subscription_expires_at:
-                if user.subscription_expires_at > now_th():
+                if user.subscription_expires_at > now_tz():
                     is_active = True
-                    days_remaining = (user.subscription_expires_at - now_th()).days
+                    days_remaining = (user.subscription_expires_at - now_tz()).days
             
             return {
                 "tier": user.subscription_tier,
                 "is_active": is_active,
                 "expires_at": user.subscription_expires_at.strftime("%Y-%m-%d") if user.subscription_expires_at else "-",
                 "days_remaining": days_remaining,
-                "language": user.language or "th"
+                "language": user.language or "th",
+                "timezone": user.timezone or "Asia/Bangkok"
             }
 
     @staticmethod
@@ -303,7 +325,7 @@ class BotService:
                 payment = Payment(
                     user_id=user_id,
                     trans_ref=f"FAILED-{uuid.uuid4()}",
-                    trans_ref_hash=hash_value(f"FAILED-{uuid.uuid4()}-{now_th()}"),
+                    trans_ref_hash=hash_value(f"FAILED-{uuid.uuid4()}-{now_tz()}"),
                     amount=0,
                     plan_type=plan_type,
                     plan_amount=expected_amount,
@@ -348,7 +370,7 @@ class BotService:
                 plan_amount=expected_amount,
                 status="verified",
                 verification_response=json.dumps(result.raw_response),
-                verified_at=now_th()
+                verified_at=now_tz()
             )
             db.add(payment)
 
@@ -356,14 +378,14 @@ class BotService:
             duration_days = plan["duration_days"]
             if (user.subscription_tier == "premium" and
                 user.subscription_expires_at and
-                user.subscription_expires_at > now_th()):
+                user.subscription_expires_at > now_tz()):
                 new_expiry = user.subscription_expires_at + timedelta(days=duration_days)
             else:
-                new_expiry = now_th() + timedelta(days=duration_days)
+                new_expiry = now_tz() + timedelta(days=duration_days)
 
             user.subscription_tier = "premium"
             user.subscription_expires_at = new_expiry
-            user.updated_at = now_th()
+            user.updated_at = now_tz()
 
             db.commit()
             

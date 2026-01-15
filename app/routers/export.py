@@ -1,15 +1,17 @@
 
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from ..database import get_db
 from ..models import User, BloodPressureRecord
 from ..schemas import StandardResponse
 from ..utils.security import verify_api_key, get_current_user
 from ..utils.encryption import decrypt_value
+from ..utils.timezone import now_tz, format_datetime
 import logging
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/v1/export", tags=["export"])
 logger = logging.getLogger(__name__)
@@ -71,12 +73,12 @@ async def export_my_data(
 
         export_note = "Full History (Premium)"
         if current_user.subscription_tier != "premium":
-            # Free: Limit to 30 days
-            limit_date = datetime.now() - timedelta(days=30)
-            query = query.filter(BloodPressureRecord.measurement_date >= limit_date)
-            export_note = "Limited to last 30 days (Free Tier)"
-
-        records = query.all()
+            # Free: Limit to last 30 records
+            records = query.order_by(desc(BloodPressureRecord.measurement_date)).limit(30).all()
+            export_note = "Limited to last 30 records (Free Tier)"
+        else:
+            # Premium: All records, sorted
+            records = query.order_by(desc(BloodPressureRecord.measurement_date)).all()
         
         bp_data = []
         for r in records:
@@ -92,8 +94,10 @@ async def export_my_data(
             })
             
         # 3. Construct Export Payload
+        user_tz = current_user.timezone or "Asia/Bangkok"
         export_payload = {
-            "exported_at": str(datetime.now()),
+            "exported_at": format_datetime(now_tz(), user_tz),
+            "timezone": user_tz,
             "user_profile": user_data,
             "blood_pressure_history": bp_data,
             "meta": {

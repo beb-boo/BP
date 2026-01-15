@@ -2,14 +2,9 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime
-from pytz import timezone
 from .database import Base
 from .utils.encryption import encrypt_value, decrypt_value, hash_value
-
-THAI_TZ = timezone("Asia/Bangkok")
-
-def now_th():
-    return datetime.now(THAI_TZ)
+from .utils.timezone import now_tz, DEFAULT_TIMEZONE
 
 class User(Base):
     __tablename__ = "users"
@@ -26,6 +21,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, default="patient")  # patient, doctor, staff
     language = Column(String, default="th")    # th, en
+    timezone = Column(String(50), default="Asia/Bangkok")  # User's preferred timezone (IANA format)
     
     full_name_encrypted = Column(String, nullable=True)
     full_name_hash = Column(String, index=True, nullable=True) # Not unique
@@ -77,8 +73,8 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0)
     account_locked_until = Column(DateTime, nullable=True)
     last_login = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=now_th())
-    updated_at = Column(DateTime, default=now_th(), onupdate=now_th())
+    created_at = Column(DateTime, default=now_tz)
+    updated_at = Column(DateTime, default=now_tz, onupdate=now_tz)
 
     # Monetization (B2C)
     subscription_tier = Column(String, default="free") # free, premium
@@ -181,7 +177,7 @@ class License(Base):
     max_users = Column(Integer, default=10)
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
     
     # Ideally link to a main user who manages it
     # main_user_id = Column(Integer, ForeignKey("users.id"), nullable=True) 
@@ -196,9 +192,9 @@ class UserSession(Base):
     ip_address = Column(String, nullable=True)
     user_agent = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    last_activity = Column(DateTime, default=now_th())
+    last_activity = Column(DateTime, default=now_tz)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
 
     user = relationship("User")
 
@@ -211,12 +207,12 @@ class BloodPressureRecord(Base):
     systolic = Column(Integer, nullable=False)
     diastolic = Column(Integer, nullable=False)
     pulse = Column(Integer, nullable=False)
-    measurement_date = Column(DateTime, default=now_th())
+    measurement_date = Column(DateTime, default=now_tz)
     measurement_time = Column(String, nullable=True)  # HH:MM
     notes = Column(Text, nullable=True)
     image_path = Column(String, nullable=True)
     ocr_confidence = Column(Float, nullable=True)
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
 
     user = relationship("User", back_populates="bp_records")
 
@@ -229,7 +225,7 @@ class DoctorPatient(Base):
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     hospital = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
 
     doctor = relationship("User", foreign_keys=[
                           doctor_id], back_populates="doctor_patients")
@@ -244,7 +240,7 @@ class AccessRequest(Base):
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String, default="pending")
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
 
     doctor = relationship("User", foreign_keys=[doctor_id])
     patient = relationship("User", foreign_keys=[patient_id])
@@ -269,7 +265,7 @@ class Payment(Base):
     error_code = Column(String, nullable=True)
     error_message = Column(String, nullable=True)
     verification_response = Column(Text, nullable=True)  # JSON string
-    created_at = Column(DateTime, default=now_th())
+    created_at = Column(DateTime, default=now_tz)
     verified_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="payments")

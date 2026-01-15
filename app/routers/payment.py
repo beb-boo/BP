@@ -11,7 +11,8 @@ from slowapi.util import get_remote_address
 from ..database import get_db
 from ..models import User, Payment
 from ..schemas import StandardResponse
-from ..utils.security import verify_api_key, get_current_user, now_th
+from ..utils.security import verify_api_key, get_current_user
+from ..utils.timezone import now_th, now_tz
 from ..utils.encryption import encrypt_value, hash_value
 from ..services.slipok import slipok_service
 from ..config.pricing import SUBSCRIPTION_PLANS, PAYMENT_ACCOUNT, get_plan, is_valid_amount

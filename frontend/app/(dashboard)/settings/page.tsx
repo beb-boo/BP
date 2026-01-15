@@ -14,9 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { TIMEZONE_CHOICES } from "@/lib/date-utils";
 
 export default function SettingsPage() {
-    const { t } = useLanguage();
+    const { t, language } = useLanguage();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
@@ -35,6 +36,7 @@ export default function SettingsPage() {
     const [bloodType, setBloodType] = useState("");
     const [height, setHeight] = useState("");
     const [weight, setWeight] = useState("");
+    const [timezone, setTimezone] = useState("Asia/Bangkok");
 
     const [isSaving, setIsSaving] = useState(false);
 
@@ -82,6 +84,7 @@ export default function SettingsPage() {
                 setBloodType(profile.blood_type || "");
                 setHeight(profile.height ? String(profile.height) : "");
                 setWeight(profile.weight ? String(profile.weight) : "");
+                setTimezone(profile.timezone || "Asia/Bangkok");
 
             } catch (error) {
                 console.error("Failed to fetch profile", error);
@@ -108,6 +111,7 @@ export default function SettingsPage() {
                 blood_type: bloodType || null,
                 height: height ? parseFloat(height) : null,
                 weight: weight ? parseFloat(weight) : null,
+                timezone: timezone || null,
 
                 current_password: confirmCurrentPassword || null,
                 otp_code: otpCode || null
@@ -439,6 +443,24 @@ export default function SettingsPage() {
                                                 onChange={e => setWeight(e.target.value)}
                                             />
                                         </div>
+                                    </div>
+
+                                    {/* Timezone Selection */}
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label htmlFor="timezone">{t('settings.timezone')}</Label>
+                                        <select
+                                            id="timezone"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                            value={timezone}
+                                            onChange={e => setTimezone(e.target.value)}
+                                        >
+                                            {TIMEZONE_CHOICES.map((tz) => (
+                                                <option key={tz.value} value={tz.value}>
+                                                    {language === "th" ? tz.label.th : tz.label.en}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-slate-500">{t('settings.timezone_desc')}</p>
                                     </div>
                                 </div>
 

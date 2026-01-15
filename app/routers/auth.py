@@ -10,8 +10,9 @@ from ..schemas import (
 from ..utils.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     verify_api_key, get_current_user, lock_account, is_account_locked,
-    now_th, ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES
 )
+from ..utils.timezone import now_tz
 from ..utils.encryption import encrypt_value, hash_value
 from ..utils.tmc_checker import verify_doctor_with_tmc
 import hashlib
@@ -180,9 +181,12 @@ async def register_user(
             
             is_email_verified=bool(user_data.email),
             is_phone_verified=bool(user_data.phone_number),
-            
-            created_at=now_th(),
-            updated_at=now_th()
+
+            language=user_data.language or "th",
+            timezone=user_data.timezone or "Asia/Bangkok",
+
+            created_at=now_tz(),
+            updated_at=now_tz()
         )
 
         db.add(new_user)
@@ -274,7 +278,7 @@ async def login(
 
     # Reset failed attempts on successful login
     user.failed_login_attempts = 0
-    user.last_login = now_th()
+    user.last_login = now_tz()
     user.account_locked_until = None
     db.commit()
 
@@ -298,7 +302,7 @@ async def login(
         device_info=request.headers.get("user-agent", "")[:500],
         ip_address=request.client.host if request.client else "",
         user_agent=request.headers.get("user-agent", "")[:500],
-        expires_at=now_th() + expires_delta
+        expires_at=now_tz() + expires_delta
     )
 
     db.add(session)
@@ -323,7 +327,9 @@ async def login(
                 "full_name": user.full_name,
                 "is_email_verified": user.is_email_verified,
                 "is_phone_verified": user.is_phone_verified,
-                "subscription_tier": user.subscription_tier # New field
+                "subscription_tier": user.subscription_tier,
+                "language": user.language,
+                "timezone": user.timezone
             }
         },
         request_id=request_id
@@ -377,7 +383,7 @@ async def change_password(
     try:
         # Update password
         current_user.password_hash = hash_password(password_data.new_password)
-        current_user.updated_at = now_th()
+        current_user.updated_at = now_tz()
 
         # Invalidate all sessions except current one
         db.query(UserSession).filter(
@@ -435,7 +441,7 @@ async def reset_password(
     try:
         # Update password and unlock account
         user.password_hash = hash_password(reset_data.new_password)
-        user.updated_at = now_th()
+        user.updated_at = now_tz()
         user.failed_login_attempts = 0
         user.account_locked_until = None
 
@@ -489,7 +495,7 @@ async def verify_contact_method(
             current_user.is_phone_verified = True
             current_user.phone_number = contact_target
 
-        current_user.updated_at = now_th()
+        current_user.updated_at = now_tz()
         db.commit()
 
         logger.info(

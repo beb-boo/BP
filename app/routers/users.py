@@ -5,7 +5,8 @@ from sqlalchemy import or_
 from ..database import get_db
 from ..models import User
 from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate
-from ..utils.security import verify_api_key, get_current_user, now_th, verify_password
+from ..utils.security import verify_api_key, get_current_user, verify_password
+from ..utils.timezone import now_tz, get_timezone_choices_dict, is_valid_timezone
 from ..utils.encryption import decrypt_value, encrypt_value, hash_value
 from ..otp_service import otp_service
 import hashlib
@@ -158,7 +159,7 @@ async def update_user_profile(
             # Example: current_user.full_name = "..." -> encrypts full_name_encrypted, hashes full_name_hash
             setattr(current_user, field, value)
 
-        current_user.updated_at = now_th()
+        current_user.updated_at = now_tz()
         db.commit()
         db.refresh(current_user)
 
@@ -228,5 +229,23 @@ async def search_users(
         status="success",
         message="Search completed",
         data={"users": results},
+        request_id=request_id
+    )
+
+
+@router.get("/timezones", response_model=StandardResponse)
+async def get_timezone_list(
+    lang: str = "en",
+    api_key: str = Depends(verify_api_key)
+):
+    """Get list of available timezones for selection"""
+    request_id = generate_request_id()
+
+    timezones = get_timezone_choices_dict(lang)
+
+    return create_standard_response(
+        status="success",
+        message="Timezone list retrieved",
+        data={"timezones": timezones},
         request_id=request_id
     )

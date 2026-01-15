@@ -61,6 +61,7 @@ class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100)
     role: Literal["patient", "doctor"]
     language: Optional[Literal["th", "en"]] = "th"
+    timezone: Optional[str] = "Asia/Bangkok"  # IANA timezone format
 
     # Patient specific fields
     citizen_id: Optional[str] = None
@@ -141,6 +142,7 @@ class UserProfileResponse(BaseModel):
     full_name: str
     role: str
     language: str = "th"
+    timezone: str = "Asia/Bangkok"
     telegram_id: Optional[int] = None
     citizen_id: Optional[str] = None
     medical_license: Optional[str] = None
@@ -164,6 +166,7 @@ class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     language: Optional[Literal["th", "en"]] = None
+    timezone: Optional[str] = None  # IANA timezone format
     phone_number: Optional[str] = None
     citizen_id: Optional[str] = None
     date_of_birth: Optional[Union[datetime, str]] = None
@@ -184,7 +187,7 @@ class UserProfileUpdate(BaseModel):
     @classmethod
     def pre_validate_empty_strings(cls, data: Any) -> Any:
         if isinstance(data, dict):
-            fields_to_check = ['email', 'phone_number', 'citizen_id', 'medical_license', 'date_of_birth', 'gender', 'blood_type']
+            fields_to_check = ['email', 'phone_number', 'citizen_id', 'medical_license', 'date_of_birth', 'gender', 'blood_type', 'timezone']
             for field in fields_to_check:
                 if data.get(field) == "":
                     data[field] = None
@@ -195,7 +198,7 @@ class UserProfileUpdate(BaseModel):
         # Phone validation
         if self.phone_number:
             self.phone_number = validate_phone_number(self.phone_number)
-        
+
         # Parse Date if string
         if isinstance(self.date_of_birth, str):
             try:
@@ -204,7 +207,13 @@ class UserProfileUpdate(BaseModel):
                 self.date_of_birth = parsed
             except ValueError:
                 raise ValueError("Date of birth must be YYYY-MM-DD")
-                
+
+        # Validate timezone format
+        if self.timezone:
+            from pytz import all_timezones
+            if self.timezone not in all_timezones:
+                raise ValueError(f"Invalid timezone: {self.timezone}")
+
         return self
 
 

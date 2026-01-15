@@ -8,7 +8,7 @@ from PIL.ExifTags import TAGS
 from dotenv import load_dotenv
 from ..schemas import OCRResult
 from datetime import datetime
-from pytz import timezone
+from .timezone import now_tz
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -16,11 +16,6 @@ logger = logging.getLogger(__name__)
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
 if GOOGLE_AI_API_KEY:
     genai.configure(api_key=GOOGLE_AI_API_KEY)
-
-THAI_TZ = timezone("Asia/Bangkok")
-
-def now_th():
-    return datetime.now(THAI_TZ)
 
 def get_image_metadata(image_path: str) -> dict:
     """Extract metadata from image"""
@@ -161,7 +156,7 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
                      pass
 
             # 4. Current Time (Fallback)
-            now = now_th()
+            now = now_tz()
             if not final_date:
                 final_date = now.strftime("%Y-%m-%d")
                 date_source = "Fallback"

@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes, TypeHandler, CallbackQueryHandler
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
-from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown, language_command, language_callback
+from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown, language_command, language_callback, settings_command, settings_callback, timezone_callback
 from .payment_handlers import get_payment_handler, subscription_command
 import warnings
 from telegram.warnings import PTBUserWarning
@@ -137,6 +137,11 @@ def main():
     # Language (New)
     application.add_handler(CommandHandler("language", language_command))
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
+
+    # Settings with Timezone (New)
+    application.add_handler(CommandHandler("settings", settings_command))
+    application.add_handler(CallbackQueryHandler(settings_callback, pattern='^settings_'))
+    application.add_handler(CallbackQueryHandler(timezone_callback, pattern='^tz_'))
 
     # Fallback for unknown messages (Must be last)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
