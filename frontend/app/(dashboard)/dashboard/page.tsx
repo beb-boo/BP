@@ -75,7 +75,7 @@ export default function DashboardPage() {
         }
         Cookies.remove("token");
         Cookies.remove("user");
-        router.push("/auth/login");
+        router.push("/");
         toast.success("Logged out successfully");
     };
 
