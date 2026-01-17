@@ -442,7 +442,7 @@ function PatientView({ user }: { user: any }) {
                     {loadingData ? (
                         <div className="h-[350px] flex items-center justify-center text-slate-500">{t('common.loading')}</div>
                     ) : graphRecords.length > 0 ? (
-                        <BPChart data={graphRecords} />
+                        <BPChart data={graphRecords} userDob={user.date_of_birth} />
                     ) : (
                         <div className="h-[350px] flex items-center justify-center text-slate-500">{t('common.no_data')}</div>
                     )}

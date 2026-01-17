@@ -1,7 +1,8 @@
-"use client"
+"use client";
 
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ReferenceArea } from 'recharts';
 import { useTheme } from "next-themes";
+import { calculateAge, getBPLimits } from "@/lib/bp-standards";
 
 interface BPRecord {
     measurement_date: string;
@@ -13,6 +14,7 @@ interface BPRecord {
 
 interface BPChartProps {
     data: BPRecord[];
+    userDob?: string; // Optional DOB to calculate limits
 }
 
 // Moved outside component to prevent re-creation on render
@@ -20,7 +22,7 @@ interface BPChartProps {
 const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
         return (
-            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-lg text-xs">
+            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-3 rounded-lg shadow-lg text-xs z-50">
                 <p className="font-semibold mb-2">
                     {new Date(label).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
@@ -38,9 +40,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return null;
 };
 
-export function BPChart({ data }: BPChartProps) {
+export function BPChart({ data, userDob }: BPChartProps) {
     const { theme } = useTheme();
 
+    // Calculate Limits
+    const age = calculateAge(userDob);
+    const limits = getBPLimits(age);
+
+    // Sort data by date ascending for the chart
     // Sort data by date ascending for the chart
     const chartData = [...data].sort((a, b) => {
         const dateA = new Date(`${a.measurement_date}T${a.measurement_time || '00:00'}`);
@@ -51,9 +58,19 @@ export function BPChart({ data }: BPChartProps) {
         fullDate: `${d.measurement_date}`
     }));
 
+    // Calculate Y-Axis Domain explicitly to ensure Reference Lines are visible
+    const allValues = chartData.flatMap(d => [d.systolic, d.diastolic, d.pulse]);
+    const dataMax = allValues.length > 0 ? Math.max(...allValues) : 0;
+    const dataMin = allValues.length > 0 ? Math.min(...allValues) : 0;
+
+    // Ensure domain includes the High BP Limits (Sys Max)
+    const yMax = Math.max(dataMax + 10, limits.sysMax + 20);
+    // Ensure domain includes lower values but not negative
+    const yMin = Math.max(0, Math.min(dataMin - 10, 40));
+
     return (
         <ResponsiveContainer width="100%" height={350}>
-            <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+            <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                 <XAxis
                     dataKey="measurement_date"
@@ -68,10 +85,33 @@ export function BPChart({ data }: BPChartProps) {
                     fontSize={12}
                     tickLine={false}
                     axisLine={false}
-                    domain={['dataMin - 10', 'dataMax + 10']}
+                    domain={[yMin, yMax]}
                 />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '3 3' }} />
                 <Legend />
+
+                {/* Reference Areas (Zones) */}
+                {/* High Diastolic Zone (e.g., 90 - 140) */}
+                <ReferenceArea
+                    y1={limits.diaMax}
+                    y2={limits.sysMax}
+                    fill="#ecfeff" // Cyan-50
+                    fillOpacity={0.6}
+                    label={{ value: "High Dia", position: 'insideTopLeft', fill: '#0891b2', fontSize: 10 }}
+                />
+
+                {/* High Systolic Zone (e.g., 140+) */}
+                <ReferenceArea
+                    y1={limits.sysMax}
+                    y2={yMax}
+                    fill="#fef2f2" // Red-50
+                    fillOpacity={0.6}
+                    label={{ value: "High Sys & Dia", position: 'insideTopLeft', fill: '#ef4444', fontSize: 10 }}
+                />
+
+                {/* Optional: Optimal Zone (< DiaMax) can be left clear or Green-50 (#f0fdf4) */}
+
+
                 <Line
                     type="monotone"
                     dataKey="systolic"
@@ -80,6 +120,7 @@ export function BPChart({ data }: BPChartProps) {
                     strokeWidth={2}
                     dot={{ r: 4, fill: "#ef4444" }}
                     activeDot={{ r: 6 }}
+                    isAnimationActive={false}
                 />
                 <Line
                     type="monotone"
@@ -89,6 +130,7 @@ export function BPChart({ data }: BPChartProps) {
                     strokeWidth={2}
                     dot={{ r: 4, fill: "#3b82f6" }}
                     activeDot={{ r: 6 }}
+                    isAnimationActive={false}
                 />
                 <Line
                     type="monotone"
@@ -99,6 +141,7 @@ export function BPChart({ data }: BPChartProps) {
                     strokeDasharray="5 5"
                     dot={{ r: 3, fill: "#10b981" }}
                     activeDot={{ r: 5 }}
+                    isAnimationActive={false}
                 />
             </LineChart>
         </ResponsiveContainer>
