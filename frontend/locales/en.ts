@@ -19,7 +19,10 @@ export const en = {
         previous: "Previous",
         manage_doctors: "Manage Doctors",
         coming_soon: "Feature coming soon!",
-        no_data: "No data"
+        no_data: "No data",
+        login: "Login",
+        register: "Register",
+        get_started: "Get Started"
     },
     dashboard: {
         welcome: "Welcome back,",
@@ -131,5 +134,34 @@ export const en = {
         timezone_desc: "Set your preferred timezone for displaying dates and times.",
         select_timezone: "Select Timezone",
         timezone_updated: "Timezone updated successfully"
+    },
+    landing: {
+        hero_title: "Smart Blood Pressure Monitoring System",
+        hero_subtitle: "Record, Track, and Share your vital health stats with your doctor. AI-powered OCR makes recording easy.",
+        start_tracking: "Start Tracking",
+        for_patients: "For Users",
+        for_patients_desc: "Easily record readings by taking a photo. View trends and stats. Share access with your doctor securely.",
+        for_doctors: "For Doctors",
+        for_doctors_desc: "Monitor your patients' health remotely. View detailed charts and get alerted on abnormal readings.",
+        footer: "© 2025 BP Monitor. Secure & Private."
+    },
+    auth: {
+        create_account: "Create an Account",
+        register_desc: "Register as a new user or doctor",
+        i_am_a: "I am a...",
+        patient: "User",
+        doctor: "Doctor",
+        already_account: "Already have an account? Sign in",
+        otp_note: "Note: OTP verification is required. Since this is a demo web form, please ensure you have verified your contact via the provided API endpoints or Mobile App first.",
+        reg_success: "Registration successful! Please login.",
+        login_title: "Login",
+        login_desc: "Enter your email/phone and password to access your account",
+        email_or_phone: "Email or Phone Number",
+        email_placeholder: "name@example.com or 0812345678",
+        forgot_password: "Forgot password?",
+        sign_in: "Sign In",
+        dont_have_account: "Don't have an account?",
+        sign_up: "Sign up",
+        login_success: "Login successful!"
     }
 };

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ import { Separator } from "@/components/ui/separator";
 
 export default function RegisterPage() {
     const router = useRouter();
+    const { t } = useLanguage();
     const [isLoading, setIsLoading] = useState(false);
     const [role, setRole] = useState("patient");
 
@@ -55,52 +58,14 @@ export default function RegisterPage() {
                 weight: formData.weight ? parseFloat(formData.weight) : undefined
             };
 
-            // In real app, we need OTP first.
-            // For this MVP refactor, we are using the /register endpoint which currently
-            // Checks if email/phone is verified.
-            // Wait, the backend requires "is_verified" which is done via OTP.
-            // The current backend logic (created in previous steps) says:
-            // "Register new user - requires prior OTP verification" checks `otp_service.is_verified`.
-
-            // So the flow should be:
-            // 1. Request OTP (Email/Phone)
-            // 2. Verify OTP
-            // 3. Submit Register
-
-            // This is complex for a single page. I should likely split this.
-            // Or I can simplify for the demo if I can bypass OTP?
-            // No, strictly following backend logic.
-
-            // I will implement a multi-step flow later if urged.
-            // For now, I'll attempt registration and if it fails due to unverified,
-            // I'll show error "Please verify OTP via mobile app first" or unimplemented.
-            // Actually, I should implement OTP flow here.
-
-            // Let's implement a simple OTP Modal/Step?
-            // Step 1: Input Email/Phone -> Send OTP.
-            // Step 2: Input OTP -> Verify -> Token.
-            // Step 3: Input rest of details -> Register.
-
-            // Complexity Alert: Implementing full OTP flow in one go is risky.
-            // I will keep standard register and assume user verified via "Verify Contact" separate page?
-            // No, that's bad UX.
-
-            // I'll just send the request. If 400 "Please verify...", I'll Toast it.
-            // "Note: Web registration currently assumes you have verified contact via Mobile App or I will add OTP flow later."
-            // BUT the user asked for "Web application to support...".
-
-            // I'll assume for this task step, I build the form. OTP is an enhancement.
-            // I'll add a simplified "Bypass" or valid flow if I can.
-            // Actually, I can use the existing /request-otp and /verify-otp endpoints.
-
             await api.post("/auth/register", payload);
 
-            toast.success("Registration successful! Please login.");
+            toast.success(t('auth.reg_success'));
             router.push("/auth/login");
 
         } catch (error: any) {
             console.error(error);
-            const msg = error.response?.data?.detail || "Registration failed";
+            const msg = error.response?.data?.detail || t('common.error');
             toast.error(msg);
         } finally {
             setIsLoading(false);
@@ -108,12 +73,16 @@ export default function RegisterPage() {
     }
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 p-4">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 p-4 relative">
+            <div className="absolute top-4 right-4">
+                <LanguageSwitcher />
+            </div>
+
             <Card className="w-full max-w-2xl shadow-lg my-8">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
+                    <CardTitle className="text-2xl font-bold text-center">{t('auth.create_account')}</CardTitle>
                     <CardDescription className="text-center">
-                        Register as a new user or doctor
+                        {t('auth.register_desc')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -121,7 +90,7 @@ export default function RegisterPage() {
 
                         {/* Role Selection */}
                         <div className="space-y-2">
-                            <Label>I am a...</Label>
+                            <Label>{t('auth.i_am_a')}</Label>
                             <div className="flex gap-4">
                                 <Button
                                     type="button"
@@ -129,7 +98,7 @@ export default function RegisterPage() {
                                     onClick={() => setRole("patient")}
                                     className="w-1/2"
                                 >
-                                    Patient
+                                    {t('auth.patient')}
                                 </Button>
                                 <Button
                                     type="button"
@@ -137,7 +106,7 @@ export default function RegisterPage() {
                                     onClick={() => setRole("doctor")}
                                     className="w-1/2"
                                 >
-                                    Doctor
+                                    {t('auth.doctor')}
                                 </Button>
                             </div>
                         </div>
@@ -147,15 +116,15 @@ export default function RegisterPage() {
                         {/* Account Info */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="email">{t('settings.email')}</Label>
                                 <Input id="email" type="email" value={formData.email} onChange={handleChange} />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="phone_number">Phone Number</Label>
+                                <Label htmlFor="phone_number">{t('settings.phone')}</Label>
                                 <Input id="phone_number" value={formData.phone_number} onChange={handleChange} />
                             </div>
                             <div className="space-y-2 col-span-2">
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password">{t('settings.password_title')}</Label>
                                 <Input id="password" type="password" value={formData.password} onChange={handleChange} required />
                             </div>
                         </div>
@@ -165,39 +134,39 @@ export default function RegisterPage() {
                         {/* Personal Info */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2 col-span-2">
-                                <Label htmlFor="full_name">Full Name</Label>
+                                <Label htmlFor="full_name">{t('settings.full_name')}</Label>
                                 <Input id="full_name" value={formData.full_name} onChange={handleChange} required />
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="citizen_id">Citizen ID</Label>
+                                <Label htmlFor="citizen_id">{t('settings.citizen_id')}</Label>
                                 <Input id="citizen_id" value={formData.citizen_id} onChange={handleChange} />
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="date_of_birth">Date of Birth</Label>
+                                <Label htmlFor="date_of_birth">{t('settings.dob')}</Label>
                                 <Input id="date_of_birth" type="date" value={formData.date_of_birth} onChange={handleChange} />
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Gender</Label>
+                                <Label>{t('settings.gender')}</Label>
                                 <Select onValueChange={(val) => setFormData({ ...formData, gender: val })} defaultValue={formData.gender}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select gender" />
+                                        <SelectValue placeholder={t('settings.select_gender')} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="male">Male</SelectItem>
-                                        <SelectItem value="female">Female</SelectItem>
-                                        <SelectItem value="other">Other</SelectItem>
+                                        <SelectItem value="male">{t('settings.male')}</SelectItem>
+                                        <SelectItem value="female">{t('settings.female')}</SelectItem>
+                                        <SelectItem value="other">{t('settings.other')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Blood Type</Label>
+                                <Label>{t('settings.blood_type')}</Label>
                                 <Select onValueChange={(val) => setFormData({ ...formData, blood_type: val })} defaultValue={formData.blood_type}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select Type" />
+                                        <SelectValue placeholder={t('settings.select_blood')} />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {['A', 'B', 'AB', 'O'].map(t => (
@@ -208,36 +177,35 @@ export default function RegisterPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="height">Height (cm)</Label>
+                                <Label htmlFor="height">{t('settings.height')}</Label>
                                 <Input id="height" type="number" value={formData.height} onChange={handleChange} />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="weight">Weight (kg)</Label>
+                                <Label htmlFor="weight">{t('settings.weight')}</Label>
                                 <Input id="weight" type="number" value={formData.weight} onChange={handleChange} />
                             </div>
                         </div>
 
                         {role === "doctor" && (
                             <div className="space-y-2 border-l-4 border-blue-500 pl-4 bg-slate-50 p-2 rounded">
-                                <Label htmlFor="medical_license">Medical License ID</Label>
+                                <Label htmlFor="medical_license">{t('settings.medical_license')}</Label>
                                 <Input id="medical_license" value={formData.medical_license} onChange={handleChange} required />
                             </div>
                         )}
 
                         <div className="text-xs text-amber-600">
-                            Note: OTP verification is required. Since this is a demo web form,
-                            please ensure you have verified your contact via the provided API endpoints or Mobile App first.
+                            {t('auth.otp_note')}
                         </div>
 
                         <Button className="w-full" type="submit" disabled={isLoading}>
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Register
+                            {t('common.register')}
                         </Button>
                     </form>
                 </CardContent>
                 <CardFooter className="flex justify-center">
                     <Link href="/auth/login" className="text-sm text-blue-600 hover:text-blue-500">
-                        Already have an account? Sign in
+                        {t('auth.already_account')}
                     </Link>
                 </CardFooter>
             </Card>

@@ -7,6 +7,8 @@ import Link from "next/link";
 import Cookies from "js-cookie";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 
 export default function LoginPage() {
     const router = useRouter();
+    const { t } = useLanguage();
     const [isLoading, setIsLoading] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -42,13 +45,13 @@ export default function LoginPage() {
             Cookies.set("token", access_token, { expires: 7 }); // 7 days
             Cookies.set("user", JSON.stringify(user), { expires: 7 });
 
-            toast.success("Login successful!");
+            toast.success(t('auth.login_success'));
             router.push("/dashboard");
             router.refresh();
 
         } catch (error: any) {
             console.error(error);
-            const msg = error.response?.data?.detail || "Something went wrong";
+            const msg = error.response?.data?.detail || t('common.error');
             toast.error(msg);
         } finally {
             setIsLoading(false);
@@ -56,21 +59,25 @@ export default function LoginPage() {
     }
 
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 p-4">
+        <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 p-4 relative">
+            <div className="absolute top-4 right-4">
+                <LanguageSwitcher />
+            </div>
+
             <Card className="w-full max-w-md shadow-lg">
                 <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
+                    <CardTitle className="text-2xl font-bold text-center">{t('auth.login_title')}</CardTitle>
                     <CardDescription className="text-center">
-                        Enter your email/phone and password to access your account
+                        {t('auth.login_desc')}
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={onSubmit} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="email">Email or Phone Number</Label>
+                            <Label htmlFor="email">{t('auth.email_or_phone')}</Label>
                             <Input
                                 id="email"
-                                placeholder="name@example.com or 0812345678"
+                                placeholder={t('auth.email_placeholder')}
                                 type="text"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
@@ -80,12 +87,12 @@ export default function LoginPage() {
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password">{t('settings.password_title')}</Label>
                                 <Link
                                     href="/auth/forgot-password"
                                     className="text-sm text-blue-600 hover:text-blue-500"
                                 >
-                                    Forgot password?
+                                    {t('auth.forgot_password')}
                                 </Link>
                             </div>
                             <Input
@@ -99,15 +106,15 @@ export default function LoginPage() {
                         </div>
                         <Button className="w-full" type="submit" disabled={isLoading}>
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Sign In
+                            {t('auth.sign_in')}
                         </Button>
                     </form>
                 </CardContent>
                 <CardFooter className="flex justify-center">
                     <div className="text-sm text-slate-500">
-                        Don&apos;t have an account?{" "}
+                        {t('auth.dont_have_account')}{" "}
                         <Link href="/auth/register" className="font-semibold text-blue-600 hover:text-blue-500">
-                            Sign up
+                            {t('auth.sign_up')}
                         </Link>
                     </div>
                 </CardFooter>
