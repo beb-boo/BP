@@ -77,6 +77,16 @@ class UserRegister(BaseModel):
 
     # validators
 
+    @model_validator(mode="before")
+    @classmethod
+    def pre_validate_empty_strings(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            fields_to_check = ['email', 'phone_number', 'citizen_id', 'medical_license', 'date_of_birth', 'gender', 'blood_type', 'timezone', 'height', 'weight']
+            for field in fields_to_check:
+                if data.get(field) == "":
+                    data[field] = None
+        return data
+
     @model_validator(mode="after")
     def validate_all(self) -> 'UserRegister':
         self.phone_number = validate_phone_number(

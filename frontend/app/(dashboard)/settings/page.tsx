@@ -465,7 +465,8 @@ export default function SettingsPage() {
                                 </div>
 
                                 {/* Security Prompt for Sensitive Changes */}
-                                {(email !== user?.email || phone !== user?.phone_number) && (
+                                {/* Normalize comparison to handle null vs empty string */}
+                                {((email || "") !== (user?.email || "") || (phone || "") !== (user?.phone_number || "")) && (
                                     <div className="space-y-4 mt-4">
                                         <Alert className="bg-amber-50 border-amber-200">
                                             <Lock className="h-4 w-4" />

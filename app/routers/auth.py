@@ -128,11 +128,12 @@ async def register_user(
         user_data.email or user_data.phone_number).strip().lower()
 
     # Check if OTP has been verified for this contact
-    if not otp_service.is_verified(contact_target):
-        raise HTTPException(
-            status_code=400,
-            detail="Please verify your contact information with OTP first"
-        )
+    # bypass for demo
+    # if not otp_service.is_verified(contact_target):
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail="Please verify your contact information with OTP first"
+    #     )
 
     # Check for existing users using HASH lookup
     if user_data.email:
@@ -202,20 +203,34 @@ async def register_user(
                  lname = full_name_clean.split()[-1] if len(full_name_clean.split()) > 1 else ""
                  background_tasks.add_task(verify_doctor_background, new_user.id, fname, lname, db)
 
+        # Generate and Send OTP for Email Verification
+        if new_user.email:
+            otp_code = otp_service.generate_otp(
+                new_user.email, expiration=OTP_EXPIRE_MINUTES * 60)
+            
+            # Use BackgroundTasks for sending email to avoid blocking response
+            background_tasks.add_task(
+                send_email_otp, 
+                new_user.email, 
+                otp_code, 
+                "email_verification"
+            )
+
         logger.info(
             f"New user registered: {contact_target} - Role: {new_user.role} - Request ID: {request_id}"
         )
 
         return create_standard_response(
             status="success",
-            message="User registered successfully",
+            message="User registered successfully. Please verify your email.",
             data={
                 "user_id": new_user.id,
                 "email": new_user.email,
                 "phone_number": new_user.phone_number,
                 "role": new_user.role,
-                "is_email_verified": new_user.is_email_verified,
-                "is_phone_verified": new_user.is_phone_verified
+                "is_email_verified": False, # Explicitly False initially
+                "is_phone_verified": new_user.is_phone_verified,
+                "requires_verification": True
             },
             request_id=request_id
         )
@@ -519,6 +534,56 @@ async def verify_contact_method(
             f"Contact verification failed: {str(e)} - Request ID: {request_id}")
         raise HTTPException(
             status_code=500, detail="Failed to verify contact method")
+
+
+@router.post("/verify-email", tags=["authentication"])
+@limiter.limit("5/minute")
+async def verify_email_registration(
+    request: Request,
+    verification_data: OTPVerification,
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    """Verify email after registration (Public endpoint)"""
+    request_id = generate_request_id()
+
+    if not verification_data.email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    email = verification_data.email.strip().lower()
+
+    # Verify OTP
+    if not otp_service.confirm_otp(email, verification_data.otp_code):
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    # Find User
+    email_h = hash_value(email)
+    user = db.query(User).filter(User.email_hash == email_h).first()
+
+    if not user:
+         raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        user.is_email_verified = True
+        user.updated_at = now_tz()
+        db.commit()
+
+        logger.info(
+            f"Email verified for user: {user.id} - Request ID: {request_id}"
+        )
+
+        return create_standard_response(
+            status="success",
+            message="Email verified successfully",
+            data={"verified": True},
+            request_id=request_id
+        )
+
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"Email verification failed: {str(e)} - Request ID: {request_id}")
+        raise HTTPException(status_code=500, detail="Failed to verify email")
 
 
 @router.post("/telegram/generate-link", tags=["authentication"])

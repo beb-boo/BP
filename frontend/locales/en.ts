@@ -162,6 +162,15 @@ export const en = {
         sign_in: "Sign In",
         dont_have_account: "Don't have an account?",
         sign_up: "Sign up",
-        login_success: "Login successful!"
+        login_success: "Login successful!",
+        invalid_email: "Invalid email address format",
+        password_min_length: "Password must be at least 8 characters long",
+        verify_email_title: "Verify Your Email",
+        verify_email_desc: "We have sent a verification code to your email:",
+        otp_placeholder: "Enter 4-digit code",
+        verify_btn: "Verify Email",
+        resend_otp: "Resend Code",
+        verify_success: "Email verified successfully! You can now login.",
+        verify_failed: "Invalid code. Please try again."
     }
 };

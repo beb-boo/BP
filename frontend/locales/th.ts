@@ -162,6 +162,15 @@ export const th = {
         sign_in: "เข้าสู่ระบบ",
         dont_have_account: "ยังไม่มีบัญชี?",
         sign_up: "ลงทะเบียน",
-        login_success: "เข้าสู่ระบบสำเร็จ!"
+        login_success: "เข้าสู่ระบบสำเร็จ!",
+        invalid_email: "รูปแบบอีเมลไม่ถูกต้อง",
+        password_min_length: "รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร",
+        verify_email_title: "ยืนยันอีเมลของคุณ",
+        verify_email_desc: "เราได้ส่งรหัสยืนยันไปยังอีเมลของคุณ:",
+        otp_placeholder: "กรอกรหัส 4 หลัก",
+        verify_btn: "ยืนยันอีเมล",
+        resend_otp: "ขอรหัสใหม่",
+        verify_success: "ยืนยันอีเมลสำเร็จ! คุณสามารถเข้าสู่ระบบได้แล้ว",
+        verify_failed: "รหัสไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง"
     }
 };

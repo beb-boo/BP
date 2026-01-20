@@ -47,8 +47,22 @@ export default function RegisterPage() {
 
         try {
             // Basic validation
+            // Basic validation
             if (!formData.email && !formData.phone_number) {
                 throw new Error("Email or Phone Number is required");
+            }
+
+            // Validate Email Format
+            if (formData.email) {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(formData.email)) {
+                    throw new Error(t('auth.invalid_email') || "Invalid email format");
+                }
+            }
+
+            // Validate Password Length
+            if (formData.password.length < 8) {
+                throw new Error(t('auth.password_min_length') || "Password must be at least 8 characters");
             }
 
             const payload = {
@@ -60,12 +74,15 @@ export default function RegisterPage() {
 
             await api.post("/auth/register", payload);
 
-            toast.success(t('auth.reg_success'));
-            router.push("/auth/login");
+            // Redirect to verify page with email
+            const encodedEmail = encodeURIComponent(formData.email);
+            toast.success(t('auth.reg_success')); // "Registration successful! Please login." -> Might want to update this text later or rely on next page context
+            router.push(`/auth/verify-otp?email=${encodedEmail}`);
 
         } catch (error: any) {
             console.error(error);
-            const msg = error.response?.data?.detail || t('common.error');
+            // Check for Axios response error first, then standard Error message, then fallback
+            const msg = error.response?.data?.detail || error.message || t('common.error');
             toast.error(msg);
         } finally {
             setIsLoading(false);
