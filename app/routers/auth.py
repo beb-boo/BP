@@ -17,7 +17,7 @@ from ..utils.encryption import encrypt_value, hash_value
 from ..utils.tmc_checker import verify_doctor_with_tmc
 import hashlib
 
-from ..utils.notification import send_email_otp, send_sms_otp, OTP_EXPIRE_MINUTES
+from ..utils.notification import send_email_otp, send_sms_otp, send_telegram_otp, OTP_EXPIRE_MINUTES
 import logging
 import uuid
 import secrets
@@ -50,7 +50,8 @@ def create_standard_response(status, message, data=None, request_id=None):
 async def request_otp(
     request: Request,
     otp_request: OTPRequest,
-    api_key: str = Depends(verify_api_key)
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
 ):
     request_id = generate_request_id()
 
@@ -58,6 +59,19 @@ async def request_otp(
     contact_target = (
         otp_request.email or otp_request.phone_number).strip().lower()
 
+    # Intelligent routing: Check if user has Telegram linked for phone requests
+    if contact_method == "sms":
+        # Find user by phone hash
+        phone_h = hash_value(contact_target)
+        user = db.query(User).filter(User.phone_number_hash == phone_h).first()
+        
+        # If user found and has telegram_id, switch to Telegram
+        if user and user.telegram_id:
+            logger.info(f"User {user.id} has Telegram linked. Switching OTP to Telegram.")
+            contact_method = "telegram"
+            # We use the telegram_id for sending, but keep phone for tracking if needed
+            # But the send_telegram_otp needs int ID
+            
     # Generate OTP
     otp_code = otp_service.generate_otp(
         contact_target, expiration=OTP_EXPIRE_MINUTES * 60)
@@ -67,7 +81,18 @@ async def request_otp(
     if contact_method == "email":
         send_success = send_email_otp(
             contact_target, otp_code, otp_request.purpose)
+    elif contact_method == "telegram":
+        # We need the user object here again (it must exist if we switched to telegram)
+        # Re-fetch or use from above scope? Python scope allows using 'user' from above if block
+        if user and user.telegram_id:
+            send_success = send_telegram_otp(
+                user.telegram_id, otp_code, otp_request.purpose)
+        else:
+            # Fallback to SMS if something weird happened
+            send_success = send_sms_otp(
+                contact_target, otp_code, otp_request.purpose)
     else:
+        # SMS
         send_success = send_sms_otp(
             contact_target, otp_code, otp_request.purpose)
 

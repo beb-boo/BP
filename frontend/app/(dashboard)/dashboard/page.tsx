@@ -329,7 +329,7 @@ function PatientView({ user }: { user: any }) {
                             <FilePlus className="w-4 h-4" /> {t('dashboard.add_record')}
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
+                    <DialogContent className="sm:max-w-[600px] md:max-w-[700px]">
                         <DialogHeader>
                             <DialogTitle>{t('record.add_title')}</DialogTitle>
                             <DialogDescription>
@@ -346,7 +346,7 @@ function PatientView({ user }: { user: any }) {
                             <TabsContent value="photo" className="space-y-4 py-4">
                                 <div className="grid w-full items-center gap-4">
                                     {previewUrl ? (
-                                        <div className="relative w-full h-48 bg-black/5 rounded-lg overflow-hidden flex items-center justify-center">
+                                        <div className="relative w-full h-64 md:h-96 bg-black/5 rounded-lg overflow-hidden flex items-center justify-center">
                                             <img src={previewUrl} alt="Preview" className="h-full object-contain" />
                                             <Button
                                                 variant="secondary"
@@ -395,7 +395,7 @@ function PatientView({ user }: { user: any }) {
                                     <div className="grid gap-4 py-4">
                                         {previewUrl && (
                                             <div className="flex justify-center mb-4">
-                                                <img src={previewUrl} alt="Reference" className="h-20 w-auto rounded border" />
+                                                <img src={previewUrl} alt="Reference" className="h-32 md:h-48 w-auto rounded border" />
                                             </div>
                                         )}
                                         <div className="grid grid-cols-4 items-center gap-4">

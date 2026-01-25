@@ -34,8 +34,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Token expired, invalid, or forbidden (e.g. stale session)
       Cookies.remove('token');
       Cookies.remove('user');
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth')) {

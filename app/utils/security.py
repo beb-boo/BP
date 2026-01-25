@@ -4,6 +4,7 @@ import bcrypt
 import jwt
 from datetime import datetime, timedelta
 from typing import Optional, List
+from pytz import UTC
 from fastapi import HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from sqlalchemy.orm import Session
@@ -113,17 +114,28 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Account deactivated")
 
     # Check if account is locked
-    if user.account_locked_until and user.account_locked_until > now_tz():
-        logger.warning(f"Account locked: {user_id}")
-        raise HTTPException(
-            status_code=423, detail="Account temporarily locked")
+    if user.account_locked_until:
+        # Ensure aware (DB might return naive)
+        locked_until = user.account_locked_until
+        if locked_until.tzinfo is None:
+            locked_until = UTC.localize(locked_until)
+            
+        if locked_until > now_tz():
+            logger.warning(f"Account locked: {user_id}")
+            raise HTTPException(
+                status_code=423, detail="Account temporarily locked")
 
     return user
 
 def is_account_locked(user: User) -> bool:
     """Check if user account is locked due to failed login attempts"""
-    if user.account_locked_until and user.account_locked_until > now_tz():
-        return True
+    if user.account_locked_until:
+        locked_until = user.account_locked_until
+        if locked_until.tzinfo is None:
+            locked_until = UTC.localize(locked_until)
+        
+        if locked_until > now_tz():
+            return True
     return False
 
 
