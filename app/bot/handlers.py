@@ -326,7 +326,10 @@ async def reg_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
     if len(password) < 8:
-        await update.message.reply_text("⚠️ Password must be at least 8 characters. Please try again:")
+        lang = context.user_data.get('register_lang', 'en')
+        err_msg = get_text("error_pwd_length", lang)
+        
+        await update.message.reply_text(err_msg)
         return REG_PASSWORD
     try:
         await update.message.delete()

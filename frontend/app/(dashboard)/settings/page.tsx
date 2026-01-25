@@ -207,6 +207,11 @@ export default function SettingsPage() {
             return;
         }
 
+        if (newPassword.length < 8) {
+            toast.error(t('auth.password_min_length', 'Password must be at least 8 characters'));
+            return;
+        }
+
         setIsChangingPwd(true);
         try {
             await api.post("/auth/change-password", {
@@ -220,7 +225,12 @@ export default function SettingsPage() {
             setNewPassword("");
             setConfirmPassword("");
         } catch (error: any) {
-            toast.error(error.response?.data?.detail || t('common.error'));
+            let msg = error.response?.data?.detail || t('common.error');
+            // Handle validation errors (422)
+            if (Array.isArray(msg)) {
+                msg = msg.map((err: any) => err.msg).join(", ");
+            }
+            toast.error(msg);
         } finally {
             setIsChangingPwd(false);
         }
