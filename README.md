@@ -3,9 +3,9 @@
 A comprehensive platform for tracking blood pressure, managing doctor-patient relationships, and empowering users with their health data.
 
 **Key Components:**
-17.  **Backend API**: Fast, Secure (Fernet Encryption), and Scalable (FastAPI).
-8.  **Telegram Bot**: AI-powered OCR with "Human-in-the-loop" confirmation for accuracy.
-9.  **Web Application**: Modern dashboard with visual analytics and Smart OCR integration.
+**Backend API**: Fast, Secure (Fernet Encryption), and Scalable (FastAPI).
+**Telegram Bot**: AI-powered OCR with "Human-in-the-loop" confirmation for accuracy.
+**Web Application**: Modern dashboard with visual analytics and Smart OCR integration.
 
 ---
 

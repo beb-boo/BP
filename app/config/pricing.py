@@ -30,13 +30,13 @@ SUBSCRIPTION_PLANS: Dict[str, dict] = {
                 "บันทึกความดันได้ไม่จำกัด",
                 "ดูประวัติย้อนหลังทั้งหมด",
                 "Export ข้อมูลไม่จำกัด",
-                "ประหยัด 8 บาท (เทียบกับรายเดือน)"
+                "ประหยัด 9 บาท (เทียบกับรายเดือน)"
             ],
             "en": [
                 "Unlimited BP records",
                 "Full history access",
                 "Unlimited data export",
-                "Save 8 THB (vs Monthly)"
+                "Save 9 THB (vs Monthly)"
             ]
         }
     }
@@ -47,8 +47,8 @@ PAYMENT_ACCOUNT = {
     "bank": "ธนาคารกสิกรไทย",
     "bank_en": "Kasikorn Bank (KBank)",
     "bank_code": "004",
-    "account_number": "123-4-56789-0",  # Example - User to config
-    "account_name": "บริษัท บีพี มอนิเตอร์ จำกัด"          
+    "account_number": "000-0-00000-0",  # Example - User to config
+    "account_name": "Your Name"          
 }
 
 AMOUNT_TOLERANCE = 0.50  # ยอมรับความคลาดเคลื่อน 0.50 บาท
