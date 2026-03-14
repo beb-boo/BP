@@ -47,15 +47,17 @@ export function BPChart({ data, userDob }: BPChartProps) {
     const age = calculateAge(userDob);
     const limits = getBPLimits(age);
 
-    // Sort data by date ascending for the chart
-    // Sort data by date ascending for the chart
+    // Sort data by date ascending for the chart (old → new, left → right)
     const chartData = [...data].sort((a, b) => {
-        const dateA = new Date(`${a.measurement_date}T${a.measurement_time || '00:00'}`);
-        const dateB = new Date(`${b.measurement_date}T${b.measurement_time || '00:00'}`);
+        // Extract date part only (handle both "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS" from API)
+        const datePartA = a.measurement_date.split('T')[0];
+        const datePartB = b.measurement_date.split('T')[0];
+        const dateA = new Date(`${datePartA}T${a.measurement_time || '00:00'}`);
+        const dateB = new Date(`${datePartB}T${b.measurement_time || '00:00'}`);
         return dateA.getTime() - dateB.getTime();
     }).map(d => ({
         ...d,
-        fullDate: `${d.measurement_date}`
+        fullDate: d.measurement_date.split('T')[0]
     }));
 
     // Calculate Y-Axis Domain explicitly to ensure Reference Lines are visible
@@ -73,7 +75,7 @@ export function BPChart({ data, userDob }: BPChartProps) {
             <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? '#334155' : '#e2e8f0'} />
                 <XAxis
-                    dataKey="measurement_date"
+                    dataKey="fullDate"
                     tickFormatter={(str) => new Date(str).toLocaleDateString("en-GB", { day: 'numeric', month: 'numeric' })}
                     stroke="#94a3b8"
                     fontSize={12}

@@ -227,11 +227,11 @@ class BotService:
         from datetime import timedelta
         
         with SessionLocal() as db:
-            # Get last 5 records (Any date)
+            # Get last 30 records (Any date)
             recent = db.query(BloodPressureRecord)\
                 .filter(BloodPressureRecord.user_id == user_id)\
                 .order_by(BloodPressureRecord.measurement_date.desc(), BloodPressureRecord.created_at.desc())\
-                .limit(5)\
+                .limit(30)\
                 .all()
                 
             # Get average of last N RECORDS (Count-based, aligning with Web Logic)

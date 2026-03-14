@@ -67,10 +67,15 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
 
     try:
         img = PIL.Image.open(image_path)
+        img.verify()  # Verify it's a valid image
+        img = PIL.Image.open(image_path)  # Re-open after verify (verify closes it)
     except FileNotFoundError:
         return OCRResult(error="Image not found")
+    except PIL.Image.UnidentifiedImageError:
+        return OCRResult(error="Unsupported image format. Please send as JPEG or PNG.")
     except Exception as e:
-        return OCRResult(error=f"Error opening image: {str(e)}")
+        logger.error(f"Error opening image {image_path}: {e}")
+        return OCRResult(error=f"Cannot read image. Please try JPEG or PNG format.")
 
     prompt = """
     Analyze this blood pressure monitor screen image:

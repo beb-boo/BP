@@ -19,7 +19,11 @@ from .utils.rate_limiter import limiter
 from .routers import auth, users, bp_records, ocr, doctor, export, payment
 
 # Load environment variables
-load_dotenv()
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+else:
+    load_dotenv()
 
 # Configure logging
 logging.basicConfig(

@@ -393,8 +393,30 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
     photo_file = None
+    file_ext = ".jpg"  # default for photos sent as photo (Telegram converts to JPEG)
+
     if update.message.document:
-        photo_file = await update.message.document.get_file()
+        doc = update.message.document
+        # Validate MIME type
+        if doc.mime_type and not doc.mime_type.startswith("image/"):
+            await update.message.reply_text("❌ Please send an image file (JPEG, PNG, etc.)")
+            return ConversationHandler.END
+
+        # Extract correct file extension from original filename or MIME type
+        if doc.file_name:
+            _, ext = os.path.splitext(doc.file_name)
+            if ext:
+                file_ext = ext.lower()
+        elif doc.mime_type:
+            mime_ext_map = {
+                "image/jpeg": ".jpg", "image/png": ".png",
+                "image/webp": ".webp", "image/gif": ".gif",
+                "image/bmp": ".bmp", "image/tiff": ".tiff",
+                "image/heic": ".heic", "image/heif": ".heif",
+            }
+            file_ext = mime_ext_map.get(doc.mime_type, ".jpg")
+
+        photo_file = await doc.get_file()
     elif update.message.photo:
         photo_file = await update.message.photo[-1].get_file()
     else:
@@ -402,11 +424,33 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
     processing_msg = await update.message.reply_text("🔍 Analyzing image...")
-    
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
         await photo_file.download_to_drive(temp_file.name)
         temp_path = temp_file.name
-        
+
+    # Convert HEIC/HEIF to JPEG if needed (PIL doesn't support HEIC natively)
+    if file_ext.lower() in (".heic", ".heif"):
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            # If pillow-heif not installed, try converting with subprocess (sips on macOS)
+            try:
+                import subprocess
+                converted_path = temp_path.rsplit(".", 1)[0] + ".jpg"
+                subprocess.run(["sips", "-s", "format", "jpeg", temp_path, "--out", converted_path],
+                              capture_output=True, timeout=10)
+                if os.path.exists(converted_path):
+                    os.unlink(temp_path)
+                    temp_path = converted_path
+            except Exception:
+                os.unlink(temp_path)
+                await processing_msg.edit_text(
+                    "❌ HEIC format is not supported. Please convert to JPEG or PNG and try again."
+                )
+                return ConversationHandler.END
+
     try:
         ocr_result = read_blood_pressure_with_gemini(temp_path)
         os.unlink(temp_path)

@@ -1,0 +1,66 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Backend: FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--reload",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8888"
+            ],
+            "jinja": true,
+            "envFile": "${workspaceFolder}/app/.env"
+        },
+        {
+            "name": "Backend: Telegram Bot",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "app.bot.main",
+            "envFile": "${workspaceFolder}/app/.env",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Frontend: Web Dashboard",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run dev",
+            "cwd": "${workspaceFolder}/frontend"
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/app/.env"
+        },
+        {
+            "name": "Python: Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests"
+            ],
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/app/.env"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack (API + Bot)",
+            "configurations": [
+                "Backend: FastAPI",
+                "Backend: Telegram Bot"
+            ]
+        }
+    ]
+}

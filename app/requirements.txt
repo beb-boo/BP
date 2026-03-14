@@ -20,6 +20,7 @@ google-generativeai
 python-telegram-bot
 phonenumbers
 pillow
+pillow-heif  # HEIC/HEIF image support (iPhone photos)
 httpx
 requests
 
