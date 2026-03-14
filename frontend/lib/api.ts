@@ -22,7 +22,8 @@ api.interceptors.request.use(
     // For web app, we might need a public key or backend should allow web origin without it?
     // Our backend requires X-API-Key. We should probably set a default one for Web.
     // Ideally this is bad practice for public web, but for internal/demo it's fine.
-    config.headers['X-API-Key'] = 'bp-web-app-key';
+    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'bp-web-app-key';
+    config.headers['X-API-Key'] = apiKey;
     return config;
   },
   (error) => {

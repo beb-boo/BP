@@ -33,7 +33,6 @@ LOCALES = {
         "btn_change_lang": "🌐 Language",
         "btn_change_tz": "🕐 Timezone",
         "tz_select": "Please select your timezone:",
-        "tz_select": "Please select your timezone:",
         "tz_set": "✅ Timezone set to {tz}.",
         "error_pwd_length": "⚠️ Password must be at least 8 characters. Please try again:"
     },
@@ -69,7 +68,6 @@ LOCALES = {
         "settings_timezone": "🕐 เขตเวลา: {tz}",
         "btn_change_lang": "🌐 ภาษา",
         "btn_change_tz": "🕐 เขตเวลา",
-        "tz_select": "กรุณาเลือกเขตเวลาของคุณ:",
         "tz_select": "กรุณาเลือกเขตเวลาของคุณ:",
         "tz_set": "✅ ตั้งค่าเขตเวลาเป็น {tz} เรียบร้อยครับ",
         "error_pwd_length": "⚠️ รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร กรุณาลองใหม่อีกครั้ง:"

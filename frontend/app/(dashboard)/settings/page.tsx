@@ -216,7 +216,8 @@ export default function SettingsPage() {
         try {
             await api.post("/auth/change-password", {
                 current_password: currentPassword,
-                new_password: newPassword
+                new_password: newPassword,
+                confirm_new_password: confirmPassword
             });
             toast.success(t('settings.password_changed'));
 

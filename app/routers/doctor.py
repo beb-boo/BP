@@ -421,11 +421,11 @@ async def cancel_access_request(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    request_id = generate_request_id()
-    
+    req_uuid = generate_request_id()
+
     if current_user.role != "doctor":
         raise HTTPException(status_code=403, detail="Doctor only")
-        
+
     req = db.query(AccessRequest).filter(
         AccessRequest.id == request_id,
         AccessRequest.doctor_id == current_user.id,
@@ -437,9 +437,9 @@ async def cancel_access_request(
         
     db.delete(req) # or update status = cancelled
     db.commit()
-    
+
     return create_standard_response(
         status="success",
         message="Request cancelled",
-        request_id=request_id
+        request_id=req_uuid
     )

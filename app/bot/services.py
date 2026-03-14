@@ -30,15 +30,21 @@ class BotService:
 
     @staticmethod
     def get_user_by_phone(phone_number: str):
-        """Find a user by phone number."""
+        """Find a user by phone number via hash lookup."""
+        phone_h = hash_value(phone_number)
+        if not phone_h:
+            return None
         with SessionLocal() as db:
-            return db.query(User).filter(User.phone_number == phone_number).first()
+            return db.query(User).filter(User.phone_number_hash == phone_h).first()
 
     @staticmethod
     def verify_user_password(phone_number: str, password: str) -> User | None:
         """Verify password for a given phone number."""
+        phone_h = hash_value(phone_number)
+        if not phone_h:
+            return None
         with SessionLocal() as db:
-            user = db.query(User).filter(User.phone_number == phone_number).first()
+            user = db.query(User).filter(User.phone_number_hash == phone_h).first()
             if user and verify_password(password, user.password_hash):
                 return user
             return None

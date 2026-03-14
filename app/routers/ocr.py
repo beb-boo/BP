@@ -4,15 +4,13 @@ import tempfile
 import os
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from ..schemas import StandardResponse, OCRResult
 from ..utils.ocr_helper import read_blood_pressure_with_gemini
+from ..utils.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/v1", tags=["blood pressure"])
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())

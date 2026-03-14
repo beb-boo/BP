@@ -428,9 +428,7 @@ function PatientView({ user }: { user: any }) {
                     </DialogContent>
                 </Dialog>
 
-                <Button variant="outline" className="gap-2" onClick={() => toast.info(t('common.coming_soon'))}>
-                    <Users className="w-4 h-4" /> {t('common.manage_doctors')}
-                </Button>
+                <ManageDoctorsDialog />
             </div>
 
             {/* Trends Chart */}
@@ -528,8 +526,205 @@ function PatientView({ user }: { user: any }) {
     );
 }
 
+function ManageDoctorsDialog() {
+    const { t } = useLanguage();
+    const [open, setOpen] = useState(false);
+    const [doctors, setDoctors] = useState<any[]>([]);
+    const [requests, setRequests] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [searchId, setSearchId] = useState("");
+    const [authorizing, setAuthorizing] = useState(false);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [docRes, reqRes] = await Promise.all([
+                api.get("/patient/authorized-doctors"),
+                api.get("/patient/access-requests")
+            ]);
+            setDoctors(docRes.data.data.doctors || []);
+            setRequests(reqRes.data.data.requests || []);
+        } catch (e) {
+            console.error("Failed to fetch doctor data", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (open) fetchData();
+    }, [open]);
+
+    const handleApprove = async (requestId: number) => {
+        try {
+            await api.post(`/patient/access-requests/${requestId}/approve`);
+            toast.success(t('doctor.request_approved', 'Request approved'));
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        }
+    };
+
+    const handleReject = async (requestId: number) => {
+        try {
+            await api.post(`/patient/access-requests/${requestId}/reject`);
+            toast.success(t('doctor.request_rejected', 'Request rejected'));
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        }
+    };
+
+    const handleRemoveDoctor = async (doctorId: number) => {
+        try {
+            await api.delete(`/patient/authorized-doctors/${doctorId}`);
+            toast.success(t('doctor.removed', 'Doctor removed'));
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        }
+    };
+
+    const handleAuthorize = async () => {
+        if (!searchId) return;
+        setAuthorizing(true);
+        try {
+            await api.post("/patient/authorize-doctor", { doctor_id: parseInt(searchId) });
+            toast.success(t('doctor.authorized', 'Doctor authorized'));
+            setSearchId("");
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        } finally {
+            setAuthorizing(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                    <Users className="w-4 h-4" /> {t('common.manage_doctors', 'Manage Doctors')}
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[600px]">
+                <DialogHeader>
+                    <DialogTitle>{t('common.manage_doctors', 'Manage Doctors')}</DialogTitle>
+                    <DialogDescription>{t('doctor.manage_desc', 'Manage your authorized doctors and pending requests')}</DialogDescription>
+                </DialogHeader>
+
+                {loading ? (
+                    <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                ) : (
+                    <div className="space-y-6">
+                        {/* Authorize new doctor */}
+                        <div className="flex gap-2">
+                            <Input
+                                placeholder={t('doctor.enter_id', 'Doctor ID')}
+                                value={searchId}
+                                onChange={e => setSearchId(e.target.value)}
+                                type="number"
+                            />
+                            <Button onClick={handleAuthorize} disabled={authorizing || !searchId}>
+                                {authorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('doctor.authorize', 'Authorize')}
+                            </Button>
+                        </div>
+
+                        {/* Pending requests */}
+                        {requests.length > 0 && (
+                            <div>
+                                <h4 className="font-medium mb-2">{t('doctor.pending_requests', 'Pending Requests')}</h4>
+                                {requests.map((req: any) => (
+                                    <div key={req.request_id} className="flex items-center justify-between p-2 border rounded mb-2">
+                                        <span className="text-sm">{req.doctor_name}</span>
+                                        <div className="flex gap-2">
+                                            <Button size="sm" onClick={() => handleApprove(req.request_id)}>{t('common.approve', 'Approve')}</Button>
+                                            <Button size="sm" variant="outline" onClick={() => handleReject(req.request_id)}>{t('common.reject', 'Reject')}</Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Authorized doctors */}
+                        <div>
+                            <h4 className="font-medium mb-2">{t('doctor.authorized_doctors', 'Authorized Doctors')}</h4>
+                            {doctors.length === 0 ? (
+                                <p className="text-sm text-slate-500">{t('doctor.no_doctors', 'No authorized doctors')}</p>
+                            ) : (
+                                doctors.map((doc: any) => (
+                                    <div key={doc.doctor_id} className="flex items-center justify-between p-2 border rounded mb-2">
+                                        <div>
+                                            <span className="text-sm font-medium">{doc.full_name}</span>
+                                            {doc.hospital && <span className="text-xs text-slate-500 ml-2">{doc.hospital}</span>}
+                                        </div>
+                                        <Button size="sm" variant="destructive" onClick={() => handleRemoveDoctor(doc.doctor_id)}>
+                                            {t('common.remove', 'Remove')}
+                                        </Button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function DoctorView({ user }: { user: any }) {
     const { t } = useLanguage();
+    const [patients, setPatients] = useState<any[]>([]);
+    const [accessRequests, setAccessRequests] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchPatientId, setSearchPatientId] = useState("");
+    const [requesting, setRequesting] = useState(false);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [patientsRes, requestsRes] = await Promise.all([
+                api.get("/doctor/patients"),
+                api.get("/doctor/access-requests")
+            ]);
+            setPatients(patientsRes.data.data.patients || []);
+            setAccessRequests(requestsRes.data.data.requests || []);
+        } catch (e) {
+            console.error("Failed to fetch doctor data", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const handleRequestAccess = async () => {
+        if (!searchPatientId) return;
+        setRequesting(true);
+        try {
+            await api.post("/doctor/request-access", { patient_id: parseInt(searchPatientId) });
+            toast.success(t('doctor.request_sent', 'Access request sent'));
+            setSearchPatientId("");
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        } finally {
+            setRequesting(false);
+        }
+    };
+
+    const handleCancelRequest = async (requestId: number) => {
+        try {
+            await api.delete(`/doctor/access-requests/${requestId}`);
+            toast.success(t('doctor.request_cancelled', 'Request cancelled'));
+            fetchData();
+        } catch (e: any) {
+            toast.error(e.response?.data?.detail || t('common.error'));
+        }
+    };
+
+    const pendingRequests = accessRequests.filter((r: any) => r.status === "pending");
+
     return (
         <div className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -539,7 +734,7 @@ function DoctorView({ user }: { user: any }) {
                         <Users className="h-4 w-4 text-slate-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">12</div>
+                        <div className="text-2xl font-bold">{patients.length}</div>
                         <p className="text-xs text-slate-500">{t('doctor.active_monitoring')}</p>
                     </CardContent>
                 </Card>
@@ -549,11 +744,31 @@ function DoctorView({ user }: { user: any }) {
                         <Calendar className="h-4 w-4 text-orange-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">3</div>
+                        <div className="text-2xl font-bold">{pendingRequests.length}</div>
                         <p className="text-xs text-slate-500">{t('doctor.requires_approval')}</p>
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Search & Request Access */}
+            <Card>
+                <CardHeader>
+                    <CardTitle>{t('doctor.request_access', 'Request Patient Access')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-2">
+                        <Input
+                            placeholder={t('doctor.enter_patient_id', 'Patient ID')}
+                            value={searchPatientId}
+                            onChange={e => setSearchPatientId(e.target.value)}
+                            type="number"
+                        />
+                        <Button onClick={handleRequestAccess} disabled={requesting || !searchPatientId}>
+                            {requesting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('doctor.send_request', 'Send Request')}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
 
             <Tabs defaultValue="patients" className="space-y-4">
                 <TabsList>
@@ -566,7 +781,85 @@ function DoctorView({ user }: { user: any }) {
                             <CardTitle>{t('doctor.patient_list')}</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-slate-500 text-sm">{t('common.loading')} (Demo)</div>
+                            {loading ? (
+                                <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                            ) : patients.length === 0 ? (
+                                <p className="text-sm text-slate-500">{t('doctor.no_patients', 'No patients yet')}</p>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>{t('settings.full_name', 'Name')}</TableHead>
+                                            <TableHead>{t('settings.gender', 'Gender')}</TableHead>
+                                            <TableHead>{t('doctor.age', 'Age')}</TableHead>
+                                            <TableHead></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {patients.map((p: any) => (
+                                            <TableRow key={p.patient_id}>
+                                                <TableCell className="font-medium">{p.full_name}</TableCell>
+                                                <TableCell>{p.gender || "-"}</TableCell>
+                                                <TableCell>{p.age || "-"}</TableCell>
+                                                <TableCell>
+                                                    <Button size="sm" variant="outline" onClick={() => toast.info(`View records for patient ${p.patient_id}`)}>
+                                                        {t('doctor.view_records', 'View Records')}
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+                <TabsContent value="requests" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>{t('doctor.access_requests')}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            {loading ? (
+                                <div className="flex justify-center py-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                            ) : accessRequests.length === 0 ? (
+                                <p className="text-sm text-slate-500">{t('doctor.no_requests', 'No access requests')}</p>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>{t('doctor.patient_name', 'Patient')}</TableHead>
+                                            <TableHead>{t('common.status', 'Status')}</TableHead>
+                                            <TableHead>{t('record.date', 'Date')}</TableHead>
+                                            <TableHead></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {accessRequests.map((req: any) => (
+                                            <TableRow key={req.request_id}>
+                                                <TableCell className="font-medium">{req.patient_name}</TableCell>
+                                                <TableCell>
+                                                    <span className={`px-2 py-1 rounded-full text-xs ${
+                                                        req.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                                        req.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-red-100 text-red-700'
+                                                    }`}>
+                                                        {req.status}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell>{new Date(req.created_at).toLocaleDateString()}</TableCell>
+                                                <TableCell>
+                                                    {req.status === 'pending' && (
+                                                        <Button size="sm" variant="ghost" onClick={() => handleCancelRequest(req.request_id)}>
+                                                            {t('common.cancel', 'Cancel')}
+                                                        </Button>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>

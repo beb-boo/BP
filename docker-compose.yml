@@ -14,15 +14,53 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    container_name: bp_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
   fastapi:
     build: .
     container_name: bp_fastapi
     ports:
-      - "8000:80"
+      - "8888:80"
     depends_on:
       - postgres
+      - redis
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://bp_user:bp_pass@postgres:5432/bp_db
+      REDIS_URL: redis://redis:6379/0
+      AUTO_CREATE_TABLES: "true"
+      BOT_MODE: "disabled"
+
+  bot:
+    build: .
+    container_name: bp_bot
+    command: ["python", "-m", "app.bot.main"]
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://bp_user:bp_pass@postgres:5432/bp_db
+      REDIS_URL: redis://redis:6379/0
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bp_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://fastapi/api/v1
+    depends_on:
+      - fastapi
 
 volumes:
   pgdata:

@@ -5,13 +5,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 
 # Import database setup
 from .database import engine, Base
+
+# Import centralized rate limiter
+from .utils.rate_limiter import limiter
 
 # Import routers
 from .routers import auth, users, bp_records, ocr, doctor, export, payment
@@ -26,11 +28,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-# Initialize Limiter
-limiter = Limiter(key_func=get_remote_address)
+# Create tables (controlled by ENV)
+AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "true").lower() == "true"
+if AUTO_CREATE_TABLES:
+    Base.metadata.create_all(bind=engine)
 
 # Create App
 app = FastAPI(
@@ -70,6 +71,16 @@ app.include_router(ocr.router)
 app.include_router(doctor.router)
 app.include_router(export.router)
 app.include_router(payment.router)
+
+# Telegram Bot Webhook (conditional)
+BOT_MODE = os.getenv("BOT_MODE", "polling")
+if BOT_MODE == "webhook":
+    try:
+        from .bot.webhook import router as bot_webhook_router
+        app.include_router(bot_webhook_router)
+        logger.info("Telegram Bot: Webhook mode enabled at /bot/webhook")
+    except Exception as e:
+        logger.error(f"Failed to load bot webhook: {e}")
 
 
 @app.get("/")

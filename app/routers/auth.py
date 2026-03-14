@@ -24,14 +24,11 @@ import secrets
 import os
 from datetime import timedelta
 from ..otp_service import otp_service
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from ..utils.rate_limiter import limiter
 
 # Setup
 router = APIRouter(prefix="/api/v1/auth", tags=["authentication"])
 logger = logging.getLogger(__name__)
-
-limiter = Limiter(key_func=get_remote_address)
 
 def generate_request_id() -> str:
     return str(uuid.uuid4())
@@ -153,12 +150,13 @@ async def register_user(
         user_data.email or user_data.phone_number).strip().lower()
 
     # Check if OTP has been verified for this contact
-    # bypass for demo
-    # if not otp_service.is_verified(contact_target):
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail="Please verify your contact information with OTP first"
-    #     )
+    BYPASS_OTP = os.getenv("BYPASS_OTP", "false").lower() == "true"
+    if not BYPASS_OTP:
+        if not otp_service.is_verified(contact_target):
+            raise HTTPException(
+                status_code=400,
+                detail="Please verify your contact information with OTP first"
+            )
 
     # Check for existing users using HASH lookup
     if user_data.email:

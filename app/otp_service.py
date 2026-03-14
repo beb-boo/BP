@@ -1,83 +1,123 @@
-import threading
+import os
 import time
 import base64
 import hashlib
+import logging
 import pyotp
+
+logger = logging.getLogger(__name__)
+REDIS_URL = os.getenv("REDIS_URL")
+
+
+class MemoryOTPBackend:
+    """In-memory OTP storage - for dev/local/non-serverless"""
+
+    def __init__(self):
+        self.storage = {}
+        self.verified = set()
+        import threading
+        threading.Thread(target=self._cleanup, daemon=True).start()
+
+    def store(self, key, otp_data):
+        self.storage[key] = otp_data
+
+    def get(self, key):
+        return self.storage.get(key)
+
+    def delete(self, key):
+        self.storage.pop(key, None)
+
+    def mark_verified(self, key):
+        self.verified.add(key)
+
+    def is_verified(self, key):
+        return key in self.verified
+
+    def _cleanup(self):
+        while True:
+            now = time.time()
+            expired = [k for k, v in self.storage.items()
+                       if now - v['created_at'] > v['expiration']]
+            for k in expired:
+                del self.storage[k]
+            time.sleep(120)
+
+
+class RedisOTPBackend:
+    """Redis-backed OTP storage - for production/serverless"""
+
+    def __init__(self, redis_url):
+        import redis
+        self.client = redis.from_url(redis_url, decode_responses=True)
+        self.prefix = "otp:"
+        self.verified_prefix = "otp_verified:"
+
+    def store(self, key, otp_data):
+        import json
+        ttl = int(otp_data.get('expiration', 300))
+        self.client.setex(f"{self.prefix}{key}", ttl + 60, json.dumps(otp_data))
+
+    def get(self, key):
+        import json
+        data = self.client.get(f"{self.prefix}{key}")
+        return json.loads(data) if data else None
+
+    def delete(self, key):
+        self.client.delete(f"{self.prefix}{key}")
+
+    def mark_verified(self, key):
+        self.client.setex(f"{self.verified_prefix}{key}", 600, "1")
+
+    def is_verified(self, key):
+        return self.client.exists(f"{self.verified_prefix}{key}") > 0
 
 
 class OTPService:
-    """One Time Password service supporting email or phone."""
+    """OTP service with auto-selected backend (Memory or Redis)"""
 
     def __init__(self):
-        self.otp_storage = {}
-        self.verified_contacts = set()
-        threading.Thread(target=self.cleanup_expired_otp, daemon=True).start()
+        if REDIS_URL:
+            try:
+                self.backend = RedisOTPBackend(REDIS_URL)
+                logger.info("OTP Service: Using Redis backend")
+            except Exception as e:
+                logger.warning(f"Redis failed ({e}), falling back to memory")
+                self.backend = MemoryOTPBackend()
+        else:
+            self.backend = MemoryOTPBackend()
+            logger.info("OTP Service: Using in-memory backend")
 
-    def generate_otp(self, contact_target, expiration=60):
-        """Generate an OTP for a given contact (email or phone)"""
+    def generate_otp(self, contact_target, expiration=300):
         contact_target = contact_target.strip().lower()
-        hex_key = self._get_hex_key_for_contact(contact_target)
-        byte_key = bytes.fromhex(hex_key)
-        base32_key = base64.b32encode(byte_key).decode('utf-8')
-
+        hex_key = hashlib.sha256(contact_target.encode()).hexdigest()
+        base32_key = base64.b32encode(bytes.fromhex(hex_key)).decode('utf-8')
         totp = pyotp.TOTP(base32_key, digits=4, interval=expiration)
         otp = totp.now()
-
-        # เก็บ TOTP object และเวลาที่สร้างใน storage
-        self.otp_storage[contact_target] = {
-            'totp': totp,
+        self.backend.store(contact_target, {
+            'base32_key': base32_key,
+            'interval': expiration,
             'created_at': time.time(),
             'expiration': expiration
-        }
+        })
         return otp
 
     def confirm_otp(self, contact_target, otp):
-        """Verify OTP for email or phone"""
         contact_target = contact_target.strip().lower()
-        user_otp_data = self.otp_storage.get(contact_target)
-        if not user_otp_data:
+        data = self.backend.get(contact_target)
+        if not data:
             return False
-
-        totp = user_otp_data['totp']
-        created_at = user_otp_data['created_at']
-        expiration = user_otp_data['expiration']
-
-        # ตรวจสอบว่า OTP หมดอายุหรือไม่
-        if time.time() - created_at > expiration:
-            del self.otp_storage[contact_target]
+        if time.time() - data['created_at'] > data['expiration']:
+            self.backend.delete(contact_target)
             return False
-
+        totp = pyotp.TOTP(data['base32_key'], digits=4, interval=data['interval'])
         if totp.verify(otp, valid_window=1):
-            self.verified_contacts.add(contact_target)
+            self.backend.mark_verified(contact_target)
             return True
-
         return False
 
     def is_verified(self, contact_target):
-        """Check if contact (email or phone) has successfully verified OTP"""
-        return contact_target.strip().lower() in self.verified_contacts
+        return self.backend.is_verified(contact_target.strip().lower())
 
-    def get_time_remaining(self, contact_target):
-        """Return seconds before OTP expires"""
-        contact_target = contact_target.strip().lower()
-        user_otp_data = self.otp_storage.get(contact_target)
-        if not user_otp_data:
-            return None
-        totp = user_otp_data['totp']
-        current_time = time.time()
-        return totp.interval - (current_time % totp.interval)
-
-    def _get_hex_key_for_contact(self, contact_target):
-        return hashlib.sha256(contact_target.encode()).hexdigest()
-
-    def cleanup_expired_otp(self):
-        while True:
-            current_time = time.time()
-            for target in list(self.otp_storage.keys()):
-                otp_data = self.otp_storage[target]
-                if current_time - otp_data['created_at'] > otp_data['expiration']:
-                    del self.otp_storage[target]
-            time.sleep(120)
 
 # Global Instance
 otp_service = OTPService()

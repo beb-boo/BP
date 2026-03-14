@@ -60,9 +60,27 @@ function VerifyContent() {
         }
     };
 
+    const [resendTimer, setResendTimer] = useState(0);
+
+    useEffect(() => {
+        if (resendTimer > 0) {
+            const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000);
+            return () => clearTimeout(timer);
+        }
+    }, [resendTimer]);
+
     const handleResend = async () => {
-        // Implement resend logic if needed (call /request-otp)
-        toast.info("Resend feature coming soon");
+        if (resendTimer > 0 || !email) return;
+        try {
+            await api.post("/auth/request-otp", {
+                email: email,
+                purpose: "email_verification"
+            });
+            toast.success(t('auth.otp_sent', 'OTP sent to your email'));
+            setResendTimer(60);
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || t('auth.resend_failed', 'Failed to resend OTP'));
+        }
     };
 
     return (
@@ -95,8 +113,8 @@ function VerifyContent() {
                 </form>
             </CardContent>
             <CardFooter className="flex justify-center">
-                <Button variant="link" onClick={handleResend} className="text-sm text-slate-500">
-                    {t('auth.resend_otp')}
+                <Button variant="link" onClick={handleResend} disabled={resendTimer > 0} className="text-sm text-slate-500">
+                    {resendTimer > 0 ? `${t('auth.resend_otp')} (${resendTimer}s)` : t('auth.resend_otp')}
                 </Button>
             </CardFooter>
         </Card>

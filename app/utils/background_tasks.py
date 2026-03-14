@@ -1,3 +1,11 @@
+import logging
+from sqlalchemy.orm import Session
+from ..models import User
+from ..utils.tmc_checker import verify_doctor_with_tmc
+from ..utils.timezone import now_tz
+
+logger = logging.getLogger(__name__)
+
 
 async def verify_doctor_background(user_id: int, first_name: str, last_name: str, db: Session):
     """
@@ -22,7 +30,7 @@ async def verify_doctor_background(user_id: int, first_name: str, last_name: str
             
         result = await verify_doctor_with_tmc(first_name, last_name)
         
-        user.verification_logs = f"Auto-Check at {now_th()}: {result['message']} - {result['details']}"
+        user.verification_logs = f"Auto-Check at {now_tz()}: {result['message']} - {result['details']}"
         
         if result['verified']:
             user.verification_status = "verified"

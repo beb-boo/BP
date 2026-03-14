@@ -324,8 +324,6 @@ async def get_bp_stats(
     diastolic_values = [r.diastolic for r in records]
     pulse_values = [r.pulse for r in records]
 
-    pulse_values = [r.pulse for r in records]
-
     # total_all_time is already calculated above
 
     stats = {

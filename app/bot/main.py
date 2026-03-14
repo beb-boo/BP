@@ -25,7 +25,7 @@ async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         msg_type = "unknown"
         content = ""
-        
+
         if update.message:
             if update.message.text:
                 msg_type = "text"
@@ -39,7 +39,7 @@ async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif update.callback_query:
             msg_type = "callback"
             content = f"Data: {update.callback_query.data}"
-        
+
         if content:
             BotLogService.log(
                 telegram_id=user.id,
@@ -70,35 +70,35 @@ async def connection_monitor(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Monitor successfully received updates to log reconnection."""
     global IS_CONNECTION_LOST
     if IS_CONNECTION_LOST:
-        logger.info("✅ Connection restored! Resuming update processing...")
+        logger.info("Connection restored! Resuming update processing...")
         IS_CONNECTION_LOST = False
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log the error and handle connection issues gracefully."""
     global IS_CONNECTION_LOST
-    
-    # If it's a network error, we can just log a simple message
+
     if isinstance(context.error, NetworkError):
         if not IS_CONNECTION_LOST:
-            logger.warning(f"⚠️ Network Error detected: {context.error}. Retrying...")
+            logger.warning(f"Network Error detected: {context.error}. Retrying...")
             IS_CONNECTION_LOST = True
         return
 
     if isinstance(context.error, TimedOut):
         if not IS_CONNECTION_LOST:
-            logger.warning("⚠️ Request Timed Out. Retrying...")
+            logger.warning("Request Timed Out. Retrying...")
             IS_CONNECTION_LOST = True
         return
-    
-    # For other errors, you might want to notify yourself or log more details
+
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
 
-def main():
+def build_application():
+    """Build and configure the Telegram Application with all handlers.
+    Returns the Application instance (not yet running).
+    """
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        print("Error: TELEGRAM_BOT_TOKEN not found in environment variables.")
-        return
+        raise ValueError("TELEGRAM_BOT_TOKEN not found in environment variables.")
 
     # Configure connection timeouts via HTTPXRequest
     request = HTTPXRequest(
@@ -108,10 +108,10 @@ def main():
     )
 
     application = ApplicationBuilder().token(token).request(request).build()
-    
+
     # Monitor connection state (Runs first)
     application.add_handler(TypeHandler(Update, connection_monitor), group=-1)
-    
+
     # Log Middleware (Runs in separate group to ensure execution)
     application.add_handler(TypeHandler(Update, log_middleware), group=-5)
 
@@ -120,38 +120,43 @@ def main():
 
     # Auth & Registration Conversation
     application.add_handler(get_auth_handler())
-    
-    # Payment / Subscription (New)
+
+    # Payment / Subscription
     application.add_handler(get_payment_handler())
     application.add_handler(CommandHandler("subscription", subscription_command))
-    
-    # OCR & Record Logic (New ConversationHandler)
-    
-    # OCR & Record Logic (New ConversationHandler)
+
+    # OCR & Record Logic
     application.add_handler(get_ocr_handler())
-    
+
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("help", help_command))
-    
-    # Language (New)
+
+    # Language
     application.add_handler(CommandHandler("language", language_command))
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
 
-    # Settings with Timezone (New)
+    # Settings with Timezone
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern='^settings_'))
     application.add_handler(CallbackQueryHandler(timezone_callback, pattern='^tz_'))
 
     # Fallback for unknown messages (Must be last)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
-    
-    print("Bot is running... (Press Ctrl+C to stop)")
-    
-    # Run polling with correct arguments
-    # poll_interval: Time to wait between polling updates from Telegram
-    # timeout: Timeout for long polling connection (server side wait time)
+
+    return application
+
+
+def run_polling():
+    """Run the bot in long-polling mode (for VPS/local dev)."""
+    application = build_application()
+    print("Bot is running in polling mode... (Press Ctrl+C to stop)")
     application.run_polling(poll_interval=1.0, timeout=30)
+
+
+def main():
+    run_polling()
+
 
 if __name__ == '__main__':
     main()

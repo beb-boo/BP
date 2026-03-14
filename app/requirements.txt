@@ -22,3 +22,11 @@ phonenumbers
 pillow
 httpx
 requests
+
+# OTP & Timezone
+pyotp
+pytz
+bcrypt
+
+# Optional: Redis (for serverless/production)
+redis

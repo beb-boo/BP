@@ -5,21 +5,18 @@ import json
 from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from ..database import get_db
 from ..models import User, Payment
 from ..schemas import StandardResponse
 from ..utils.security import verify_api_key, get_current_user
 from ..utils.timezone import now_th, now_tz
 from ..utils.encryption import encrypt_value, hash_value
+from ..utils.rate_limiter import limiter
 from ..services.slipok import slipok_service
 from ..config.pricing import SUBSCRIPTION_PLANS, PAYMENT_ACCOUNT, get_plan, is_valid_amount
 
 router = APIRouter(prefix="/api/v1/payment", tags=["payment"])
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.get("/plans")

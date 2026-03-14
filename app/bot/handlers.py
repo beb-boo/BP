@@ -574,16 +574,6 @@ async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Numbers only please. Try: 120/80 72")
         return OCR_EDIT
 
-def get_ocr_handler():
-    return ConversationHandler(
-        entry_points=[MessageHandler(filters.PHOTO, handle_photo_entry)],
-        states={
-            OCR_CONFIRM: [CallbackQueryHandler(ocr_confirm_callback)],
-            OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)]
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
 # ============================================================================
 # Stats
 # ============================================================================

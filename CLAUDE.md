@@ -53,7 +53,7 @@ npm start            # Expo development server
 ### Docker
 
 ```bash
-docker-compose up --build  # Runs PostgreSQL + FastAPI
+docker-compose up --build  # Runs PostgreSQL + Redis + FastAPI + Bot + Frontend
 ```
 
 ## Architecture
@@ -73,18 +73,24 @@ BP/
 │   │   ├── ocr.py        # Image processing via Gemini
 │   │   ├── payment.py    # Subscription handling
 │   │   └── export.py     # CSV/PDF export
-│   ├── bot/              # Telegram bot
-│   │   ├── main.py       # Bot entry with polling
+│   ├── bot/              # Telegram bot (dual-mode: polling + webhook)
+│   │   ├── main.py       # Bot entry, build_application(), run_polling()
+│   │   ├── webhook.py    # FastAPI webhook handler for serverless
 │   │   ├── handlers.py   # Conversation handlers
 │   │   └── locales.py    # i18n (EN, TH)
+│   ├── otp_service.py    # OTP with dual backend (Memory / Redis)
 │   └── utils/            # Shared utilities
 │       ├── security.py   # JWT, hashing, API key verification
 │       ├── encryption.py # Fernet field-level encryption
+│       ├── rate_limiter.py # Centralized rate limiter (Memory / Redis)
 │       └── ocr_helper.py # Gemini integration
 ├── frontend/             # Next.js web dashboard
 │   ├── app/              # App directory structure
 │   │   ├── auth/        # Login/register pages
-│   │   └── (dashboard)/ # Protected dashboard routes
+│   │   ├── (dashboard)/ # Protected dashboard routes
+│   │   ├── error.tsx    # Custom error page
+│   │   └── not-found.tsx # Custom 404 page
+│   ├── middleware.ts     # Auth guard (redirect unauthenticated)
 │   ├── lib/api.ts       # Axios instance (base: localhost:8888/api/v1)
 │   └── contexts/        # React contexts (Language)
 └── MobileApp/           # React Native (Expo)
@@ -114,9 +120,35 @@ Priority: OCR screen time → EXIF metadata → Current time
 - Free: 30-day history limit
 - Premium: Unlimited history, export features
 
+## Deployment Modes
+
+### Local Development (SQLite + Memory)
+```bash
+# No Redis needed, OTP stored in memory, rate limiting in memory
+DATABASE_URL=sqlite:///./blood_pressure.db
+BOT_MODE=polling
+AUTO_CREATE_TABLES=true
+BYPASS_OTP=true  # Optional: skip OTP for dev
+```
+
+### Production (PostgreSQL + Redis)
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/bp_db
+REDIS_URL=redis://redis:6379/0
+BOT_MODE=webhook  # or "disabled"
+WEBHOOK_URL=https://your-api-domain.com
+WEBHOOK_SECRET=your-secret
+AUTO_CREATE_TABLES=false  # Use migrations
+```
+
+### Docker
+```bash
+docker-compose up --build  # Runs PostgreSQL + Redis + FastAPI + Bot + Frontend
+```
+
 ## Environment Variables
 
-Required in `.env`:
+Required in `.env` (see `.env.example` for full list):
 
 ```
 DATABASE_URL=sqlite:///./blood_pressure.db
@@ -126,6 +158,18 @@ API_KEYS=bp-mobile-app-key,bp-web-app-key
 GOOGLE_AI_API_KEY=<gemini-api-key>
 TELEGRAM_BOT_TOKEN=<bot-token>
 APP_TIMEZONE=Asia/Bangkok  # Default timezone for server (IANA format)
+```
+
+Optional:
+```
+REDIS_URL=              # Redis for OTP/rate limiting (serverless)
+BOT_MODE=polling        # polling | webhook | disabled
+WEBHOOK_URL=            # Required when BOT_MODE=webhook
+WEBHOOK_SECRET=         # Required when BOT_MODE=webhook
+AUTO_CREATE_TABLES=true # Set false in prod with migrations
+BYPASS_OTP=false        # Set true for dev only
+NEXT_PUBLIC_API_KEY=    # Frontend API key override
+ALLOWED_ORIGINS=*       # CORS origins (comma-separated)
 ```
 
 ## API Response Format
