@@ -1,5 +1,6 @@
 
-from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi import APIRouter, HTTPException, Depends, Request, status, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from ..database import get_db
@@ -10,6 +11,7 @@ from ..schemas import (
 )
 from ..utils.security import verify_api_key, get_current_user
 from ..utils.timezone import now_th
+from ..utils.chart_generator import generate_bp_chart
 import logging
 import uuid
 from typing import Optional, List
@@ -354,4 +356,39 @@ async def get_bp_stats(
             "stats": stats
         },
         request_id=request_id
+    )
+
+
+@stats_router.get("/chart")
+async def get_bp_chart(
+    days: int = Query(default=30, ge=1, le=365, description="Number of recent records to include"),
+    lang: str = Query(default="en", pattern="^(en|th)$", description="Language: en or th"),
+    current_user: User = Depends(get_current_user),
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a BP trend chart as a PNG image.
+
+    Returns a PNG image showing Systolic, Diastolic, and Pulse trends
+    with reference zones for High BP areas. Data labels show SYS/DIA
+    values on the chart and Pulse values below.
+    """
+    # Fetch recent records (most recent N records)
+    records = db.query(BloodPressureRecord).filter(
+        BloodPressureRecord.user_id == current_user.id
+    ).order_by(
+        desc(BloodPressureRecord.measurement_date)
+    ).limit(days).all()
+
+    # Generate chart (handles empty records internally)
+    chart_buffer = generate_bp_chart(records, lang=lang)
+
+    return StreamingResponse(
+        chart_buffer,
+        media_type="image/png",
+        headers={
+            "Content-Disposition": "inline; filename=bp-chart.png",
+            "Cache-Control": "no-cache"
+        }
     )

@@ -14,6 +14,7 @@ Blood Pressure Monitor & Telemedicine Platform - a full-stack healthcare applica
 - Telegram Bot: python-telegram-bot
 - Database: SQLite (dev) / PostgreSQL (prod)
 - AI/OCR: Google Gemini API
+- Chart Rendering: Chart.js via Node.js (@napi-rs/canvas)
 
 ## Common Commands
 
@@ -30,6 +31,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8888
 python3 -m app.bot.main
 
 # API documentation available at http://localhost:8888/docs
+
+# Install chart renderer (required for BP chart generation)
+cd app/chart-renderer && npm install
 ```
 
 ### Frontend
@@ -78,11 +82,15 @@ BP/
 │   │   ├── webhook.py    # FastAPI webhook handler for serverless
 │   │   ├── handlers.py   # Conversation handlers
 │   │   └── locales.py    # i18n (EN, TH)
+│   ├── chart-renderer/    # Server-side Chart.js renderer (Node.js)
+│   │   ├── render.js     # Chart.js + @napi-rs/canvas → PNG
+│   │   └── package.json  # npm dependencies
 │   ├── otp_service.py    # OTP with dual backend (Memory / Redis)
 │   └── utils/            # Shared utilities
 │       ├── security.py   # JWT, hashing, API key verification
 │       ├── encryption.py # Fernet field-level encryption
 │       ├── rate_limiter.py # Centralized rate limiter (Memory / Redis)
+│       ├── chart_generator.py # BP chart generation (calls Node.js subprocess)
 │       └── ocr_helper.py # Gemini integration
 ├── frontend/             # Next.js web dashboard
 │   ├── app/              # App directory structure
@@ -144,6 +152,7 @@ AUTO_CREATE_TABLES=false  # Use migrations
 ### Docker
 ```bash
 docker-compose up --build  # Runs PostgreSQL + Redis + FastAPI + Bot + Frontend
+# Dockerfile includes Node.js installation for chart rendering
 ```
 
 ## Environment Variables
@@ -197,9 +206,19 @@ Users can set their preferred timezone:
 - **Telegram Bot:** `/settings` command allows timezone selection
 - **Frontend:** Settings page has timezone selector
 
+## Chart Generation
+
+Server-side BP trend chart rendering uses Chart.js via Node.js subprocess:
+
+- **Renderer:** `app/chart-renderer/render.js` — Chart.js + @napi-rs/canvas → PNG
+- **Python wrapper:** `app/utils/chart_generator.py` — subprocess call, returns BytesIO
+- **API endpoint:** `GET /api/v1/stats/chart?days=30&lang=en` — returns PNG image
+- **Telegram Bot:** `/stats` command sends chart image after text stats
+- **Requires:** Node.js installed + `npm install` in `app/chart-renderer/`
+
 ## Known Limitations
 
-- No automated test suite (critical gap)
 - No Alembic migrations - schema changes are manual (use `migrations/` scripts)
 - CORS allows all origins (`*`) - restrict in production
 - Image audit trail not implemented (images deleted after OCR)
+- Chart generation requires Node.js runtime (not just Python)

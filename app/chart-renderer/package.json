@@ -1,0 +1,11 @@
+{
+  "name": "bp-chart-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Server-side Chart.js renderer for BP trend charts",
+  "dependencies": {
+    "chart.js": "^4.4.0",
+    "@napi-rs/canvas": "^0.1.68",
+    "chartjs-plugin-annotation": "^3.0.0"
+  }
+}

@@ -14,7 +14,7 @@ A comprehensive platform for tracking blood pressure, managing doctor-patient re
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+ (for Web App)
+- Node.js 18+ (for Web App & Chart Rendering)
 - Google Gemini API Key (for OCR)
 
 ### 1️⃣ Configuration
@@ -50,12 +50,15 @@ The core brain of the system.
 # Install dependencies
 pip install -r app/requirements.txt
 
+# Install chart renderer (required for BP chart generation)
+cd app/chart-renderer && npm install && cd ../..
+
 # Run Server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8888
 ```
 
-* **Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
-* **Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
+* **Docs**: [http://localhost:8888/docs](http://localhost:8888/docs)
+* **Health Check**: [http://localhost:8888/health](http://localhost:8888/health)
 
 ### 3️⃣ Running the Telegram Bot 🤖
 
@@ -70,7 +73,7 @@ python3 -m app.bot.main
 * **Commands**:
   * `/start` - Welcome & Status.
   * `/login <email> <password>` - Link Telegram to your account.
-  * `/stats` - View stats (Last 30 days) & recent 5 records.
+  * `/stats` - View stats & recent records + BP trend chart image.
   * **[Send Photo]** - Auto-extract BP values -> Confirm/Edit -> Save.
 
 ### 4️⃣ Running the Web Application 🌐
@@ -224,17 +227,60 @@ Then: `sudo systemctl enable --now bp-bot`
 
 ```
 BP/
-├── app/                  # Backend & Bot
-│   ├── bot/              # Telegram Logic
-│   ├── routers/          # API Endpoints (Auth, Users, Records...)
-│   ├── utils/            # Core Utility (OCR, Encryption)
-│   ├── models.py         # DB Schema
-│   └── main.py           # App Entry Point
-├── frontend/             # Next.js Web App
-│   ├── app/              # Pages & Layouts
-│   ├── components/       # UI Components (Shadcn)
-│   └── lib/              # API Client
-└── tests/                # (Placeholder for tests)
+├── app/                       # Backend & Bot
+│   ├── bot/                   # Telegram Logic
+│   ├── routers/               # API Endpoints (Auth, Users, Records, Stats...)
+│   ├── chart-renderer/        # Server-side Chart.js renderer (Node.js)
+│   │   ├── render.js         # Chart.js + @napi-rs/canvas → PNG
+│   │   └── package.json      # npm dependencies
+│   ├── utils/                 # Core Utility (OCR, Encryption, Chart)
+│   ├── models.py              # DB Schema
+│   └── main.py                # App Entry Point
+├── frontend/                  # Next.js Web App
+│   ├── app/                   # Pages & Layouts
+│   ├── components/            # UI Components (Shadcn)
+│   └── lib/                   # API Client
+├── tests/                     # Test suite (pytest)
+├── Dockerfile                 # Python + Node.js
+└── docker-compose.yml         # Full stack deployment
+```
+
+---
+
+## 📊 Chart Generation
+
+BP trend charts are rendered server-side using **Chart.js** via Node.js subprocess:
+
+```
+Python (chart_generator.py) → JSON stdin → Node.js (render.js) → PNG stdout
+```
+
+- **API:** `GET /api/v1/stats/chart?days=30&lang=th` — returns PNG image
+- **Telegram Bot:** `/stats` command auto-sends chart after text stats
+- Supports Thai & English labels
+- Reference zones for High BP (Systolic > 140, Diastolic > 90)
+- Data labels on every point (SYS/DIA + Pulse values)
+
+**Requirements:** Node.js 18+ and `npm install` in `app/chart-renderer/`
+
+---
+
+## 🐳 Docker Deployment
+
+```bash
+docker-compose up --build
+```
+
+Services: PostgreSQL + Redis + FastAPI (with Node.js for chart rendering) + Telegram Bot + Next.js Frontend
+
+The Dockerfile installs both Python and Node.js runtimes for chart rendering support.
+
+---
+
+## 🧪 Testing
+
+```bash
+python3 -m pytest tests/ -v
 ```
 
 ---

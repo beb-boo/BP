@@ -623,7 +623,7 @@ async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show simple stats."""
+    """Show simple stats + BP trend chart image."""
     chat_id = update.effective_chat.id
     user = BotService.get_user_by_telegram_id(chat_id)
     if not user:
@@ -633,18 +633,18 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = BotService.get_user_stats(user.id)
     recent = data['recent']
     avg = data['average']
-    
+
     avg_sys = int(avg.avg_sys) if avg.avg_sys else 0
     avg_dia = int(avg.avg_dia) if avg.avg_dia else 0
     avg_pulse = int(avg.avg_pulse) if avg.avg_pulse else 0
-    
+
     lang = user.language or "en"
-    
+
     msg = get_text(
-        "stats_header", 
-        lang, 
-        sys=avg_sys, 
-        dia=avg_dia, 
+        "stats_header",
+        lang,
+        sys=avg_sys,
+        dia=avg_dia,
         pulse=avg_pulse
     )
 
@@ -655,8 +655,20 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             date_str = r.measurement_date.strftime("%d/%m/%Y")
             time_str = r.measurement_time if r.measurement_time else ""
             msg += f"\n- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})"
-            
+
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+    # Send BP trend chart image (if ≥ 2 records)
+    if recent and len(recent) >= 2:
+        try:
+            from app.utils.chart_generator import generate_bp_chart
+            chart_buffer = generate_bp_chart(recent, lang=lang)
+            caption = "📊 Blood Pressure Trends" if lang == "en" else "📊 กราฟความดันโลหิต"
+            await update.message.reply_photo(photo=chart_buffer, caption=caption)
+        except Exception as e:
+            logger.error(f"Chart generation error: {e}")
+            # Don't fail the whole command — text stats were already sent
+
     BotLogService.log(chat_id, "OUT", "stats", "Stats sent", user.id)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
