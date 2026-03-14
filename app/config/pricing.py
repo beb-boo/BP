@@ -1,4 +1,5 @@
 """Subscription pricing configuration"""
+import os
 from typing import Dict
 
 SUBSCRIPTION_PLANS: Dict[str, dict] = {
@@ -42,16 +43,16 @@ SUBSCRIPTION_PLANS: Dict[str, dict] = {
     }
 }
 
-# บัญชีรับเงิน (แสดงให้ user)
+# บัญชีรับเงิน (อ่านจาก ENV — ตั้งค่าใน .env)
 PAYMENT_ACCOUNT = {
-    "bank": "ธนาคารกสิกรไทย",
-    "bank_en": "Kasikorn Bank (KBank)",
-    "bank_code": "004",
-    "account_number": "000-0-00000-0",  # Example - User to config
-    "account_name": "Your Name"          
+    "bank": os.getenv("PAYMENT_BANK_NAME", "ธนาคารกสิกรไทย"),
+    "bank_en": os.getenv("PAYMENT_BANK_NAME_EN", "Kasikorn Bank (KBank)"),
+    "bank_code": os.getenv("PAYMENT_BANK_CODE", "004"),
+    "account_number": os.getenv("PAYMENT_ACCOUNT_NUMBER", "000-0-00000-0"),
+    "account_name": os.getenv("PAYMENT_ACCOUNT_NAME", "Your Name"),
 }
 
-AMOUNT_TOLERANCE = 0.50  # ยอมรับความคลาดเคลื่อน 0.50 บาท
+AMOUNT_TOLERANCE = float(os.getenv("PAYMENT_AMOUNT_TOLERANCE", "0.50"))
 
 def get_plan(plan_type: str) -> dict:
     return SUBSCRIPTION_PLANS.get(plan_type)
