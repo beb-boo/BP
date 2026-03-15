@@ -59,6 +59,8 @@ venv/
 
 # IDE / Tools
 .vscode/
+.claude/
+.antigravity/
 
 # Logs & temp
 logs/
