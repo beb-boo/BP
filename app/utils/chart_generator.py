@@ -373,14 +373,14 @@ def _render_chart_quickchart(
     chart_json = chart_json.replace('"__SYSTOLIC_FORMATTER__"', sys_formatter_js)
     chart_json = chart_json.replace('"__PULSE_FORMATTER__"', pulse_formatter_js)
 
-    # QuickChart.io request
+    # QuickChart.io request — send chart as string so JS functions are evaluated
     request_body = json.dumps({
         "version": "2",
         "width": 1200,
         "height": 600,
         "backgroundColor": "white",
-        "chart": "__CHART_PLACEHOLDER__",
-    }).replace('"__CHART_PLACEHOLDER__"', chart_json)
+        "chart": chart_json,
+    })
 
     try:
         response = httpx.post(
