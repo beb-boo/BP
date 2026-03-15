@@ -14,8 +14,12 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+
 if GOOGLE_AI_API_KEY:
     genai.configure(api_key=GOOGLE_AI_API_KEY)
+else:
+    logger.warning("GOOGLE_AI_API_KEY not set, OCR features will not work")
 
 def get_image_metadata(image_path: str) -> dict:
     """Extract metadata from image"""
@@ -63,7 +67,7 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
     if not GOOGLE_AI_API_KEY:
         return OCRResult(error="Google AI API key not configured")
 
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel(GEMINI_MODEL)
 
     try:
         img = PIL.Image.open(image_path)

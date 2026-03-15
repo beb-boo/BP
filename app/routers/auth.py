@@ -10,7 +10,7 @@ from ..schemas import (
 from ..utils.security import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     verify_api_key, get_current_user, lock_account, is_account_locked,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES, MAX_LOGIN_ATTEMPTS
 )
 from ..utils.timezone import now_tz
 from ..utils.encryption import encrypt_value, hash_value
@@ -298,8 +298,8 @@ async def login(
         # Increment failed attempts
         user.failed_login_attempts += 1
 
-        # Lock account after 5 failed attempts
-        if user.failed_login_attempts >= 5:
+        # Lock account after too many failed attempts
+        if user.failed_login_attempts >= MAX_LOGIN_ATTEMPTS:
             lock_account(user, db)
             logger.warning(
                 f"Account locked due to failed attempts (ID: {user.id}) - Request ID: {request_id}")

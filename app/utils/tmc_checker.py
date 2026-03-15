@@ -1,12 +1,17 @@
 
+import os
 import httpx
 import logging
 
 logger = logging.getLogger(__name__)
 
-TMC_URL = "https://checkmd.tmc.or.th/"
+TMC_URL = os.getenv("TMC_URL", "https://checkmd.tmc.or.th/")
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": os.getenv(
+        "TMC_USER_AGENT",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
     "Content-Type": "application/x-www-form-urlencoded"
 }
 

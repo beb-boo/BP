@@ -51,12 +51,18 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration
-origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
-# Ensure localhost is allowed for dev
-if "http://localhost:3000" not in origins:
-    origins.append("http://localhost:3000")
-if "http://localhost:3001" not in origins:
-    origins.append("http://localhost:3001")
+_allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+if _allowed_origins_env:
+    # Explicit origins configured — use them as-is (production)
+    origins = [o.strip() for o in _allowed_origins_env.split(",") if o.strip()]
+    logger.info(f"CORS: Using configured origins ({len(origins)} entries)")
+else:
+    # No explicit origins — dev mode: allow all + localhost
+    origins = ["*", "http://localhost:3000", "http://localhost:3001"]
+    logger.warning(
+        "ALLOWED_ORIGINS not set, defaulting to '*' with localhost. "
+        "Set ALLOWED_ORIGINS for production."
+    )
 
 app.add_middleware(
     CORSMiddleware,

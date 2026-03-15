@@ -177,6 +177,12 @@ WEBHOOK_URL=            # Required when BOT_MODE=webhook
 WEBHOOK_SECRET=         # Required when BOT_MODE=webhook
 AUTO_CREATE_TABLES=true # Set false in prod with migrations
 BYPASS_OTP=false        # Set true for dev only
+JWT_ALGORITHM=HS256          # JWT signing algorithm
+ACCESS_TOKEN_EXPIRE_DAYS=7   # JWT token expiry in days
+MAX_LOGIN_ATTEMPTS=5         # Failed logins before account lock
+ACCOUNT_LOCK_MINUTES=30      # Account lock duration in minutes
+OTP_EXPIRE_MINUTES=5         # OTP code expiry in minutes
+GEMINI_MODEL=gemini-2.0-flash # Google AI model for OCR
 NEXT_PUBLIC_API_KEY=    # Frontend API key override
 ALLOWED_ORIGINS=*       # CORS origins (comma-separated)
 ```

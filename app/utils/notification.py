@@ -17,7 +17,7 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USER = os.getenv("EMAIL_USER", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@bpmonitor.com")
-OTP_EXPIRE_MINUTES = 5
+OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
 
 # SMS Configuration
 SMS_API_URL = os.getenv("SMS_API_URL", "")

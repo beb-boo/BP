@@ -34,18 +34,29 @@ const COLORS = {
 const BP_SYS_MAX = 140;
 const BP_DIA_MAX = 90;
 
-// ── Try to register Thai font (if available on system) ──────────
+// ── Register Thai font ──────────────────────────────────────────
+// Priority: bundled font (always works) → system fonts (fallback)
+const path = require('path');
+const fs = require('fs');
+
 const THAI_FONT_PATHS = [
-    '/Users/seal/Library/Fonts/Sarabun-Regular.ttf',
-    '/System/Library/Fonts/Supplemental/Thonburi.ttc',
-    '/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf',   // Linux
-    '/usr/share/fonts/truetype/tlwg/Sarabun.ttf',                // Linux alt
+    path.join(__dirname, 'fonts', 'Sarabun-Regular.ttf'),        // Bundled (works everywhere)
+    '/System/Library/Fonts/Supplemental/Thonburi.ttc',           // macOS
+    '/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf',   // Linux (Noto)
+    '/usr/share/fonts/truetype/tlwg/Sarabun.ttf',                // Linux (tlwg)
 ];
+let thaiFontLoaded = false;
 for (const fp of THAI_FONT_PATHS) {
     try {
-        GlobalFonts.registerFromPath(fp, 'ThaiFont');
-        break;
+        if (fs.existsSync(fp)) {
+            GlobalFonts.registerFromPath(fp, 'ThaiFont');
+            thaiFontLoaded = true;
+            break;
+        }
     } catch (_) { /* skip */ }
+}
+if (!thaiFontLoaded) {
+    process.stderr.write('Warning: No Thai font found. Thai text may not render correctly.\n');
 }
 
 // ── Read JSON from stdin ────────────────────────────────────────

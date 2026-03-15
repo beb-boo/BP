@@ -16,15 +16,29 @@ import logging
 load_from_dotenv = True # Assumed loaded in main
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 Days
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS", "7"))
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * ACCESS_TOKEN_EXPIRE_DAYS
 API_KEY_HEADER = "X-API-Key"
+
+# Account lockout configuration
+MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
+ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "30"))
 
 # API Keys for client apps
 VALID_API_KEYS = os.getenv(
     "API_KEYS", "bp-mobile-app-key,bp-web-app-key").split(",")
 
 logger = logging.getLogger(__name__)
+
+# ── Startup warnings for default/fallback values ────────────────
+if SECRET_KEY == "your-secret-key-here":
+    logger.critical(
+        "SECRET_KEY is using the default value! "
+        "This is a critical security risk. Set SECRET_KEY in .env"
+    )
+if VALID_API_KEYS == ["bp-mobile-app-key", "bp-web-app-key"]:
+    logger.warning("API_KEYS not set, using default keys (dev only)")
 
 security = HTTPBearer()
 api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
@@ -140,7 +154,7 @@ def is_account_locked(user: User) -> bool:
 
 
 def lock_account(user: User, db: Session):
-    """Lock user account for 30 minutes after too many failed attempts"""
-    user.account_locked_until = now_tz() + timedelta(minutes=30)
+    """Lock user account after too many failed attempts"""
+    user.account_locked_until = now_tz() + timedelta(minutes=ACCOUNT_LOCK_MINUTES)
     user.failed_login_attempts = 0  # Reset counter
     db.commit()

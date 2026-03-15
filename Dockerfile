@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Chart renderer — install npm deps before copying app code (Docker layer cache)
 COPY ./app/chart-renderer/package.json ./app/chart-renderer/
+COPY ./app/chart-renderer/fonts/ ./app/chart-renderer/fonts/
 RUN cd app/chart-renderer && npm install --production
 
 # Application code
