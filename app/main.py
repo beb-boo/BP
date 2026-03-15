@@ -86,9 +86,9 @@ app.include_router(payment.router)
 BOT_MODE = os.getenv("BOT_MODE", "polling")
 if BOT_MODE == "webhook":
     try:
-        from .bot.webhook import router as bot_webhook_router
+        from .bot.webhook import router as bot_webhook_router, _webhook_path
         app.include_router(bot_webhook_router)
-        logger.info("Telegram Bot: Webhook mode enabled at /bot/webhook")
+        logger.info(f"Telegram Bot: Webhook mode enabled at /{_webhook_path}/webhook")
     except Exception as e:
         logger.error(f"Failed to load bot webhook: {e}")
 

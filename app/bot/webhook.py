@@ -2,12 +2,26 @@
 
 import os
 import logging
+import secrets
 from fastapi import APIRouter, HTTPException, Request, Query
 from telegram import Update
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/bot", tags=["telegram bot"])
+# Configurable webhook path — use a hard-to-guess path in production
+# Example: WEBHOOK_PATH=bot-a1b2c3d4e5f6 → endpoint becomes /bot-a1b2c3d4e5f6/webhook
+_webhook_path = os.getenv("WEBHOOK_PATH", "")
+if not _webhook_path:
+    # Generate a random path for this session (won't persist across restarts)
+    _webhook_path = f"bot-{secrets.token_hex(16)}"
+    logger.warning(
+        f"WEBHOOK_PATH not set. Generated random path: /{_webhook_path}/webhook "
+        f"(Set WEBHOOK_PATH in .env for a stable, hard-to-guess webhook URL)"
+    )
+else:
+    logger.info(f"Telegram webhook path configured: /{_webhook_path}/webhook")
+
+router = APIRouter(prefix=f"/{_webhook_path}", tags=["telegram bot"])
 
 # Lazy-initialized application instance
 _application = None
@@ -78,7 +92,7 @@ async def set_webhook(secret: str = Query(..., description="Admin secret to auth
     if not webhook_url:
         raise HTTPException(status_code=500, detail="WEBHOOK_URL not configured")
 
-    full_url = f"{webhook_url.rstrip('/')}/bot/webhook"
+    full_url = f"{webhook_url.rstrip('/')}/{_webhook_path}/webhook"
 
     try:
         app = get_application()

@@ -19,27 +19,26 @@ A comprehensive platform for tracking blood pressure, managing doctor-patient re
 
 ### 1️⃣ Configuration
 
-Create a `.env` file in `app/` (copy from `.env.example` if available):
+Copy `.env.example` to `app/.env` and fill in your values:
+
+```bash
+cp .env.example app/.env
+# Edit app/.env with your actual keys
+
+# Generate encryption key:
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Key variables (see `.env.example` for full list):
 
 ```env
-# Database
 DATABASE_URL=sqlite:///./blood_pressure.db
-
-# Security
 SECRET_KEY=your_super_secret_jwt_key
-ENCRYPTION_KEY= # Generate using: python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY=<generated-fernet-key>
 API_KEYS=bp-mobile-app-key,bp-web-app-key
-
-# AI / OCR
 GOOGLE_AI_API_KEY=your_gemini_api_key
-
-# Telegram
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-
-# Email / SMS (Optional)
-EMAIL_HOST=smtp.gmail.com
-EMAIL_USER=your_email
-EMAIL_PASSWORD=your_app_password
+APP_TIMEZONE=Asia/Bangkok
 ```
 
 ### 2️⃣ Running the Backend API
@@ -100,8 +99,6 @@ npm run dev
 * **Field-Level Encryption**: Sensitive PII (Citizen ID, Medical License) is encrypted *before* valid storage using AES-128 (Fernet). Even database admins cannot read it without the key.
 * **Hashed Indexes**: Allows searching for unique IDs (like Citizen ID) without decrypting the entire database.
 * **Data Portability**: Users can export their full history via `/api/v1/export/my-data`.
-
-### 🩺 For Patients
 
 ### 🩺 For Patients
 
@@ -181,7 +178,7 @@ You **do NOT** need a public IP or HTTPS to test locally because we use **Long P
 
 ### Server Deployment (Production)
 
-For a real server (e.g., VPS, DigitalOcean, AWS):
+For a real server (e.g., VPS, DigitalOcean, AWS, Vercel):
 
 **Option A: Long Polling (Simpler)**
 
@@ -189,15 +186,40 @@ For a real server (e.g., VPS, DigitalOcean, AWS):
 * **Cons**: Slightly slower than Webhooks for massive scale.
 * **How**: Just run the script as a background service (Systemd or Docker).
 
-**Option B: Webhooks (Recommended for high traffic)**
+```env
+BOT_MODE=polling
+```
 
-* **Pros**: Faster, serverless-friendly (like Lambda/Cloud Run).
+**Option B: Webhooks (Recommended for serverless / high traffic)**
+
+* **Pros**: Faster, serverless-friendly (Vercel, Lambda, Cloud Run).
 * **Cons**: Requires valid **HTTPS** certificate (SSL).
-* **How**:
-  1. You need a domain with SSL (e.g., `https://api.yourdomain.com`).
-  2. Set the webhook: `curl https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://api.yourdomain.com/bot-webhook`
-  3. You must modify `app/bot/main.py` to listen for requests instead of polling.
-* *Note: Current implementation calculates uses Pooling which is sufficient for < 1000 users.*
+
+**Setup:**
+
+1. Generate a hard-to-guess webhook path:
+   ```bash
+   python3 -c "import secrets; print(f'bot-{secrets.token_hex(16)}')"
+   ```
+
+2. Configure environment variables:
+   ```env
+   BOT_MODE=webhook
+   WEBHOOK_URL=https://your-api-domain.com
+   WEBHOOK_SECRET=your-strong-random-secret
+   WEBHOOK_PATH=bot-a1b2c3d4e5f6...   # Hard-to-guess path from step 1
+   ```
+
+3. Deploy and register webhook (call once):
+   ```
+   GET https://your-api-domain.com/<WEBHOOK_PATH>/set-webhook?secret=<WEBHOOK_SECRET>
+   ```
+
+   This tells Telegram to send updates to `https://your-api-domain.com/<WEBHOOK_PATH>/webhook` — a URL that is effectively impossible to guess.
+
+**Security Layers:**
+* **Layer 1**: `WEBHOOK_PATH` — random URL path (e.g., `/bot-f77192489b.../webhook`)
+* **Layer 2**: `WEBHOOK_SECRET` — Telegram sends `X-Telegram-Bot-Api-Secret-Token` header for verification
 
 ### Systemd Service Example (Linux)
 

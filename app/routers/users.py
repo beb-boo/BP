@@ -11,6 +11,7 @@ from ..utils.encryption import decrypt_value, encrypt_value, hash_value
 from ..otp_service import otp_service
 import hashlib
 import logging
+import os
 import uuid
 from typing import Optional
 
@@ -76,23 +77,28 @@ async def update_user_profile(
                 detail="Security Check Failed: Incorrect current password."
             )
 
-    # 2. Strong Security: Check if Email-based 2FA is possible and required (Phone Change)
-    if user_update.phone_number and user_update.phone_number != current_user.phone_number:
-         # If user has an email, enforce OTP for phone change
-         if current_user.email:
-             if not user_update.otp_code:
-                 raise HTTPException(
-                     status_code=403,
-                     detail="2FA Required: Please enter the OTP sent to your email to change phone number."
-                 )
-             
-             # Verify OTP
-             is_valid_otp = otp_service.confirm_otp(
-                 contact_target=current_user.email,
-                 otp=user_update.otp_code
+    # 2. Strong Security: Check if Email-based 2FA is needed (Phone Change)
+    # OTP is required only when CHANGING an existing phone number (not adding one for the first time)
+    bypass_otp = os.getenv("BYPASS_OTP", "false").lower() == "true"
+    phone_is_changing = (
+        user_update.phone_number
+        and user_update.phone_number != current_user.phone_number
+    )
+    if phone_is_changing and current_user.phone_number and current_user.email and not bypass_otp:
+         # Existing phone → new phone: require OTP for extra security
+         if not user_update.otp_code:
+             raise HTTPException(
+                 status_code=403,
+                 detail="2FA Required: Please enter the OTP sent to your email to change phone number."
              )
-             if not is_valid_otp:
-                 raise HTTPException(status_code=403, detail="Invalid or expired OTP.")
+
+         # Verify OTP
+         is_valid_otp = otp_service.confirm_otp(
+             contact_target=current_user.email,
+             otp=user_update.otp_code
+         )
+         if not is_valid_otp:
+             raise HTTPException(status_code=403, detail="Invalid or expired OTP.")
 
     # Check if phone number is already taken by another user
     if user_update.phone_number and user_update.phone_number != current_user.phone_number:

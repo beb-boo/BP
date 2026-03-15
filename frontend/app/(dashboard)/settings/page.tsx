@@ -58,34 +58,36 @@ export default function SettingsPage() {
     const [emailOtp, setEmailOtp] = useState("");
     const [emailOtpTimer, setEmailOtpTimer] = useState(0);
 
+    const applyProfile = (profile: any) => {
+        setUser(profile);
+        setFullName(profile.full_name || "");
+        setEmail(profile.email || "");
+        setPhone(profile.phone_number || "");
+        setCitizenId(profile.citizen_id || "");
+        setMedicalLicense(profile.medical_license || "");
+
+        // Parse date for input (YYYY-MM-DD) - Use Local Time to avoid Timezone shift
+        if (profile.date_of_birth) {
+            const d = new Date(profile.date_of_birth);
+            const localIso = d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+            setDob(localIso);
+        } else {
+            setDob("");
+        }
+        setGender(profile.gender || "");
+        setBloodType(profile.blood_type || "");
+        setHeight(profile.height ? String(profile.height) : "");
+        setWeight(profile.weight ? String(profile.weight) : "");
+        setTimezone(profile.timezone || "Asia/Bangkok");
+    };
+
     useEffect(() => {
         const fetchProfile = async () => {
             try {
                 const res = await api.get("/users/me");
-                const profile = res.data.data.profile;
-                setUser(profile);
-
-                // Init fields
-                setFullName(profile.full_name || "");
-                setEmail(profile.email || "");
-                setPhone(profile.phone_number || "");
-                setCitizenId(profile.citizen_id || "");
-                setMedicalLicense(profile.medical_license || "");
-
-                // Parse date for input (YYYY-MM-DD) - Use Local Time to avoid Timezone shift
-                if (profile.date_of_birth) {
-                    const d = new Date(profile.date_of_birth);
-                    const localIso = d.getFullYear() + '-' +
-                        String(d.getMonth() + 1).padStart(2, '0') + '-' +
-                        String(d.getDate()).padStart(2, '0');
-                    setDob(localIso);
-                }
-                setGender(profile.gender || "");
-                setBloodType(profile.blood_type || "");
-                setHeight(profile.height ? String(profile.height) : "");
-                setWeight(profile.weight ? String(profile.weight) : "");
-                setTimezone(profile.timezone || "Asia/Bangkok");
-
+                applyProfile(res.data.data.profile);
             } catch (error) {
                 console.error("Failed to fetch profile", error);
                 router.push("/auth/login");
@@ -122,8 +124,17 @@ export default function SettingsPage() {
                 payload.medical_license = medicalLicense;
             }
 
-            await api.put("/users/me", payload);
+            const res = await api.put("/users/me", payload);
             toast.success(t('common.success', "Profile updated successfully"));
+
+            // Update local state from server response (reflects validated/formatted values)
+            if (res.data?.data?.profile) {
+                applyProfile(res.data.data.profile);
+            }
+
+            // Clear security fields after successful save
+            setConfirmCurrentPassword("");
+            setOtpCode("");
 
             // Refresh cookie if needed (optional, but good for consistency)
             const cookieUser = JSON.parse(Cookies.get("user") || "{}");
@@ -494,8 +505,8 @@ export default function SettingsPage() {
                                             </AlertDescription>
                                         </Alert>
 
-                                        {/* OTP Requirement for Phone Change if User has Email */}
-                                        {phone !== user?.phone_number && user?.email && (
+                                        {/* OTP only required when CHANGING existing phone (not adding first time) */}
+                                        {phone !== user?.phone_number && user?.phone_number && user?.email && (
                                             <Alert className="bg-blue-50 border-blue-200">
                                                 <AlertCircle className="h-4 w-4" />
                                                 <AlertTitle>{t('settings.two_factor_auth')}</AlertTitle>
