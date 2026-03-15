@@ -3,6 +3,7 @@ import axios from 'axios';
 import Cookies from 'js-cookie';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8888/api/v1';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'bp-web-app-key';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -18,12 +19,8 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // Add API Key header if required by backend (Backend verifies X-API-Key)
-    // For web app, we might need a public key or backend should allow web origin without it?
-    // Our backend requires X-API-Key. We should probably set a default one for Web.
-    // Ideally this is bad practice for public web, but for internal/demo it's fine.
-    const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'bp-web-app-key';
-    config.headers['X-API-Key'] = apiKey;
+    // Add API Key header (configured via NEXT_PUBLIC_API_KEY env variable)
+    config.headers['X-API-Key'] = API_KEY;
     return config;
   },
   (error) => {

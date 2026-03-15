@@ -26,8 +26,10 @@ MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
 ACCOUNT_LOCK_MINUTES = int(os.getenv("ACCOUNT_LOCK_MINUTES", "30"))
 
 # API Keys for client apps
-VALID_API_KEYS = os.getenv(
-    "API_KEYS", "bp-mobile-app-key,bp-web-app-key").split(",")
+_raw_keys = os.getenv("API_KEYS", "")
+if not _raw_keys:
+    _raw_keys = "bp-mobile-app-key,bp-web-app-key"
+VALID_API_KEYS = [k.strip() for k in _raw_keys.split(",") if k.strip()]
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,11 @@ if SECRET_KEY == "your-secret-key-here":
         "SECRET_KEY is using the default value! "
         "This is a critical security risk. Set SECRET_KEY in .env"
     )
-if VALID_API_KEYS == ["bp-mobile-app-key", "bp-web-app-key"]:
-    logger.warning("API_KEYS not set, using default keys (dev only)")
+if not os.getenv("API_KEYS", ""):
+    logger.warning(
+        "API_KEYS not set in environment. Using default dev keys. "
+        "Set API_KEYS env var in production!"
+    )
 
 security = HTTPBearer()
 api_key_header = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
