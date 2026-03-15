@@ -1,0 +1,36 @@
+# Root requirements.txt for Vercel deployment
+# (mirrors app/requirements.txt — Vercel needs this at project root)
+
+# Core Framework & Server
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-dotenv
+python-multipart
+slowapi
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary
+
+# Security & Authentication
+PyJWT
+passlib[bcrypt]
+email-validator
+cryptography
+
+# External Services & Utils
+google-generativeai
+python-telegram-bot
+phonenumbers
+pillow
+pillow-heif  # HEIC/HEIF image support (iPhone photos)
+httpx
+requests
+
+# OTP & Timezone
+pyotp
+pytz
+bcrypt
+
+# Optional: Redis (for serverless/production)
+redis
