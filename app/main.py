@@ -35,7 +35,11 @@ logger = logging.getLogger(__name__)
 # Create tables (controlled by ENV)
 AUTO_CREATE_TABLES = os.getenv("AUTO_CREATE_TABLES", "true").lower() == "true"
 if AUTO_CREATE_TABLES:
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created/verified successfully")
+    except Exception as e:
+        logger.warning(f"Auto-create tables skipped (tables may already exist): {e}")
 
 # Create App
 app = FastAPI(
