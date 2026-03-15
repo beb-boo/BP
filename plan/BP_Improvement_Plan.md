@@ -215,136 +215,9 @@ async def cancel_access_request(
 
 **แนวคิด**: สร้าง interface เดียวกัน แต่ backend storage เลือกได้ ถ้ามี REDIS_URL ใช้ Redis ถ้าไม่มีใช้ Memory (เหมือนเดิม)
 
-**โครงสร้าง**:
-
-```python
-# app/otp_service.py
-
-import os
-import time
-import base64
-import hashlib
-import logging
-import pyotp
-
-logger = logging.getLogger(__name__)
-REDIS_URL = os.getenv("REDIS_URL")  # ถ้ามี = ใช้ Redis, ถ้าไม่มี = ใช้ Memory
-
-
-class MemoryOTPBackend:
-    """In-memory OTP storage - ใช้สำหรับ dev/local/non-serverless"""
-    
-    def __init__(self):
-        self.storage = {}
-        self.verified = set()
-        import threading
-        threading.Thread(target=self._cleanup, daemon=True).start()
-    
-    def store(self, key, otp_data):
-        self.storage[key] = otp_data
-    
-    def get(self, key):
-        return self.storage.get(key)
-    
-    def delete(self, key):
-        self.storage.pop(key, None)
-    
-    def mark_verified(self, key):
-        self.verified.add(key)
-    
-    def is_verified(self, key):
-        return key in self.verified
-    
-    def _cleanup(self):
-        while True:
-            now = time.time()
-            expired = [k for k, v in self.storage.items() 
-                       if now - v['created_at'] > v['expiration']]
-            for k in expired:
-                del self.storage[k]
-            time.sleep(120)
-
-
-class RedisOTPBackend:
-    """Redis-backed OTP storage - ใช้สำหรับ production/serverless"""
-    
-    def __init__(self, redis_url):
-        import redis
-        self.client = redis.from_url(redis_url, decode_responses=True)
-        self.prefix = "otp:"
-        self.verified_prefix = "otp_verified:"
-    
-    def store(self, key, otp_data):
-        import json
-        ttl = int(otp_data.get('expiration', 300))
-        self.client.setex(f"{self.prefix}{key}", ttl + 60, json.dumps(otp_data))
-    
-    def get(self, key):
-        import json
-        data = self.client.get(f"{self.prefix}{key}")
-        return json.loads(data) if data else None
-    
-    def delete(self, key):
-        self.client.delete(f"{self.prefix}{key}")
-    
-    def mark_verified(self, key):
-        self.client.setex(f"{self.verified_prefix}{key}", 600, "1")
-    
-    def is_verified(self, key):
-        return self.client.exists(f"{self.verified_prefix}{key}") > 0
-
-
-class OTPService:
-    """OTP service with auto-selected backend (Memory or Redis)"""
-    
-    def __init__(self):
-        if REDIS_URL:
-            try:
-                self.backend = RedisOTPBackend(REDIS_URL)
-                logger.info("OTP Service: Using Redis backend")
-            except Exception as e:
-                logger.warning(f"Redis failed ({e}), falling back to memory")
-                self.backend = MemoryOTPBackend()
-        else:
-            self.backend = MemoryOTPBackend()
-            logger.info("OTP Service: Using in-memory backend")
-    
-    def generate_otp(self, contact_target, expiration=300):
-        contact_target = contact_target.strip().lower()
-        hex_key = hashlib.sha256(contact_target.encode()).hexdigest()
-        base32_key = base64.b32encode(bytes.fromhex(hex_key)).decode('utf-8')
-        totp = pyotp.TOTP(base32_key, digits=4, interval=expiration)
-        otp = totp.now()
-        self.backend.store(contact_target, {
-            'base32_key': base32_key,
-            'interval': expiration,
-            'created_at': time.time(),
-            'expiration': expiration
-        })
-        return otp
-    
-    def confirm_otp(self, contact_target, otp):
-        contact_target = contact_target.strip().lower()
-        data = self.backend.get(contact_target)
-        if not data:
-            return False
-        if time.time() - data['created_at'] > data['expiration']:
-            self.backend.delete(contact_target)
-            return False
-        totp = pyotp.TOTP(data['base32_key'], digits=4, interval=data['interval'])
-        if totp.verify(otp, valid_window=1):
-            self.backend.mark_verified(contact_target)
-            return True
-        return False
-    
-    def is_verified(self, contact_target):
-        return self.backend.is_verified(contact_target.strip().lower())
-
-
-otp_service = OTPService()
-```
-
 **เพิ่มใน requirements.txt**: `redis` (เป็น optional dependency)
+
+ดู code ตัวอย่างเต็มใน revision ก่อนหน้า
 
 ---
 
@@ -354,40 +227,7 @@ otp_service = OTPService()
 
 **แนวคิด**: ถ้ามี REDIS_URL ใช้ Redis storage สำหรับ slowapi
 
-```python
-# app/utils/rate_limiter.py
-import os
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-REDIS_URL = os.getenv("REDIS_URL")
-
-if REDIS_URL:
-    limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL)
-else:
-    limiter = Limiter(key_func=get_remote_address)
-```
-
-**แก้ไฟล์ที่ import limiter**: `app/main.py`, `app/routers/auth.py`, `app/routers/ocr.py`, `app/routers/payment.py`
-
-เปลี่ยนจาก:
-```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-limiter = Limiter(key_func=get_remote_address)
-```
-
-เป็น:
-```python
-from ..utils.rate_limiter import limiter  # (หรือ from app.utils.rate_limiter)
-```
-
-และใน `app/main.py`:
-```python
-from .utils.rate_limiter import limiter
-# ...
-app.state.limiter = limiter
-```
+**แก้ไฟล์ที่ import limiter**: `app/main.py`, `app/routers/auth.py`, `app/routers/ocr.py`, `app/routers/payment.py` ให้ import จาก `app.utils.rate_limiter` แทน
 
 ---
 
@@ -395,22 +235,7 @@ app.state.limiter = limiter
 
 **ไฟล์**: `app/database.py`
 
-**เพิ่ม connection pool settings**:
-
-```python
-if DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
-    engine = create_engine(DATABASE_URL, connect_args=connect_args)
-else:
-    engine = create_engine(
-        DATABASE_URL,
-        pool_size=5,
-        max_overflow=10,
-        pool_timeout=30,
-        pool_recycle=1800,
-        pool_pre_ping=True
-    )
-```
+**เพิ่ม connection pool settings เมื่อใช้ PostgreSQL**
 
 ---
 
@@ -438,7 +263,7 @@ if AUTO_CREATE_TABLES:
 
 **แนวคิด**: แยก Application building logic ออกจาก polling เพื่อให้ webhook ใช้ร่วมกันได้
 
-สร้างฟังก์ชัน `build_application()` ที่ return Application instance พร้อม handlers ทั้งหมด แล้วแยก `run_polling()` เป็น function ต่างหาก ดู code ตัวอย่างเต็มใน Assessment Report
+สร้างฟังก์ชัน `build_application()` ที่ return Application instance พร้อม handlers ทั้งหมด แล้วแยก `run_polling()` เป็น function ต่างหาก
 
 ### 3.2 สร้าง Webhook Handler
 
@@ -451,72 +276,124 @@ if AUTO_CREATE_TABLES:
 
 ### 3.3 แก้ `app/main.py` - เพิ่ม webhook router
 
-**เพิ่มใน `app/main.py`**:
-
 ```python
 BOT_MODE = os.getenv("BOT_MODE", "polling")
 if BOT_MODE == "webhook":
-    try:
-        from .bot.webhook import router as bot_webhook_router
-        app.include_router(bot_webhook_router)
-        logger.info("Telegram Bot: Webhook mode enabled at /bot/webhook")
-    except Exception as e:
-        logger.error(f"Failed to load bot webhook: {e}")
+    from .bot.webhook import router as bot_webhook_router
+    app.include_router(bot_webhook_router)
 ```
 
-### 3.4 Environment Variables
-
-```env
-# Local dev:
-BOT_MODE=polling
-
-# Vercel/Serverless:
-BOT_MODE=webhook
-WEBHOOK_URL=https://your-api-domain.com
-WEBHOOK_SECRET=your-random-secret
-
-# ไม่ต้องการ Bot:
-BOT_MODE=disabled
-```
-
-### 3.5 วิธีใช้งาน
+### 3.4 วิธีใช้งาน
 
 **Polling** (local/VPS): รัน `python -m app.bot.main` เป็น process แยก
-**Webhook** (Vercel): Deploy backend แล้วเรียก `GET /bot/set-webhook?secret=xxx` ครั้งเดียว จากนั้น Telegram จะส่ง updates มาที่ `POST /bot/webhook` อัตโนมัติ
+**Webhook** (Vercel): Deploy backend แล้วเรียก `GET /bot/set-webhook?secret=xxx` ครั้งเดียว
 
 ---
 
 ## Phase 4: Frontend Improvements
 
-### 4.1 DoctorView - Fetch Real Data
+### 4.1 DoctorView - Fetch Real Data ✅ เสร็จแล้ว
 
-**ไฟล์**: `frontend/app/(dashboard)/dashboard/page.tsx`
+**สถานะ**: ทำเสร็จแล้ว
 
-**แก้ DoctorView component ให้**:
-- Fetch patients จาก `GET /doctor/patients`
-- Fetch access requests จาก `GET /doctor/access-requests`
-- แสดง patient list จริงพร้อมปุ่ม View Records
-- แสดง pending requests พร้อม status
-- เพิ่ม Search Patient + Request Access dialog
+`DoctorView` ใน `dashboard/page.tsx` fetch ข้อมูลจริงจาก API แล้ว:
+- `GET /doctor/patients` → แสดง patient list + จำนวน
+- `GET /doctor/access-requests` → แสดง pending requests + status
+- Search Patient + Request Access
+- Cancel pending request
 
-### 4.2 Patient: Manage Authorized Doctors
+### 4.2 Patient: Manage Authorized Doctors ✅ เสร็จแล้ว
 
-**ไฟล์**: `frontend/app/(dashboard)/dashboard/page.tsx`
+**สถานะ**: ทำเสร็จแล้ว
 
-**แก้ปุ่ม "Manage Doctors" ให้**:
-- แสดง authorized doctors (GET `/patient/authorized-doctors`)
-- แสดง pending access requests (GET `/patient/access-requests`)
-- ปุ่ม Approve/Reject pending requests
-- ปุ่ม Remove authorized doctor
-- ปุ่ม Authorize Doctor (search → authorize)
+`ManageDoctorsDialog` ใน `dashboard/page.tsx` ทำงานครบ:
+- แสดง authorized doctors + ปุ่ม Remove
+- แสดง pending access requests + ปุ่ม Approve/Reject
+- Authorize doctor by ID
 
-### 4.3 Next.js Middleware สำหรับ Auth Guard
+### 4.3 Auth Guard - proxy.ts (Next.js 16) ✅ เสร็จแล้ว + แนะนำเพิ่มเติม
 
-**ไฟล์ใหม่**: `frontend/middleware.ts`
+**สถานะ**: `frontend/proxy.ts` มีอยู่แล้วและถูกต้อง
 
-สร้าง middleware ที่:
-- Redirect ไป `/auth/login` ถ้าเข้า protected routes (`/dashboard`, `/settings`, `/subscription`) โดยไม่มี token cookie
-- Redirect ไป `/dashboard` ถ้าเข้า auth routes (`/auth/*`) แต่มี token แล้ว
+> **สำคัญ**: Next.js 16 เปลี่ยนจาก `middleware.ts` เป็น `proxy.ts`
+> - `middleware.ts` ถูก **deprecated** แล้ว
+> - `proxy.ts` ใช้สำหรับ **lightweight routing เท่านั้น** (rewrites, redirects, headers)
+> - **ห้ามใช้ proxy.ts สำหรับ auth logic ที่ซับซ้อน** (เพราะ CVE-2025-29927 ที่ bypass ได้)
+> - Auth verification ควรทำใน **Server Layout Guard** หรือ **API route/server action**
+
+**สิ่งที่มีอยู่แล้ว** (`frontend/proxy.ts`):
+```typescript
+export function proxy(request: NextRequest) {
+    const token = request.cookies.get("token")?.value;
+    // redirect ไป login ถ้าไม่มี token (lightweight check)
+    // redirect ไป dashboard ถ้ามี token แล้วเข้า auth pages
+}
+```
+
+**แนะนำเพิ่มเติม (Optional - Defense in Depth)**:
+
+สร้าง Server Layout Guard ที่ `frontend/app/(dashboard)/layout.tsx` เพื่อเป็น auth check ชั้นที่ 2 ฝั่ง server ตาม Next.js 16 best practice:
+
+```typescript
+// frontend/app/(dashboard)/layout.tsx
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+
+export default async function DashboardLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('token')?.value;
+
+    // Server-side auth check (defense in depth)
+    // proxy.ts ทำ redirect แล้ว แต่นี่เป็น safety net
+    if (!token) {
+        redirect('/auth/login');
+    }
+
+    return <>{children}</>;
+}
+```
+
+**ข้อดี**:
+- proxy.ts = ด่านแรก (เร็ว, lightweight, ทำ redirect ก่อน render)
+- Server Layout Guard = ด่านที่สอง (server-side, ไม่ถูก bypass เหมือน proxy)
+- API interceptor (401 → redirect) = ด่านที่สาม (จัดการ token expired)
+
+**สิ่งที่ต้องปรับใน Dashboard Page**:
+
+เมื่อมี proxy.ts + Server Layout Guard แล้ว client-side `useEffect` cookie check ใน `DashboardPage` สามารถลดลงได้ ไม่ต้อง redirect เอง แค่ดึงข้อมูล user จาก cookie:
+
+```typescript
+// เดิม: redirect ใน useEffect (ซ้ำซ้อนกับ proxy.ts)
+useEffect(() => {
+    const userCookie = Cookies.get("user");
+    if (!userCookie) {
+        router.push("/auth/login");  // ← ไม่จำเป็นแล้ว proxy จัดการแล้ว
+        return;
+    }
+    // ...
+}, []);
+
+// ใหม่: ไม่ต้อง redirect เอง เพราะ proxy.ts + layout ทำแล้ว
+useEffect(() => {
+    const userCookie = Cookies.get("user");
+    if (!userCookie) return; // proxy จะ redirect ก่อนหน้านี้แล้ว
+    try {
+        const userData = JSON.parse(userCookie);
+        setUser(userData);
+        if (userData.language) setLanguage(userData.language);
+    } catch (e) {
+        console.error("Invalid user cookie");
+    } finally {
+        setLoading(false);
+    }
+}, []);
+```
+
+---
 
 ### 4.4 API Key เป็น ENV Variable
 
@@ -539,11 +416,33 @@ const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'bp-web-app-key';
 
 สร้าง custom error pages ที่มี branding BP Monitor
 
-### 4.7 `next.config.ts` - เพิ่ม config
+### 4.7 `next.config.ts` ✅ มี standalone แล้ว
 
-**ไฟล์**: `frontend/next.config.ts`
+**สถานะ**: มี `output: 'standalone'` อยู่แล้ว
 
-เพิ่ม `output: 'standalone'` สำหรับ Docker และ optional API proxy rewrites
+**เพิ่มเติม (Optional)**: API proxy rewrites ถ้า backend อยู่คนละ domain
+
+```typescript
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+    output: 'standalone',
+    
+    // Optional: API Proxy (ถ้า backend อยู่คนละ domain)
+    async rewrites() {
+        const apiUrl = process.env.API_PROXY_URL;
+        if (!apiUrl) return [];
+        return [
+            {
+                source: '/api/v1/:path*',
+                destination: `${apiUrl}/api/v1/:path*`
+            }
+        ];
+    }
+};
+
+export default nextConfig;
+```
 
 ---
 
@@ -571,11 +470,11 @@ const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'bp-web-app-key';
 
 ```
 1. อ่าน CLAUDE.md เพื่อเข้าใจ project structure
-2. อ่าน plan/BP_Improvement_Plan.md (ไฟล์นี้) + plan/BP_Assessment.md
+2. อ่าน plan/BP_Improvement_Plan.md (ไฟล์นี้) + plan/BP_Assessment.md + plan/BP_Deployment_Plan.md
 3. ทำ Phase 1 (Bug Fixes) ทั้งหมดก่อน → ทดสอบ
 4. ทำ Phase 2 (Dual-Mode Storage) → ทดสอบ
 5. ทำ Phase 3 (Bot Dual-Mode) → ทดสอบ
-6. ทำ Phase 4 (Frontend) → ทดสอบ
+6. ทำ Phase 4 (Frontend) → เฉพาะข้อที่ยังไม่เสร็จ (4.3 เพิ่มเติม, 4.4, 4.5, 4.6) → ทดสอบ
 7. ทำ Phase 5 (Deployment Config) → ทดสอบ
 8. อัพเดต CLAUDE.md ให้สะท้อนสถานะใหม่
 ```
