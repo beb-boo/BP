@@ -46,3 +46,18 @@ yarn-error.*
 PRICING-GUIDE-INTERNAL.md
 *.JPG
 *.log
+
+# Sensitive / test data
+bp_data/
+bp_prompt_log.txt
+
+# Python
+.venv/
+venv/
+.pytest_cache/
+
+# IDE / Tools
+.vscode/
+
+# Logs & temp
+logs/

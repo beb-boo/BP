@@ -98,7 +98,7 @@ BP/
 │   │   ├── (dashboard)/ # Protected dashboard routes
 │   │   ├── error.tsx    # Custom error page
 │   │   └── not-found.tsx # Custom 404 page
-│   ├── middleware.ts     # Auth guard (redirect unauthenticated)
+│   ├── proxy.ts          # Auth guard (Next.js 16, replaces middleware.ts)
 │   ├── lib/api.ts       # Axios instance (base: localhost:8888/api/v1)
 │   └── contexts/        # React contexts (Language)
 └── MobileApp/           # React Native (Expo)
@@ -155,6 +155,34 @@ docker-compose up --build  # Runs PostgreSQL + Redis + FastAPI + Bot + Frontend
 # Dockerfile includes Node.js installation for chart rendering
 ```
 
+### Vercel (Serverless)
+
+Frontend and Backend are **separate Vercel projects** from the same repo.
+
+```bash
+# Frontend project — Root Directory: frontend
+BACKEND_URL=https://your-backend.vercel.app  # Server-side (Next.js rewrites)
+NEXT_PUBLIC_API_KEY=<your-api-key>
+
+# Backend project — Root Directory: . (root)
+DATABASE_URL=postgresql://...@neon.tech/bp_db?sslmode=require
+REDIS_URL=rediss://default:xxx@xxx.upstash.io:6379
+SECRET_KEY=<new-strong-random-key>
+ENCRYPTION_KEY=<new-fernet-key>
+API_KEYS=<your-custom-api-keys>
+BOT_MODE=webhook
+WEBHOOK_URL=https://your-backend.vercel.app
+WEBHOOK_SECRET=<random-secret>
+CHART_RENDERER=quickchart   # Node.js subprocess unavailable on Vercel
+AUTO_CREATE_TABLES=true      # Set false after first deploy
+ALLOWED_ORIGINS=https://your-frontend.vercel.app
+```
+
+**Vercel-specific files:**
+- `vercel.json` — routes all requests to `app/main.py` via `@vercel/python`
+- `requirements.txt` (root) — mirrors `app/requirements.txt` for Vercel Python runtime
+- `frontend/next.config.ts` — rewrites `/api/v1/*` to `BACKEND_URL`
+
 ## Environment Variables
 
 Required in `.env` (see `.env.example` for full list):
@@ -185,6 +213,8 @@ OTP_EXPIRE_MINUTES=5         # OTP code expiry in minutes
 GEMINI_MODEL=gemini-2.0-flash # Google AI model for OCR
 NEXT_PUBLIC_API_KEY=    # Frontend API key override
 ALLOWED_ORIGINS=*       # CORS origins (comma-separated)
+CHART_RENDERER=auto     # auto | nodejs | quickchart
+BACKEND_URL=            # Frontend rewrites target (server-side, Vercel only)
 ```
 
 ## API Response Format
@@ -214,17 +244,20 @@ Users can set their preferred timezone:
 
 ## Chart Generation
 
-Server-side BP trend chart rendering uses Chart.js via Node.js subprocess:
+Server-side BP trend chart rendering with dual renderer support:
 
-- **Renderer:** `app/chart-renderer/render.js` — Chart.js + @napi-rs/canvas → PNG
-- **Python wrapper:** `app/utils/chart_generator.py` — subprocess call, returns BytesIO
+- **Node.js renderer:** `app/chart-renderer/render.js` — Chart.js + @napi-rs/canvas → PNG (best quality)
+- **QuickChart.io renderer:** `app/utils/chart_generator.py` — HTTP API, works on any platform
+- **Python wrapper:** `app/utils/chart_generator.py` — auto-selects renderer via `CHART_RENDERER` env
 - **API endpoint:** `GET /api/v1/stats/chart?days=30&lang=en` — returns PNG image
 - **Telegram Bot:** `/stats` command sends chart image after text stats
-- **Requires:** Node.js installed + `npm install` in `app/chart-renderer/`
+- **`CHART_RENDERER`:** `auto` (default) = Node.js if available, else QuickChart.io | `nodejs` | `quickchart`
+- **Node.js requires:** Node.js installed + `npm install` in `app/chart-renderer/`
 
 ## Known Limitations
 
 - No Alembic migrations - schema changes are manual (use `migrations/` scripts)
 - CORS allows all origins (`*`) - restrict in production
 - Image audit trail not implemented (images deleted after OCR)
-- Chart generation requires Node.js runtime (not just Python)
+- Chart generation: Node.js renderer for Docker/VPS, QuickChart.io for Vercel/serverless
+- Vercel serverless: 10s timeout (hobby), Node.js subprocess not available

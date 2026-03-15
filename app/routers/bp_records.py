@@ -382,7 +382,14 @@ async def get_bp_chart(
     ).limit(days).all()
 
     # Generate chart (handles empty records internally)
-    chart_buffer = generate_bp_chart(records, lang=lang)
+    try:
+        chart_buffer = generate_bp_chart(records, lang=lang)
+    except RuntimeError as e:
+        logger.error(f"Chart generation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Chart generation unavailable: {e}"
+        )
 
     return StreamingResponse(
         chart_buffer,
