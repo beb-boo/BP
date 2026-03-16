@@ -1,6 +1,7 @@
 """Telegram Payment Handler"""
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.ext import (
     ContextTypes, ConversationHandler, CommandHandler,
     MessageHandler, CallbackQueryHandler, filters
@@ -122,6 +123,11 @@ async def receive_slip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not plan_type:
         await update.message.reply_text("Session expired. Please use /upgrade again.")
         return ConversationHandler.END
+
+    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
+    except Exception:
+        pass
 
     # Wait Msg
     msg_txt = "🔄 Verifying slip..." if lang == "en" else "🔄 กำลังตรวจสอบสลิป..."

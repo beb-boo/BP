@@ -5,10 +5,12 @@ from app.bot.services import BotService
 from app.bot.log_service import BotLogService
 from app.utils.ocr_helper import read_blood_pressure_with_gemini
 from .locales import get_text
+from telegram.constants import ChatAction
 from datetime import datetime
 import logging
 import tempfile
 import os
+import re
 
 # --- Language States ---
 SELECT_LANG = 99
@@ -127,6 +129,7 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 logger = logging.getLogger(__name__)
 
 # --- Auth States ---
+CHOOSE_LANG = 7
 SHARE_CONTACT = 0
 AUTH_PASSWORD = 1
 REG_NAME = 2
@@ -139,20 +142,26 @@ REG_PASSWORD = 6
 OCR_CONFIRM = 10
 OCR_EDIT = 11
 
+# --- Manual BP States ---
+MANUAL_BP_CONFIRM = 20
+
+# Regex for manual BP input: 130/90/65 or 130-90-65
+BP_TEXT_PATTERN = re.compile(r'^(\d{2,3})[/\-](\d{2,3})[/\-](\d{2,3})$')
+
 # ============================================================================
 # Auth / Registration Flow
 # ============================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Entry point: Check if user is linked, if not ask for contact."""
+    """Entry point: Bilingual welcome, then language choice or welcome back."""
     user = update.effective_user
     chat_id = update.effective_chat.id
-    
+
     # 0. Check for Deep Link (verify_TOKEN)
     if context.args and context.args[0].startswith("verify_"):
         token = context.args[0].replace("verify_", "")
         linked_user = BotService.process_connection_token(token, chat_id)
-        
+
         if linked_user:
             await update.message.reply_text(
                 f"✅ **Account Connected!**\n"
@@ -164,79 +173,99 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
         else:
             await update.message.reply_text("❌ Connection link is invalid or expired.")
-    
+
     # 1. Check if already linked
     linked_user = BotService.get_user_by_telegram_id(chat_id)
-    lang = linked_user.language if linked_user else "en"
-    
+
     if linked_user:
-        msg = get_text("welcome", lang, name=linked_user.full_name)
-        await update.message.reply_text(
-            msg,
-            reply_markup=ReplyKeyboardRemove()
-        )
-        BotLogService.log(user.id, "OUT", "welcome", "Welcome back message sent", linked_user.id)
+        # Show bilingual welcome back
+        msg = get_text("welcome_back_bilingual", "en", name=linked_user.full_name)
+        await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
+        BotLogService.log(user.id, "OUT", "welcome", "Welcome back (bilingual)", linked_user.id)
         return ConversationHandler.END
 
-    # 2. Not linked -> Request Contact
-    # Assume EN for new users or let them choose? Default EN.
-    lang = "en"
-    
+    # 2. Not linked -> Show bilingual welcome + language selection
+    msg = get_text("welcome_bilingual", "en")
+    msg += "\n\n" + get_text("choose_lang_prompt", "en")
+
+    keyboard = [
+        [InlineKeyboardButton("🇬🇧 English", callback_data="start_lang_en")],
+        [InlineKeyboardButton("🇹🇭 ไทย", callback_data="start_lang_th")]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    return CHOOSE_LANG
+
+async def choose_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle language choice during /start flow."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data  # "start_lang_en" or "start_lang_th"
+    lang = "en" if data == "start_lang_en" else "th"
+
+    # Store chosen language for registration flow
+    context.user_data['register_lang'] = lang
+
+    # Confirm language choice
+    msg = get_text("lang_chosen", lang)
+    await query.edit_message_text(msg)
+
+    # Send contact request as a new message (can't mix inline keyboard edit with reply keyboard)
     contact_btn_text = get_text("share_contact_btn", lang)
     contact_keyboard = KeyboardButton(text=contact_btn_text, request_contact=True)
     reply_markup = ReplyKeyboardMarkup([[contact_keyboard]], one_time_keyboard=True, resize_keyboard=True)
-    
-    msg = get_text("welcome_new", lang, name=user.first_name)
-    await update.message.reply_text(
-        msg,
-        reply_markup=reply_markup
-    )
+
+    welcome_msg = get_text("welcome_new", lang, name=update.effective_user.first_name)
+    await query.message.reply_text(welcome_msg, reply_markup=reply_markup)
+
     return SHARE_CONTACT
+
 
 async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     contact = update.message.contact
+    lang = context.user_data.get('register_lang', 'en')
     if contact.user_id != update.effective_user.id:
-        await update.message.reply_text("❌ Please share your own contact.")
+        await update.message.reply_text(get_text("wrong_contact", lang))
         return SHARE_CONTACT
-        
+
     phone_number = contact.phone_number
     if phone_number.startswith("+"):
         phone_number = phone_number[1:]
-    
+
     context.user_data['phone_number'] = phone_number
     existing_user = BotService.get_user_by_phone(phone_number)
-    
+
     if existing_user:
         context.user_data['user_id'] = existing_user.id
-        
-        lang = existing_user.language or "en"
+
+        # Use language chosen at CHOOSE_LANG step (not from DB)
         msg = get_text("found_account", lang, phone=phone_number)
-        
+
         await update.message.reply_text(
             msg,
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
         )
+        context.user_data['_auth_state'] = 'auth_password'  # Next input: password
         return AUTH_PASSWORD
     else:
-        # Request Name
-        # Lang defaults to EN for new user, or maybe TH if phone is Thai? 
-        # Hard to guess. Stick to default EN or prompt?
-        # Let's check phone prefix? +66 -> TH.
-        lang = "th" if phone_number.startswith("66") else "en"
-        context.user_data['register_lang'] = lang # Store for flow
-        
+        # Use language chosen at /start (CHOOSE_LANG step)
+        lang = context.user_data.get('register_lang', 'en')
+
         msg = get_text("new_account", lang, phone=phone_number)
         await update.message.reply_text(
             msg,
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="Markdown"
         )
+        context.user_data['_auth_state'] = 'reg_name'  # Next input: full name
         return REG_NAME
 
 async def auth_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     password = update.message.text
     phone_number = context.user_data.get('phone_number')
+    lang = context.user_data.get('register_lang', 'en')
     try:
         await update.message.delete()
     except:
@@ -245,82 +274,107 @@ async def auth_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = BotService.verify_user_password(phone_number, password)
     if user:
         BotService.link_telegram_account(user.id, update.effective_chat.id)
-        await update.message.reply_text("✅ Account Linked Successfully!\nYou can now use the bot.")
+        # Save language choice to DB
+        BotService.update_user_language(user.id, lang)
+        await update.message.reply_text(get_text("link_success", lang))
+        context.user_data.pop('_auth_state', None)  # Clear auth state
         return ConversationHandler.END
     else:
-        await update.message.reply_text("❌ Incorrect Password. Please try again or /cancel.")
+        await update.message.reply_text(get_text("link_fail_password", lang))
+        context.user_data['_auth_state'] = 'auth_password'  # Still expecting password
         return AUTH_PASSWORD
 
 async def reg_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['full_name'] = update.message.text
     lang = context.user_data.get('register_lang', 'en')
-    
+
     msg = get_text("enter_dob", lang)
     await update.message.reply_text(msg, parse_mode="Markdown")
+    context.user_data['_auth_state'] = 'reg_dob'  # Next input: date of birth
     return REG_DOB
 
 async def reg_dob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    lang = context.user_data.get('register_lang', 'en')
     try:
         dob = datetime.strptime(text, "%d/%m/%Y")
         context.user_data['date_of_birth'] = dob
     except ValueError:
-        lang = context.user_data.get('register_lang', 'en')
-        # Error msg not localized in dict yet, add simple fallback or extend dict later
-        # I'll use hardcoded EN/TH based on lang for now or just generic.
-        # Let's keep existing EN hardcoded for error to save time or basic dict.
-        # Actually dict has "error".
-        # I'll use simple hardcoded check.
-        if lang == "th":
-            err = "❌ รูปแบบผิด กรุณาใช้ DD/MM/YYYY (เช่น 31/01/1990):"
-        else:
-            err = "❌ Invalid format. Please use DD/MM/YYYY (e.g. 31/01/1990):"
-        await update.message.reply_text(err)
+        await update.message.reply_text(get_text("dob_invalid", lang))
+        context.user_data['_auth_state'] = 'reg_dob'  # Still expecting DOB
         return REG_DOB
 
-    lang = context.user_data.get('register_lang', 'en')
     msg = get_text("enter_gender", lang)
-    
-    keyboard = [['Male', 'Female', 'Other']] # Buttons hardcoded EN for data consistency?
-    # Or translate buttons? If I translate buttons, I must map them back to data 'male','female'.
-    # For now, keep buttons EN to simplify data mapping or map "ชาย" -> "male".
-    # I'll keep buttons EN for simplicity as requested "Bilingual Support" usually implies UI text.
-    # User requested "Support both", implied fully.
-    # I'll leave buttons EN for now to avoid logic bugs in `reg_gender`.
-    
+
+    # Localized gender buttons
+    gender_labels = [
+        get_text("gender_male", lang),
+        get_text("gender_female", lang),
+        get_text("gender_other", lang)
+    ]
+    keyboard = [gender_labels]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(msg, reply_markup=reply_markup, parse_mode="Markdown")
+    context.user_data['_auth_state'] = 'reg_gender'  # Next input: gender selection
     return REG_GENDER
 
 async def reg_gender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gender = update.message.text.lower()
-    if gender not in ['male', 'female', 'other']:
-        await update.message.reply_text("Please select from the buttons.")
-        return REG_GENDER
-    context.user_data['gender'] = gender
-    keyboard = [['Patient', 'Doctor']]
-    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
+    gender_text = update.message.text.strip()
     lang = context.user_data.get('register_lang', 'en')
+
+    # Reverse map: localized label -> standardized EN value
+    gender_map = {
+        get_text("gender_male", lang).lower(): "male",
+        get_text("gender_female", lang).lower(): "female",
+        get_text("gender_other", lang).lower(): "other",
+        # Also accept raw EN values
+        "male": "male", "female": "female", "other": "other",
+    }
+
+    gender = gender_map.get(gender_text.lower())
+    if not gender:
+        await update.message.reply_text(get_text("gender_invalid", lang))
+        return REG_GENDER
+
+    context.user_data['gender'] = gender
+
+    # Localized role buttons
+    role_labels = [get_text("role_patient", lang), get_text("role_doctor", lang)]
+    keyboard = [role_labels]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
+
     msg = get_text("role_select", lang)
     await update.message.reply_text(msg, reply_markup=reply_markup, parse_mode="Markdown")
+    context.user_data['_auth_state'] = 'reg_role'  # Next input: role selection
     return REG_ROLE
 
 async def reg_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    role = update.message.text.lower()
-    if role not in ['patient', 'doctor']:
-        await update.message.reply_text("Please select Patient or Doctor.")
-        return REG_ROLE
-    context.user_data['role'] = role
-    
+    role_text = update.message.text.strip()
     lang = context.user_data.get('register_lang', 'en')
+
+    # Reverse map: localized label -> standardized EN value
+    role_map = {
+        get_text("role_patient", lang).lower(): "patient",
+        get_text("role_doctor", lang).lower(): "doctor",
+        # Also accept raw EN values
+        "patient": "patient", "doctor": "doctor",
+    }
+
+    role = role_map.get(role_text.lower())
+    if not role:
+        await update.message.reply_text(get_text("role_invalid", lang))
+        return REG_ROLE
+
+    context.user_data['role'] = role
+
     msg = get_text("set_password", lang)
-    
+
     await update.message.reply_text(
         msg,
         reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
+    context.user_data['_auth_state'] = 'reg_password'  # Next input: password
     return REG_PASSWORD
 
 async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -328,8 +382,9 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(password) < 8:
         lang = context.user_data.get('register_lang', 'en')
         err_msg = get_text("error_pwd_length", lang)
-        
+
         await update.message.reply_text(err_msg)
+        context.user_data['_auth_state'] = 'reg_password'  # Still expecting password
         return REG_PASSWORD
     try:
         await update.message.delete()
@@ -337,7 +392,14 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
     context.user_data['password'] = password
-    await update.message.reply_text("⏳ Creating account...")
+    lang = context.user_data.get('register_lang', 'en')
+
+    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
+    except Exception:
+        pass
+
+    await update.message.reply_text(get_text("creating_account", lang))
     new_user = await BotService.register_new_user(context.user_data, update.effective_chat.id)
     
     lang = context.user_data.get('register_lang', 'en')
@@ -359,9 +421,11 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         err = get_text("error", lang)
         await update.message.reply_text(err)
+    context.user_data.pop('_auth_state', None)  # Clear auth state
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop('_auth_state', None)  # Clear auth state
     await update.message.reply_text("⛔️ Process cancelled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
@@ -369,6 +433,7 @@ def get_auth_handler():
     return ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
+            CHOOSE_LANG: [CallbackQueryHandler(choose_lang_callback, pattern='^start_lang_')],
             SHARE_CONTACT: [MessageHandler(filters.CONTACT, handle_contact)],
             AUTH_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, auth_password)],
             REG_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_name)],
@@ -422,6 +487,11 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await update.message.reply_text("❌ No image found.")
         return ConversationHandler.END
+
+    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
+    except Exception:
+        pass
 
     processing_msg = await update.message.reply_text("🔍 Analyzing image...")
 
@@ -630,6 +700,11 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Please /start and link your account first.")
         return
 
+    try:
+        await update.message.chat.send_action(ChatAction.TYPING)
+    except Exception:
+        pass
+
     data = BotService.get_user_stats(user.id)
     recent = data['recent']
     avg = data['average']
@@ -661,6 +736,10 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send BP trend chart image (if ≥ 2 records)
     if recent and len(recent) >= 2:
         try:
+            await update.message.chat.send_action(ChatAction.UPLOAD_PHOTO)
+        except Exception:
+            pass
+        try:
             from app.utils.chart_generator import generate_bp_chart
             chart_buffer = generate_bp_chart(recent, lang=lang)
             caption = "📊 Blood Pressure Trends" if lang == "en" else "📊 กราฟความดันโลหิต"
@@ -681,10 +760,146 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reply to unknown messages."""
-    await update.message.reply_text(
-        "🤔 I didn't understand that.\n"
-        "Type /help to see what I can do, or send a photo to record BP!"
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = user.language if user else "en"
+    await update.message.reply_text(get_text("unknown_msg", lang), parse_mode="Markdown")
+
+# ============================================================================
+# Manual BP Text Input (e.g., 130/90/65 or 130-90-65)
+# ============================================================================
+
+async def manual_bp_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Parse text like 130/90/65 and show confirmation with inline buttons."""
+    chat_id = update.effective_chat.id
+    user = BotService.get_user_by_telegram_id(chat_id)
+
+    if not user:
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    text = update.message.text.strip()
+
+    match = BP_TEXT_PATTERN.match(text)
+    if not match:
+        await update.message.reply_text(get_text("manual_bp_invalid_format", lang), parse_mode="Markdown")
+        return ConversationHandler.END
+
+    sys_val = int(match.group(1))
+    dia_val = int(match.group(2))
+    pulse_val = int(match.group(3))
+
+    # Validate ranges
+    if not (50 <= sys_val <= 300 and 30 <= dia_val <= 200 and 30 <= pulse_val <= 200):
+        await update.message.reply_text(get_text("manual_bp_out_of_range", lang))
+        return ConversationHandler.END
+
+    # Use message timestamp as measurement date/time (convert to user timezone)
+    import pytz
+    msg_date = update.message.date  # UTC datetime
+    user_tz = pytz.timezone(user.timezone or "Asia/Bangkok")
+    local_dt = msg_date.astimezone(user_tz)
+
+    date_str = local_dt.strftime("%Y-%m-%d")
+    time_str = local_dt.strftime("%H:%M")
+    date_display = local_dt.strftime("%d/%m/%Y")
+
+    # Store in context for confirmation
+    context.user_data['manual_bp_temp'] = {
+        "sys": sys_val,
+        "dia": dia_val,
+        "pulse": pulse_val,
+        "date": date_str,
+        "time": time_str,
+        "user_id": user.id
+    }
+
+    msg = get_text("manual_bp_confirm", lang,
+        sys=sys_val, dia=dia_val, pulse=pulse_val,
+        date=date_display, time=time_str
     )
+
+    btn_confirm = get_text("btn_confirm", lang)
+    btn_cancel = get_text("btn_cancel", lang)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(btn_confirm, callback_data="manual_bp_save"),
+            InlineKeyboardButton(btn_cancel, callback_data="manual_bp_cancel")
+        ]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return MANUAL_BP_CONFIRM
+
+
+async def manual_bp_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle confirm/cancel for manual BP entry."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    bp_data = context.user_data.get('manual_bp_temp')
+
+    if not bp_data:
+        await query.edit_message_text("❌ Session expired. Please try again.")
+        return ConversationHandler.END
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = user.language or "en" if user else "en"
+
+    if data == "manual_bp_save":
+        try:
+            await query.message.chat.send_action(ChatAction.TYPING)
+        except Exception:
+            pass
+
+        record, is_new = BotService.create_bp_record(
+            user_id=bp_data['user_id'],
+            systolic=bp_data['sys'],
+            diastolic=bp_data['dia'],
+            pulse=bp_data['pulse'],
+            notes="Bot Manual Text Entry",
+            measurement_date=bp_data.get('date'),
+            measurement_time=bp_data.get('time')
+        )
+
+        if is_new:
+            msg = get_text("manual_bp_saved", lang,
+                sys=bp_data['sys'], dia=bp_data['dia'], pulse=bp_data['pulse'])
+        else:
+            msg = get_text("save_duplicate", lang)
+
+        await query.edit_message_text(msg, parse_mode="Markdown")
+        BotLogService.log(bp_data['user_id'], "OUT", "save_manual_text",
+                         f"Manual BP: {bp_data['sys']}/{bp_data['dia']}/{bp_data['pulse']}", bp_data['user_id'])
+
+    elif data == "manual_bp_cancel":
+        msg = get_text("manual_bp_cancelled", lang)
+        await query.edit_message_text(msg)
+
+    # Clean up
+    context.user_data.pop('manual_bp_temp', None)
+    return ConversationHandler.END
+
+
+def get_manual_bp_handler():
+    """ConversationHandler for manual text-based BP input."""
+    return ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex(BP_TEXT_PATTERN) & ~filters.COMMAND,
+                manual_bp_entry
+            )
+        ],
+        states={
+            MANUAL_BP_CONFIRM: [
+                CallbackQueryHandler(manual_bp_confirm_callback, pattern='^manual_bp_')
+            ]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        per_message=False
+    )
+
 
 def get_ocr_handler():
     return ConversationHandler(

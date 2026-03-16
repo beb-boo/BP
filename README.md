@@ -1,4 +1,4 @@
-# 🩸 Blood Pressure Monitor & Telemedicine Platform
+# Blood Pressure Monitor & Telemedicine Platform
 
 A comprehensive platform for tracking blood pressure, managing doctor-patient relationships, and empowering users with their health data.
 
@@ -9,15 +9,15 @@ A comprehensive platform for tracking blood pressure, managing doctor-patient re
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+ (for Web App & Chart Rendering)
+- Node.js 18+ (for Chart Rendering)
 - Google Gemini API Key (for OCR)
 
-### 1️⃣ Configuration
+### 1. Configuration
 
 Copy `.env.example` to `app/.env` and fill in your values:
 
@@ -41,12 +41,9 @@ TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 APP_TIMEZONE=Asia/Bangkok
 ```
 
-### 2️⃣ Running the Backend API
-
-The core brain of the system.
+### 2. Running the Backend API
 
 ```bash
-# Install dependencies
 pip install -r app/requirements.txt
 
 # Install chart renderer (required for BP chart generation)
@@ -56,250 +53,306 @@ cd app/chart-renderer && npm install && cd ../..
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8888
 ```
 
-* **Docs**: [http://localhost:8888/docs](http://localhost:8888/docs)
-* **Health Check**: [http://localhost:8888/health](http://localhost:8888/health)
+* **Docs**: http://localhost:8888/docs
+* **Health Check**: http://localhost:8888/health
 
-### 3️⃣ Running the Telegram Bot 🤖
-
-Allows users to record BP by sending a photo.
+### 3. Running the Telegram Bot
 
 ```bash
-# Run Bot (in a new terminal)
 python3 -m app.bot.main
 ```
 
-* **Use it**: Open your bot in Telegram.
-* **Commands**:
-  * `/start` - Welcome & Status.
-  * `/login <email> <password>` - Link Telegram to your account.
-  * `/stats` - View stats & recent records + BP trend chart image.
-  * **[Send Photo]** - Auto-extract BP values -> Confirm/Edit -> Save.
-
-### 4️⃣ Running the Web Application 🌐
-
-Dashboard for patients and doctors.
+### 4. Running the Web Application
 
 ```bash
 cd frontend
-# Install dependencies
 npm install
-
-# Run Dev Server
 npm run dev
 ```
 
-* **URL**: [http://localhost:3000](http://localhost:3000)
+* **URL**: http://localhost:3000
 
 ---
 
-## 🛠 Features Breakdown
+## Deployment
 
-### 🔐 Security & Privacy
+### Vercel (Serverless)
 
-* **Field-Level Encryption**: Sensitive PII (Citizen ID, Medical License) is encrypted *before* valid storage using AES-128 (Fernet). Even database admins cannot read it without the key.
-* **Hashed Indexes**: Allows searching for unique IDs (like Citizen ID) without decrypting the entire database.
-* **Data Portability**: Users can export their full history via `/api/v1/export/my-data`.
+Frontend and Backend are deployed as **separate Vercel projects** from the same repository.
 
-### 🩺 For Patients
+#### How It Works
 
-* **Smart Recording**:
-  * **Scan Photo**: Upload image or file -> AI extracts Sys/Dia/Pulse & Date/Time.
-  * **Duplicate Prevention**: Automatically detects and ignores duplicate uploads (Same User + Date/Time + Values).
-  * **Intelligent Timestamp**: Auto-detects time from Screen (OCR) -> EXIF -> Fallback.
-* **Trends & History**:
-  * **Free Level**: View latest 30 records & statistics.
-  * **Premium Level**: Unlimited history access.
-* **Doctor Access**: Grant or revoke access for doctors to view your data.
+Vercel runs Python as serverless functions. Because `app/main.py` uses relative imports (`from .database import ...`), it **cannot** be used as a direct entry point. Instead, `api/index.py` acts as a bridge:
 
-### 👨‍⚕️ For Doctors
+```
+api/index.py          → Vercel entry point (zero-config path)
+  └── from app.main import app   → loads FastAPI as a package (relative imports work)
+```
 
-* **Patient List**: View all authorized patients.
-* **Access Request**: Request access to a patient's data by email/ID.
-* **Monitoring**: View patient graphs and history (Full History Access).
+#### Required Files (already in repo)
 
----
+**`api/index.py`** -- Vercel serverless entry point:
 
-### 💳 Subscription & Payments
+```python
+from app.main import app
+```
 
-We offer a flexible subscription model to ensure sustainability while keeping essential features free.
+This file exists because Vercel's Python runtime recognizes `api/index.py` as a standard entry point. It imports the FastAPI `app` instance from `app/main.py`, which allows all relative imports within the `app/` package to work correctly.
 
-* **Free Tier**:
-  * 30-record history limit.
-  * Basic stats.
-  * Standard support.
-* **Premium Tier** (99 THB/mo or 990 THB/yr):
-  * **Unlimited History**: Store and view records from day one.
-  * **Data Export**: Full CSV/PDF export.
-  * **Priority Support**.
+**`vercel.json`** -- Routes all requests to the entry point:
 
-**Payment Flow (Manual Verification)**:
-Currently, the system uses a manual slip verification workflow:
+```json
+{
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "api/index.py" }
+  ]
+}
+```
 
-1. User selects a plan (Web or Bot).
-2. System generates a Bank Account info / QR Code.
-3. User transfers money and uploads the bank slip.
-4. Admin confirms the slip -> Subscription activated via `/admin` or DB.
+**`requirements.txt`** (root) -- Mirrors `app/requirements.txt` because Vercel looks for dependencies at the project root.
 
----
+**`app/__init__.py`** -- Empty file that marks `app/` as a Python package (required for `from app.main import app` to work).
 
-### 🌍 Localization (Bilingual Support)
+#### Step-by-Step Deployment
 
-The platform is fully bilingual, supporting **English (EN)** and **Thai (TH)**.
+**Step 1: Create PostgreSQL Database**
 
-**Changing Language:**
+Sign up at [neon.tech](https://neon.tech) and create a database. Copy the connection string.
 
-* **Web App**: Click the language switcher in the header or go to **Settings > General**.
-* **Telegram Bot**: Use the command `/language` to toggle between English and Thai.
+**Step 2: Create Redis Instance**
 
-**How to Add/Edit Languages:**
+Go to [Vercel Marketplace > Upstash](https://vercel.com/marketplace/upstash) or sign up at [upstash.com](https://upstash.com). Copy the Redis URL.
 
-1. **Frontend**:
-   * Navigate to `frontend/locales/`.
-   * Copy `en.ts` to a new file (e.g., `es.ts` for Spanish).
-   * Translate the values in the new file.
-   * Update `frontend/contexts/LanguageContext.tsx` to include the new language type.
-2. **Telegram Bot**:
-   * Navigate to `app/bot/locales.py`.
-   * Add a new dictionary key (e.g., `'es': {...}`) copying the structure of `'en'`.
-   * Translate the strings.
-   * Update `app/schemas.py` Language Enum if necessary.
+**Step 3: Deploy Backend**
 
----
-
-## 📡 Deployment Guide (Telegram Bot)
-
-### Localhost Testing
-
-You **do NOT** need a public IP or HTTPS to test locally because we use **Long Polling**.
-
-1. Ensure `TELEGRAM_BOT_TOKEN` is set in `.env`.
-2. Run `python3 -m app.bot.main`.
-3. The bot immediately starts receiving messages from Telegram servers.
-
-### Server Deployment (Production)
-
-For a real server (e.g., VPS, DigitalOcean, AWS, Vercel):
-
-**Option A: Long Polling (Simpler)**
-
-* **Pros**: Easiest setup, works behind NAT/Firewall.
-* **Cons**: Slightly slower than Webhooks for massive scale.
-* **How**: Just run the script as a background service (Systemd or Docker).
+1. Import your GitHub repo in Vercel
+2. Set **Root Directory** to `.` (root)
+3. Vercel will detect `vercel.json` and use `@vercel/python`
+4. Set Environment Variables:
 
 ```env
-BOT_MODE=polling
+DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/bp_db?sslmode=require
+REDIS_URL=rediss://default:xxx@xxx.upstash.io:6379
+SECRET_KEY=<strong-random-key>
+ENCRYPTION_KEY=<fernet-key>
+API_KEYS=<your-api-keys>
+GOOGLE_AI_API_KEY=<gemini-key>
+TELEGRAM_BOT_TOKEN=<bot-token>
+TELEGRAM_BOT_USERNAME=<bot-username>
+BOT_MODE=webhook
+WEBHOOK_URL=https://your-backend.vercel.app
+WEBHOOK_SECRET=<random-secret>
+WEBHOOK_PATH=<hard-to-guess-path>
+APP_TIMEZONE=Asia/Bangkok
+AUTO_CREATE_TABLES=true
+ALLOWED_ORIGINS=https://your-frontend.vercel.app
+CHART_RENDERER=quickchart
 ```
 
-**Option B: Webhooks (Recommended for serverless / high traffic)**
+5. Deploy. Verify at `https://your-backend.vercel.app/health`
 
-* **Pros**: Faster, serverless-friendly (Vercel, Lambda, Cloud Run).
-* **Cons**: Requires valid **HTTPS** certificate (SSL).
+**Step 4: Deploy Frontend**
 
-**Setup:**
+1. Create another Vercel project from the **same repo**
+2. Set **Root Directory** to `frontend`
+3. Framework Preset: Next.js (auto-detected)
+4. Set Environment Variables:
 
-1. Generate a hard-to-guess webhook path:
-   ```bash
-   python3 -c "import secrets; print(f'bot-{secrets.token_hex(16)}')"
-   ```
-
-2. Configure environment variables:
-   ```env
-   BOT_MODE=webhook
-   WEBHOOK_URL=https://your-api-domain.com
-   WEBHOOK_SECRET=your-strong-random-secret
-   WEBHOOK_PATH=bot-a1b2c3d4e5f6...   # Hard-to-guess path from step 1
-   ```
-
-3. Deploy and register webhook (call once):
-   ```
-   GET https://your-api-domain.com/<WEBHOOK_PATH>/set-webhook?secret=<WEBHOOK_SECRET>
-   ```
-
-   This tells Telegram to send updates to `https://your-api-domain.com/<WEBHOOK_PATH>/webhook` — a URL that is effectively impossible to guess.
-
-**Security Layers:**
-* **Layer 1**: `WEBHOOK_PATH` — random URL path (e.g., `/bot-f77192489b.../webhook`)
-* **Layer 2**: `WEBHOOK_SECRET` — Telegram sends `X-Telegram-Bot-Api-Secret-Token` header for verification
-
-### Systemd Service Example (Linux)
-
-Create `/etc/systemd/system/bp-bot.service`:
-
-```ini
-[Unit]
-Description=BP Monitor Telegram Bot
-After=network.target
-
-[Service]
-User=root
-WorkingDirectory=/path/to/BP
-ExecStart=/usr/bin/python3 -m app.bot.main
-Restart=always
-EnvironmentFile=/path/to/BP/app/.env
-
-[Install]
-WantedBy=multi-user.target
+```env
+NEXT_PUBLIC_API_URL=/api/v1
+NEXT_PUBLIC_API_KEY=<same-key-as-backend-API_KEYS>
+BACKEND_URL=https://your-backend.vercel.app
 ```
 
-Then: `sudo systemctl enable --now bp-bot`
+Note: `NEXT_PUBLIC_API_URL=/api/v1` (not a full URL). Next.js rewrites in `next.config.ts` proxy `/api/v1/*` requests to `BACKEND_URL` server-side, so the backend URL is never exposed to the browser.
+
+**Step 5: Setup Telegram Webhook**
+
+Generate a hard-to-guess path first:
+```bash
+python3 -c "import secrets; print(f'bot-{secrets.token_hex(16)}')"
+```
+
+Set `WEBHOOK_PATH` to the generated value in your backend ENV, then call once:
+```
+GET https://your-backend.vercel.app/<WEBHOOK_PATH>/set-webhook?secret=<WEBHOOK_SECRET>
+```
+
+**Step 6: After First Deploy**
+
+Set `AUTO_CREATE_TABLES=false` to prevent re-creating tables on every cold start.
+
+#### Vercel Limitations
+
+- **Chart rendering**: Node.js subprocess is not available. Set `CHART_RENDERER=quickchart` to use QuickChart.io API instead.
+- **Cold start**: First request after idle may take 5-15 seconds.
+- **Bot ConversationHandler**: Multi-step flows (registration, OCR confirm) store state in memory. On serverless, state may be lost between requests if the instance is recycled. For production bot usage, consider deploying the bot separately on Railway/Render.
+- **Function timeout**: 10s (hobby) / 60s (pro). Long OCR processing may timeout on hobby plan.
 
 ---
 
-## 📂 Project Structure
-
-```
-BP/
-├── app/                       # Backend & Bot
-│   ├── bot/                   # Telegram Logic
-│   ├── routers/               # API Endpoints (Auth, Users, Records, Stats...)
-│   ├── chart-renderer/        # Server-side Chart.js renderer (Node.js)
-│   │   ├── render.js         # Chart.js + @napi-rs/canvas → PNG
-│   │   └── package.json      # npm dependencies
-│   ├── utils/                 # Core Utility (OCR, Encryption, Chart)
-│   ├── models.py              # DB Schema
-│   └── main.py                # App Entry Point
-├── frontend/                  # Next.js Web App
-│   ├── app/                   # Pages & Layouts
-│   ├── components/            # UI Components (Shadcn)
-│   └── lib/                   # API Client
-├── tests/                     # Test suite (pytest)
-├── Dockerfile                 # Python + Node.js
-└── docker-compose.yml         # Full stack deployment
-```
-
----
-
-## 📊 Chart Generation
-
-BP trend charts are rendered server-side using **Chart.js** via Node.js subprocess:
-
-```
-Python (chart_generator.py) → JSON stdin → Node.js (render.js) → PNG stdout
-```
-
-- **API:** `GET /api/v1/stats/chart?days=30&lang=th` — returns PNG image
-- **Telegram Bot:** `/stats` command auto-sends chart after text stats
-- Supports Thai & English labels
-- Reference zones for High BP (Systolic > 140, Diastolic > 90)
-- Data labels on every point (SYS/DIA + Pulse values)
-
-**Requirements:** Node.js 18+ and `npm install` in `app/chart-renderer/`
-
----
-
-## 🐳 Docker Deployment
+### Docker (Self-Hosted)
 
 ```bash
 docker-compose up --build
 ```
 
-Services: PostgreSQL + Redis + FastAPI (with Node.js for chart rendering) + Telegram Bot + Next.js Frontend
+Services: PostgreSQL + Redis + FastAPI (with Node.js) + Telegram Bot + Next.js Frontend
 
-The Dockerfile installs both Python and Node.js runtimes for chart rendering support.
+### VPS / Bare Metal
+
+```bash
+# Backend
+uvicorn app.main:app --host 0.0.0.0 --port 8888
+
+# Bot (separate process)
+python3 -m app.bot.main
+
+# Frontend
+cd frontend && npm run build && npm start
+```
 
 ---
 
-## 🧪 Testing
+## Features
+
+### Security & Privacy
+
+* **Field-Level Encryption**: PII encrypted with AES-128 (Fernet) before storage.
+* **Hashed Indexes**: Search by Citizen ID, phone, email without decrypting.
+* **Data Portability**: Export via `/api/v1/export/my-data`.
+
+### For Patients
+
+* **Smart Recording**: Scan photo with AI, auto-extract values, duplicate prevention.
+* **Intelligent Timestamp**: OCR screen time > EXIF metadata > Current time.
+* **Trends & History**: Free (30 records) / Premium (unlimited).
+* **Doctor Access**: Grant or revoke access for doctors.
+
+### For Doctors
+
+* **Patient List**: View authorized patients.
+* **Access Request**: Request access by patient ID.
+* **Monitoring**: View patient BP history and charts.
+
+### Subscription & Payments
+
+* **Free Tier**: 30-record limit, basic stats.
+* **Premium**: Unlimited history, data export. Payment via bank slip verification (SlipOK API).
+
+### Localization
+
+Fully bilingual: English and Thai. Change via web settings or Telegram `/language` command.
+
+---
+
+## Telegram Bot
+
+### Bot Modes
+
+| Mode | Use Case | How |
+|------|----------|-----|
+| **Polling** | Local dev, VPS | `python3 -m app.bot.main` |
+| **Webhook** | Vercel, serverless | Set `BOT_MODE=webhook` + call `/set-webhook` |
+| **Disabled** | Frontend-only deploy | Set `BOT_MODE=disabled` |
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Register or connect account |
+| `/stats` | View BP statistics + chart |
+| `/settings` | Change language, timezone |
+| `/upgrade` | Upgrade to Premium |
+| `/subscription` | Check subscription status |
+| `/help` | Show all commands |
+| *Send photo* | AI extracts BP values |
+
+### Webhook Security
+
+Two layers protect the webhook endpoint:
+* **Layer 1**: `WEBHOOK_PATH` -- random URL path (e.g., `/bot-f77192489b.../webhook`)
+* **Layer 2**: `WEBHOOK_SECRET` -- Telegram sends `X-Telegram-Bot-Api-Secret-Token` header for verification
+
+---
+
+## Chart Generation
+
+Server-side BP trend charts with dual renderer:
+
+```
+Python (chart_generator.py) → JSON stdin → Node.js (render.js) → PNG stdout
+```
+
+| Renderer | When to Use | Quality |
+|----------|-------------|---------|
+| **Node.js** (`chart-renderer/`) | Docker, VPS | Best |
+| **QuickChart.io** | Vercel, serverless | Good |
+
+Set via `CHART_RENDERER` env: `auto` (default) / `nodejs` / `quickchart`
+
+- **API**: `GET /api/v1/stats/chart?days=30&lang=th` -- returns PNG
+- **Bot**: `/stats` sends chart image automatically
+
+---
+
+## Project Structure
+
+```
+BP/
+├── api/
+│   └── index.py               # Vercel entry point (imports app.main)
+├── app/                        # Backend (FastAPI)
+│   ├── main.py                # App entry, CORS, routers, webhook
+│   ├── models.py              # SQLAlchemy models
+│   ├── schemas.py             # Pydantic validation
+│   ├── database.py            # DB connection (SQLite / PostgreSQL)
+│   ├── otp_service.py         # OTP dual backend (Memory / Redis)
+│   ├── __init__.py            # Package marker
+│   ├── routers/               # API endpoints
+│   │   ├── auth.py            # OTP, login, register, JWT
+│   │   ├── users.py           # Profile management
+│   │   ├── bp_records.py      # CRUD + stats + chart
+│   │   ├── doctor.py          # Doctor-patient relationships
+│   │   ├── ocr.py             # Gemini OCR
+│   │   ├── payment.py         # Subscription handling
+│   │   └── export.py          # Data export
+│   ├── bot/                   # Telegram bot (polling + webhook)
+│   │   ├── main.py            # build_application() + run_polling()
+│   │   ├── webhook.py         # FastAPI webhook handler
+│   │   ├── handlers.py        # Conversation handlers
+│   │   ├── payment_handlers.py
+│   │   ├── services.py        # Bot business logic
+│   │   └── locales.py         # i18n (EN, TH)
+│   ├── chart-renderer/        # Node.js chart renderer
+│   ├── utils/                 # Shared utilities
+│   │   ├── security.py        # JWT, hashing, API key
+│   │   ├── encryption.py      # Fernet encryption
+│   │   ├── rate_limiter.py    # Centralized (Memory / Redis)
+│   │   ├── chart_generator.py # Chart generation wrapper
+│   │   ├── ocr_helper.py      # Gemini integration
+│   │   └── timezone.py        # Timezone utilities
+│   └── config/
+│       └── pricing.py         # Subscription plans
+├── frontend/                   # Next.js 16 web dashboard
+│   ├── app/                   # Pages (auth, dashboard, settings)
+│   ├── proxy.ts               # Auth guard (Next.js 16)
+│   ├── next.config.ts         # API rewrites + standalone
+│   ├── lib/api.ts             # Axios client
+│   └── Dockerfile             # Standalone build
+├── tests/                      # Test suite (pytest)
+├── vercel.json                 # Vercel deployment config
+├── requirements.txt            # Root deps (for Vercel)
+├── Dockerfile                  # Backend (Python + Node.js)
+└── docker-compose.yml          # Full stack deployment
+```
+
+---
+
+## Testing
 
 ```bash
 python3 -m pytest tests/ -v
@@ -307,53 +360,17 @@ python3 -m pytest tests/ -v
 
 ---
 
-## 📜 License
+## License
 
-This project is **dual-licensed**:
+Dual-licensed: **AGPL-3.0** (open source) + **Commercial License** (proprietary use).
 
-### Open Source License (AGPL-3.0)
+| Use Case | License | Cost |
+|----------|---------|------|
+| Personal / educational | AGPL-3.0 | Free |
+| Open source (AGPL-compatible) | AGPL-3.0 | Free |
+| Internal company use (source private) | Commercial | Contact |
+| SaaS / hospital deployment | Commercial | Contact |
 
-For open source use, this software is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0).
+Contact for licensing: [GitHub Profile](https://github.com/kaebmoo)
 
-This means:
-
-- ✅ Free to use, modify, and distribute
-- ✅ Must keep source code open
-- ⚠️ **Network use is distribution** - If you run a modified version as a network service, you must make the source code available to users of that service
-
-See [LICENSE](LICENSE) for the full AGPL-3.0 text.
-
-### Commercial License
-
-For proprietary or commercial use where you **cannot or do not want to** comply with AGPL-3.0 terms, a Commercial License is available.
-
-**You need a Commercial License if you:**
-
-- Deploy for paying customers without releasing source code
-- Integrate into proprietary software
-- Offer as a SaaS/managed service without open-sourcing your modifications
-- Use within a for-profit healthcare organization
-
-**Commercial License includes:**
-
-- Use without AGPL-3.0 obligations
-- Optional support packages
-- SLA for response times
-
-📧 **Contact for licensing:** [GitHub Profile](https://github.com/kaebmoo)
-
-See [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) for terms.
-
----
-
-## Quick Reference
-
-| Use Case                                    | License Needed | Cost    |
-| ------------------------------------------- | -------------- | ------- |
-| Personal/educational use                    | AGPL-3.0       | Free    |
-| Open source project (AGPL-compatible)       | AGPL-3.0       | Free    |
-| Internal company use (source stays private) | Commercial     | Contact |
-| SaaS offering                               | Commercial     | Contact |
-| Hospital/clinic deployment                  | Commercial     | Contact |
-
----
+See [LICENSE](LICENSE) and [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) for details.

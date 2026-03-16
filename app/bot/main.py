@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes, TypeHandler, CallbackQueryHandler
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
-from .handlers import get_auth_handler, get_ocr_handler, stats, help_command, unknown, language_command, language_callback, settings_command, settings_callback, timezone_callback
+from .handlers import get_auth_handler, get_ocr_handler, get_manual_bp_handler, stats, help_command, unknown, language_command, language_callback, settings_command, settings_callback, timezone_callback
 from .payment_handlers import get_payment_handler, subscription_command
 import warnings
 from telegram.warnings import PTBUserWarning
@@ -17,7 +17,11 @@ warnings.filterwarnings("ignore", category=PTBUserWarning, message=".*CallbackQu
 from .log_service import BotLogService
 
 async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Log all incoming updates."""
+    """Log all incoming updates with sensitive data masking.
+
+    Text messages are classified by conversation state so that passwords,
+    names, DOB, and other PII are never written to logs in clear text.
+    """
     try:
         user = update.effective_user
         if not user:
@@ -28,17 +32,36 @@ async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if update.message:
             if update.message.text:
-                msg_type = "text"
-                content = update.message.text
+                text = update.message.text
+
+                # Commands are safe to log as-is
+                if text.startswith('/'):
+                    msg_type = "command"
+                    content = text
+                else:
+                    # Classify by conversation state stored in user_data
+                    conv_state = _detect_conversation_state(context)
+                    msg_type, content = _classify_text_input(text, conv_state)
+
             elif update.message.photo:
                 msg_type = "photo"
                 content = "User sent a photo"
+
+            elif update.message.document:
+                msg_type = "document"
+                content = f"Document: {update.message.document.mime_type or 'unknown'}"
+
             elif update.message.contact:
                 msg_type = "contact"
-                content = f"Contact: {update.message.contact.phone_number}"
+                # Mask phone number
+                from .log_service import mask_phone
+                phone = update.message.contact.phone_number or ""
+                content = f"Contact: {mask_phone(phone)}"
+
         elif update.callback_query:
             msg_type = "callback"
-            content = f"Data: {update.callback_query.data}"
+            cb_data = update.callback_query.data or ""
+            content = f"Data: {cb_data}"
 
         if content:
             BotLogService.log(
@@ -49,6 +72,88 @@ async def log_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     except Exception as e:
         logger.error(f"Logging Error: {e}")
+
+
+# --- Conversation state detection for log masking ---
+
+# These keys are set by ConversationHandler internally
+_CONV_KEY_AUTH = "auth_conversation"
+_CONV_KEY_OCR = "ocr_conversation"
+_CONV_KEY_MANUAL = "manual_bp_conversation"
+
+# State numbers (mirror handlers.py)
+_STATE_AUTH_PASSWORD = 1
+_STATE_REG_NAME = 2
+_STATE_REG_DOB = 3
+_STATE_REG_GENDER = 4
+_STATE_REG_ROLE = 5
+_STATE_REG_PASSWORD = 6
+
+
+def _detect_conversation_state(context: ContextTypes.DEFAULT_TYPE) -> str:
+    """
+    Try to infer what the user is currently inputting based on
+    ConversationHandler state stored in context.
+    Returns a hint string: 'password', 'name', 'dob', 'gender', 'role', or 'general'.
+    """
+    try:
+        # ConversationHandler stores state in context.user_data under special keys
+        # but the actual key format depends on the handler name / entry.
+        # Simpler approach: check user_data flags set by our handlers.
+        ud = context.user_data or {}
+
+        # If we're in registration/auth flow, check what step
+        # Our handlers store 'register_lang' during auth flow
+        if ud.get('_auth_state'):
+            state = ud['_auth_state']
+            if state == 'auth_password':
+                return 'password'
+            elif state == 'reg_name':
+                return 'name'
+            elif state == 'reg_dob':
+                return 'dob'
+            elif state == 'reg_gender':
+                return 'gender'
+            elif state == 'reg_role':
+                return 'role'
+            elif state == 'reg_password':
+                return 'password'
+
+    except Exception:
+        pass
+
+    return 'general'
+
+
+def _classify_text_input(text: str, conv_state: str) -> tuple:
+    """
+    Return (msg_type, masked_content) based on detected conversation state.
+    """
+    from .log_service import mask_text, mask_name, mask_dob
+
+    if conv_state == 'password':
+        return ('text:password', mask_text(text))
+
+    if conv_state == 'name':
+        return ('text:name', mask_name(text))
+
+    if conv_state == 'dob':
+        return ('text:dob', mask_dob(text))
+
+    if conv_state in ('gender', 'role'):
+        # Gender/role are selection values, safe to log
+        return (f'text:{conv_state}', text)
+
+    # General text — apply pattern-based masking as safety net
+    # Don't log raw text; it could be password for existing user login
+    # Log length + first 2 chars only for debugging
+    if len(text) <= 2:
+        return ('text', mask_text(text))
+    else:
+        # For non-state text: show safely — mask if it looks like PII
+        from .log_service import BotLogService
+        masked = BotLogService._mask_text_patterns(text)
+        return ('text', masked)
 
 load_dotenv()
 
@@ -127,6 +232,9 @@ def build_application():
 
     # OCR & Record Logic
     application.add_handler(get_ocr_handler())
+
+    # Manual BP Text Input (e.g., "130/90/65")
+    application.add_handler(get_manual_bp_handler())
 
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))

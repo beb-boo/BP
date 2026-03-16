@@ -34,7 +34,34 @@ LOCALES = {
         "btn_change_tz": "🕐 Timezone",
         "tz_select": "Please select your timezone:",
         "tz_set": "✅ Timezone set to {tz}.",
-        "error_pwd_length": "⚠️ Password must be at least 8 characters. Please try again:"
+        "error_pwd_length": "⚠️ Password must be at least 8 characters. Please try again:",
+
+        # Bilingual welcome (Feature 3)
+        "welcome_bilingual": "👋 Welcome! / ยินดีต้อนรับ!\n\nBlood Pressure Monitor Bot\nบอทบันทึกความดันโลหิต",
+        "welcome_back_bilingual": "Welcome back / ยินดีต้อนรับกลับ, {name}! ✅\n\nUse /stats to see trends or send a photo to record.\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปเพื่อบันทึก",
+        "choose_lang_prompt": "🌐 Please choose your language:\nกรุณาเลือกภาษา:",
+        "lang_chosen": "✅ Language set to English.\n\nPlease share your phone number to get started.",
+
+        # Localized registration buttons (Feature 3)
+        "gender_male": "Male",
+        "gender_female": "Female",
+        "gender_other": "Other",
+        "role_patient": "Patient",
+        "role_doctor": "Doctor",
+        "gender_invalid": "Please select from the buttons below.",
+        "role_invalid": "Please select Patient or Doctor.",
+        "dob_invalid": "❌ Invalid format. Please use DD/MM/YYYY (e.g. 31/01/1990):",
+        "link_success": "✅ Account Linked Successfully!\nYou can now use the bot.",
+        "link_fail_password": "❌ Incorrect Password. Please try again or /cancel.",
+        "creating_account": "⏳ Creating account...",
+        "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130/90/65**",
+
+        # Manual BP input (Feature 2)
+        "manual_bp_confirm": "You entered:\nSys: **{sys}** / Dia: **{dia}** / Pulse: **{pulse}**\nDate: **{date}** {time}\n\nSave this record?",
+        "manual_bp_saved": "✅ Saved! ({sys}/{dia} {pulse})\nSee /stats for trends.",
+        "manual_bp_cancelled": "❌ Cancelled. Record was not saved.",
+        "manual_bp_invalid_format": "⚠️ Invalid format.\nPlease type BP as: **130/90/65** or **130-90-65**\n(systolic/diastolic/pulse)",
+        "manual_bp_out_of_range": "⚠️ Values out of range.\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nPlease try again.",
     },
     "th": {
         "welcome": "ยินดีต้อนรับกลับครับ, {name}! ✅\nบัญชีของคุณเชื่อมต่อเรียบร้อยแล้ว\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปมาเพื่อบันทึกได้เลยครับ",
@@ -70,7 +97,34 @@ LOCALES = {
         "btn_change_tz": "🕐 เขตเวลา",
         "tz_select": "กรุณาเลือกเขตเวลาของคุณ:",
         "tz_set": "✅ ตั้งค่าเขตเวลาเป็น {tz} เรียบร้อยครับ",
-        "error_pwd_length": "⚠️ รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร กรุณาลองใหม่อีกครั้ง:"
+        "error_pwd_length": "⚠️ รหัสผ่านต้องมีความยาวอย่างน้อย 8 ตัวอักษร กรุณาลองใหม่อีกครั้ง:",
+
+        # Bilingual welcome (Feature 3)
+        "welcome_bilingual": "👋 Welcome! / ยินดีต้อนรับ!\n\nBlood Pressure Monitor Bot\nบอทบันทึกความดันโลหิต",
+        "welcome_back_bilingual": "Welcome back / ยินดีต้อนรับกลับ, {name}! ✅\n\nUse /stats to see trends or send a photo to record.\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปเพื่อบันทึก",
+        "choose_lang_prompt": "🌐 Please choose your language:\nกรุณาเลือกภาษา:",
+        "lang_chosen": "✅ เปลี่ยนภาษาเป็นภาษาไทยเรียบร้อยครับ\n\nกรุณากดปุ่มแชร์เบอร์โทรศัพท์เพื่อเริ่มต้นใช้งาน",
+
+        # Localized registration buttons (Feature 3)
+        "gender_male": "ชาย",
+        "gender_female": "หญิง",
+        "gender_other": "อื่นๆ",
+        "role_patient": "ผู้ป่วย",
+        "role_doctor": "แพทย์",
+        "gender_invalid": "กรุณาเลือกจากปุ่มด้านล่างครับ",
+        "role_invalid": "กรุณาเลือก ผู้ป่วย หรือ แพทย์",
+        "dob_invalid": "❌ รูปแบบผิด กรุณาใช้ DD/MM/YYYY (เช่น 31/01/1990):",
+        "link_success": "✅ เชื่อมต่อบัญชีสำเร็จ!\nคุณสามารถใช้งานบอทได้แล้วครับ",
+        "link_fail_password": "❌ รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ หรือพิมพ์ /cancel",
+        "creating_account": "⏳ กำลังสร้างบัญชี...",
+        "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130/90/65**",
+
+        # Manual BP input (Feature 2)
+        "manual_bp_confirm": "คุณกรอก:\nบน: **{sys}** / ล่าง: **{dia}** / ชีพจร: **{pulse}**\nวันที่: **{date}** {time}\n\nบันทึกข้อมูลนี้ไหมครับ?",
+        "manual_bp_saved": "✅ บันทึกแล้ว! ({sys}/{dia} {pulse})\nดูสถิติพิมพ์ /stats",
+        "manual_bp_cancelled": "❌ ยกเลิกแล้ว ไม่ได้บันทึกข้อมูล",
+        "manual_bp_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง\nกรุณาพิมพ์ค่าความดัน: **130/90/65** หรือ **130-90-65**\n(บน/ล่าง/ชีพจร)",
+        "manual_bp_out_of_range": "⚠️ ค่าไม่อยู่ในช่วงที่กำหนด\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nกรุณาลองใหม่",
     }
 }
 
