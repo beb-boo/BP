@@ -62,9 +62,9 @@ if _allowed_origins_env:
     logger.info(f"CORS: Using configured origins ({len(origins)} entries)")
 else:
     # No explicit origins — dev mode: allow all + localhost
-    origins = ["*", "http://localhost:3000", "http://localhost:3001"]
+    origins = ["http://localhost:3000", "http://localhost:3001"]
     logger.warning(
-        "ALLOWED_ORIGINS not set, defaulting to '*' with localhost. "
+        "ALLOWED_ORIGINS not set, defaulting to localhost only. "
         "Set ALLOWED_ORIGINS for production."
     )
 

@@ -15,7 +15,7 @@ import logging
 
 load_from_dotenv = True # Assumed loaded in main
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("ACCESS_TOKEN_EXPIRE_DAYS", "7"))
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * ACCESS_TOKEN_EXPIRE_DAYS
@@ -34,11 +34,8 @@ VALID_API_KEYS = [k.strip() for k in _raw_keys.split(",") if k.strip()]
 logger = logging.getLogger(__name__)
 
 # ── Startup warnings for default/fallback values ────────────────
-if SECRET_KEY == "your-secret-key-here":
-    logger.critical(
-        "SECRET_KEY is using the default value! "
-        "This is a critical security risk. Set SECRET_KEY in .env"
-    )
+if not SECRET_KEY or SECRET_KEY == "your-secret-key-here":
+    raise RuntimeError("SECRET_KEY must be set and not use default value")
 if not os.getenv("API_KEYS", ""):
     logger.warning(
         "API_KEYS not set in environment. Using default dev keys. "

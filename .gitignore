@@ -65,3 +65,4 @@ venv/
 # Logs & temp
 logs/
 .mcp.json
+AUDIT.md

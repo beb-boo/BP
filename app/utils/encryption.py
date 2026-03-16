@@ -12,11 +12,10 @@ logger = logging.getLogger(__name__)
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 if not ENCRYPTION_KEY:
-    logger.warning("No ENCRYPTION_KEY found in env. Generating temporary key for this session (Data will be lost on restart if not persisted!).")
-    key = Fernet.generate_key()
-    ENCRYPTION_KEY = key.decode()
-    # In a real app, we might validly stop here to force admin to set the key.
-    # For this refactor/demo, we'll proceed but log heavily.
+    raise RuntimeError(
+        "ENCRYPTION_KEY is required. Generate with: "
+        "python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
+    )
 
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
