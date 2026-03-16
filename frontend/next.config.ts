@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // standalone is for Docker/self-hosting only
+  // Vercel uses its own optimized output format
+  ...(process.env.VERCEL ? {} : { output: 'standalone' }),
+
   async rewrites() {
     const apiUrl = process.env.BACKEND_URL || 'http://localhost:8888';
     return [
