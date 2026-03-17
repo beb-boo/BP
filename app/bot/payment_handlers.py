@@ -236,5 +236,6 @@ def get_payment_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
-        per_message=False
+        per_message=False,
+        conversation_timeout=300,  # 5 minutes
     )

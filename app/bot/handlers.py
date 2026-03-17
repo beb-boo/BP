@@ -443,6 +443,7 @@ def get_auth_handler():
             REG_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_password)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=300,  # 5 minutes
     )
 
 # ============================================================================
@@ -897,7 +898,8 @@ def get_manual_bp_handler():
             ]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
+        per_message=False,
+        conversation_timeout=120,  # 2 minutes
     )
 
 
@@ -909,7 +911,8 @@ def get_ocr_handler():
             OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
-        per_message=False
+        per_message=False,
+        conversation_timeout=180,  # 3 minutes
     )
 
 # ... inside main setup in main.py, we need to register these ...
