@@ -444,6 +444,7 @@ def get_auth_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=300,  # 5 minutes
+        allow_reentry=True,  # Allow /start to restart if stuck
     )
 
 # ============================================================================

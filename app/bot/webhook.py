@@ -42,7 +42,9 @@ async def startup_webhook():
     try:
         app = get_application()
         await app.initialize()
-        logger.info("Telegram Bot webhook application initialized")
+        # Start the application to enable JobQueue (needed for conversation_timeout)
+        await app.start()
+        logger.info("Telegram Bot webhook application initialized and started")
     except Exception as e:
         logger.error(f"Failed to initialize bot application: {e}")
 
@@ -53,6 +55,7 @@ async def shutdown_webhook():
     global _application
     if _application:
         try:
+            await _application.stop()
             await _application.shutdown()
             logger.info("Telegram Bot webhook application shut down")
         except Exception as e:

@@ -25,8 +25,12 @@ class BotService:
     def get_user_by_telegram_id(telegram_id: int):
         """Find a user by their linked Telegram ID."""
         t_hash = hash_value(str(telegram_id))
-        with SessionLocal() as db:
-            return db.query(User).filter(User.telegram_id_hash == t_hash).first()
+        try:
+            with SessionLocal() as db:
+                return db.query(User).filter(User.telegram_id_hash == t_hash).first()
+        except Exception as e:
+            logger.error(f"DB error in get_user_by_telegram_id: {e}")
+            return None
 
     @staticmethod
     def get_user_by_phone(phone_number: str):
@@ -34,8 +38,12 @@ class BotService:
         phone_h = hash_value(phone_number)
         if not phone_h:
             return None
-        with SessionLocal() as db:
-            return db.query(User).filter(User.phone_number_hash == phone_h).first()
+        try:
+            with SessionLocal() as db:
+                return db.query(User).filter(User.phone_number_hash == phone_h).first()
+        except Exception as e:
+            logger.error(f"DB error in get_user_by_phone: {e}")
+            return None
 
     @staticmethod
     def verify_user_password(phone_number: str, password: str) -> User | None:
