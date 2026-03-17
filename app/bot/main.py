@@ -6,7 +6,10 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes, TypeHandler, CallbackQueryHandler
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
-from .handlers import get_auth_handler, get_ocr_handler, get_manual_bp_handler, stats, help_command, unknown, language_command, language_callback, settings_command, settings_callback, timezone_callback
+from .handlers import (get_auth_handler, get_ocr_handler, get_manual_bp_handler,
+                       get_profile_handler, get_delete_handler, get_password_handler, get_deactivate_handler,
+                       stats, help_command, unknown, language_command, language_callback,
+                       settings_command, settings_callback, timezone_callback)
 from .payment_handlers import get_payment_handler, subscription_command
 import warnings
 from telegram.warnings import PTBUserWarning
@@ -235,6 +238,12 @@ def build_application():
 
     # Manual BP Text Input (e.g., "130/90/65")
     application.add_handler(get_manual_bp_handler())
+
+    # User Management Commands
+    application.add_handler(get_profile_handler())
+    application.add_handler(get_delete_handler())
+    application.add_handler(get_password_handler())
+    application.add_handler(get_deactivate_handler())
 
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))

@@ -1,13 +1,14 @@
 
 from sqlalchemy.orm import Session
-from app.models import User
+from app.models import User, BloodPressureRecord, UserSession, DoctorPatient, Payment
 from app.utils.security import verify_password, hash_password, SECRET_KEY, ALGORITHM
-from app.utils.encryption import encrypt_value, hash_value
+from app.utils.encryption import encrypt_value, decrypt_value, hash_value
 from app.utils.tmc_checker import verify_doctor_with_tmc
 from app.utils.timezone import now_tz, TIMEZONE_CHOICES, is_valid_timezone, format_datetime
 from app.database import SessionLocal
 import logging
 import jwt
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -409,3 +410,220 @@ class BotService:
                 "expires_at": new_expiry.strftime("%Y-%m-%d"),
                 "plan_name": plan['name']
             }
+
+    # ================================================================
+    # Profile Management
+    # ================================================================
+
+    @staticmethod
+    def get_user_profile(user_id: int) -> dict | None:
+        """Get decrypted user profile data for display."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+
+            gender_map = {"male": "Male", "female": "Female", "other": "Other"}
+            role_map = {"patient": "Patient", "doctor": "Doctor"}
+
+            dob = user.date_of_birth
+            dob_str = dob.strftime("%d/%m/%Y") if dob else "-"
+
+            return {
+                "name": user.full_name or "-",
+                "phone": user.phone_number or "-",
+                "email": user.email or "-",
+                "gender": gender_map.get(user.gender, "-"),
+                "dob": dob_str,
+                "role": role_map.get(user.role, user.role or "-"),
+                "timezone": user.timezone or "Asia/Bangkok",
+                "subscription": user.subscription_tier or "free",
+                "language": user.language or "th",
+            }
+
+    @staticmethod
+    def update_user_name(user_id: int, new_name: str) -> bool:
+        """Update user full name."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.full_name = new_name
+                user.updated_at = now_tz()
+                db.commit()
+                return True
+            return False
+
+    @staticmethod
+    def update_user_email(user_id: int, new_email: str) -> bool:
+        """Update user email."""
+        if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', new_email):
+            return False
+        with SessionLocal() as db:
+            # Check if email already taken
+            email_h = hash_value(new_email)
+            existing = db.query(User).filter(User.email_hash == email_h, User.id != user_id).first()
+            if existing:
+                return False
+            user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                user.email = new_email
+                user.updated_at = now_tz()
+                db.commit()
+                return True
+            return False
+
+    # ================================================================
+    # Delete BP Records
+    # ================================================================
+
+    @staticmethod
+    def get_recent_records(user_id: int, limit: int = 10) -> list:
+        """Get recent BP records for deletion selection."""
+        with SessionLocal() as db:
+            records = db.query(BloodPressureRecord).filter(
+                BloodPressureRecord.user_id == user_id
+            ).order_by(
+                BloodPressureRecord.measurement_date.desc(),
+                BloodPressureRecord.created_at.desc()
+            ).limit(limit).all()
+
+            return [{
+                "id": r.id,
+                "sys": r.systolic,
+                "dia": r.diastolic,
+                "pulse": r.pulse,
+                "date": r.measurement_date.strftime("%d/%m/%Y") if r.measurement_date else "-",
+                "time": r.measurement_time or "",
+            } for r in records]
+
+    @staticmethod
+    def delete_bp_record(user_id: int, record_id: int) -> dict | None:
+        """Delete a BP record. Returns record info or None if not found."""
+        with SessionLocal() as db:
+            record = db.query(BloodPressureRecord).filter(
+                BloodPressureRecord.id == record_id,
+                BloodPressureRecord.user_id == user_id
+            ).first()
+            if not record:
+                return None
+            info = {
+                "sys": record.systolic,
+                "dia": record.diastolic,
+                "pulse": record.pulse,
+                "date": record.measurement_date.strftime("%d/%m/%Y") if record.measurement_date else "-",
+                "time": record.measurement_time or "",
+            }
+            db.delete(record)
+            db.commit()
+            return info
+
+    # ================================================================
+    # Password Management
+    # ================================================================
+
+    @staticmethod
+    def change_password(user_id: int, current_password: str, new_password: str) -> bool:
+        """Change password after verifying current one. Invalidates sessions."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return False
+            if not verify_password(current_password, user.password_hash):
+                return False
+            user.password_hash = hash_password(new_password)
+            user.updated_at = now_tz()
+            # Invalidate all sessions
+            db.query(UserSession).filter(
+                UserSession.user_id == user_id,
+                UserSession.is_active == True
+            ).update({"is_active": False})
+            db.commit()
+            return True
+
+    @staticmethod
+    def reset_password_direct(user_id: int, new_password: str) -> bool:
+        """Reset password without current password (after OTP verification). Invalidates sessions."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return False
+            user.password_hash = hash_password(new_password)
+            user.failed_login_attempts = 0
+            user.account_locked_until = None
+            user.updated_at = now_tz()
+            db.query(UserSession).filter(
+                UserSession.user_id == user_id,
+                UserSession.is_active == True
+            ).update({"is_active": False})
+            db.commit()
+            return True
+
+    @staticmethod
+    def get_user_contact_for_otp(user_id: int) -> dict | None:
+        """Get user's email or phone for OTP sending."""
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            return {
+                "email": user.email,
+                "phone": user.phone_number,
+                "user_id": user.id,
+            }
+
+    # ================================================================
+    # Account Deactivation
+    # ================================================================
+
+    @staticmethod
+    def deactivate_account(user_id: int) -> bool:
+        """Deactivate account: wipe PII, delete records, anonymize user row."""
+        with SessionLocal() as db:
+            try:
+                user = db.query(User).filter(User.id == user_id).first()
+                if not user:
+                    return False
+
+                # 1. Delete BP records
+                db.query(BloodPressureRecord).filter(
+                    BloodPressureRecord.user_id == user_id
+                ).delete()
+
+                # 2. Delete sessions
+                db.query(UserSession).filter(
+                    UserSession.user_id == user_id
+                ).delete()
+
+                # 3. Delete doctor-patient relationships
+                db.query(DoctorPatient).filter(
+                    (DoctorPatient.doctor_id == user_id) |
+                    (DoctorPatient.patient_id == user_id)
+                ).delete(synchronize_session='fetch')
+
+                # 4. Wipe PII fields
+                user.email_encrypted = None
+                user.email_hash = None
+                user.phone_number_encrypted = None
+                user.phone_number_hash = None
+                user.full_name_encrypted = None
+                user.full_name_hash = None
+                user.citizen_id_encrypted = None
+                user.citizen_id_hash = None
+                user.medical_license_encrypted = None
+                user.medical_license_hash = None
+                user.date_of_birth_encrypted = None
+                user.telegram_id_encrypted = None
+                user.telegram_id_hash = None
+                user.password_hash = "DEACTIVATED"
+                user.gender = None
+
+                # 5. Set inactive
+                user.is_active = False
+                user.updated_at = now_tz()
+
+                db.commit()
+                return True
+            except Exception as e:
+                logger.error(f"Deactivation error for user {user_id}: {e}")
+                db.rollback()
+                return False

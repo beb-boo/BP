@@ -42,14 +42,14 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = get_text("lang_set", lang)
         await query.edit_message_text(msg)
     else:
-        await query.edit_message_text("❌ Please /start first.")
+        await query.edit_message_text(get_text("not_linked", "en"))
 
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show settings menu."""
     user = BotService.get_user_by_telegram_id(update.effective_chat.id)
     if not user:
-        await update.message.reply_text("⚠️ Please /start and link your account first.")
+        await update.message.reply_text(get_text("not_linked", "en"))
         return
 
     lang = user.language or "en"
@@ -78,7 +78,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user = BotService.get_user_by_telegram_id(update.effective_user.id)
     if not user:
-        await query.edit_message_text("❌ Please /start first.")
+        await query.edit_message_text(get_text("not_linked", "en"))
         return
 
     lang = user.language or "en"
@@ -124,7 +124,7 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = get_text("error", lang)
         await query.edit_message_text(msg)
     else:
-        await query.edit_message_text("❌ Please /start first.")
+        await query.edit_message_text(get_text("not_linked", "en"))
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +145,27 @@ OCR_EDIT = 11
 # --- Manual BP States ---
 MANUAL_BP_CONFIRM = 20
 
+# --- Profile States ---
+PROFILE_VIEW = 30
+PROFILE_EDIT = 31
+
+# --- Delete States ---
+DELETE_SELECT = 40
+DELETE_CONFIRM = 41
+
+# --- Deactivate States ---
+DEACTIVATE_CONFIRM = 50
+DEACTIVATE_TYPE = 51
+
+# --- Password States ---
+PW_CHOICE = 60
+PW_CURRENT = 61
+PW_NEW = 62
+PW_CONFIRM = 63
+PW_OTP = 64
+PW_NEW_AFTER_OTP = 65
+PW_CONFIRM_AFTER_OTP = 66
+
 # Regex for manual BP input: 130/90/65 or 130-90-65
 BP_TEXT_PATTERN = re.compile(r'^(\d{2,3})[/\-](\d{2,3})[/\-](\d{2,3})$')
 
@@ -163,16 +184,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         linked_user = BotService.process_connection_token(token, chat_id)
 
         if linked_user:
+            lang = linked_user.language or "en"
             await update.message.reply_text(
-                f"✅ **Account Connected!**\n"
-                f"Welcome, {linked_user.full_name}.\n"
-                "Your Telegram is now linked to your web account.",
+                get_text("account_connected", lang, name=linked_user.full_name),
                 reply_markup=ReplyKeyboardRemove(),
                 parse_mode="Markdown"
             )
             return ConversationHandler.END
         else:
-            await update.message.reply_text("❌ Connection link is invalid or expired.")
+            await update.message.reply_text(get_text("link_invalid", "en"))
 
     # 1. Check if already linked
     linked_user = BotService.get_user_by_telegram_id(chat_id)
@@ -412,9 +432,9 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Add License info if Doctor - keeping basic for now or simple append
         if new_user.role == 'doctor':
              if new_user.verification_status == 'verified':
-                 msg += "\n✅ License Verified."
+                 msg += get_text("license_verified", lang)
              else:
-                 msg += "\n⚠️ License Verification Pending."
+                 msg += get_text("license_pending", lang)
                  
         await update.message.reply_text(msg, parse_mode="Markdown")
         BotLogService.log(update.effective_chat.id, "OUT", "registration", "User Registered successfully", new_user.id)
@@ -426,7 +446,9 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop('_auth_state', None)  # Clear auth state
-    await update.message.reply_text("⛔️ Process cancelled.", reply_markup=ReplyKeyboardRemove())
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+    await update.message.reply_text(get_text("cancelled", lang), reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 def get_auth_handler():
@@ -456,9 +478,10 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat_id = update.effective_chat.id
     user = BotService.get_user_by_telegram_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ Please /start and link your account first.")
+        await update.message.reply_text(get_text("not_linked", "en"))
         return ConversationHandler.END
 
+    lang = user.language or "en"
     photo_file = None
     file_ext = ".jpg"  # default for photos sent as photo (Telegram converts to JPEG)
 
@@ -466,7 +489,7 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         doc = update.message.document
         # Validate MIME type
         if doc.mime_type and not doc.mime_type.startswith("image/"):
-            await update.message.reply_text("❌ Please send an image file (JPEG, PNG, etc.)")
+            await update.message.reply_text(get_text("invalid_image", lang))
             return ConversationHandler.END
 
         # Extract correct file extension from original filename or MIME type
@@ -487,7 +510,7 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif update.message.photo:
         photo_file = await update.message.photo[-1].get_file()
     else:
-        await update.message.reply_text("❌ No image found.")
+        await update.message.reply_text(get_text("no_image", lang))
         return ConversationHandler.END
 
     try:
@@ -495,7 +518,7 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception:
         pass
 
-    processing_msg = await update.message.reply_text("🔍 Analyzing image...")
+    processing_msg = await update.message.reply_text(get_text("analyzing_image", lang))
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
         await photo_file.download_to_drive(temp_file.name)
@@ -518,21 +541,19 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     temp_path = converted_path
             except Exception:
                 os.unlink(temp_path)
-                await processing_msg.edit_text(
-                    "❌ HEIC format is not supported. Please convert to JPEG or PNG and try again."
-                )
+                await processing_msg.edit_text(get_text("heic_not_supported", lang))
                 return ConversationHandler.END
 
     try:
         ocr_result = read_blood_pressure_with_gemini(temp_path)
         os.unlink(temp_path)
-        
+
         if ocr_result.error:
-            await processing_msg.edit_text(f"❌ Read Error: {ocr_result.error}\nPlease try again.")
+            await processing_msg.edit_text(get_text("ocr_read_error", lang, error=ocr_result.error))
             return ConversationHandler.END
-            
+
         if not (ocr_result.systolic and ocr_result.diastolic and ocr_result.pulse):
-            await processing_msg.edit_text("⚠️ Could not clearly read numbers. Please try again.")
+            await processing_msg.edit_text(get_text("ocr_no_values", lang))
             return ConversationHandler.END
 
         # Store in context
@@ -542,25 +563,17 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "pulse": ocr_result.pulse,
             "date": ocr_result.measurement_date,
             "time": ocr_result.measurement_time,
-            "raw_source": ocr_result.raw_response, # To show source in confirmation if needed
+            "raw_source": ocr_result.raw_response,
             "user_id": user.id
         }
-        
+
         # Format Date/Time for display
-        dt_display = "Unknown"
         date_warning = ""
-        
         if ocr_result.measurement_date and ocr_result.measurement_time:
-             dt_display = f"{ocr_result.measurement_date} {ocr_result.measurement_time}"
-             
              # Check if it was a fallback for DATE specifically
              if "Date: Fallback" in ocr_result.raw_response:
-                 date_warning = "\n⚠️ **Date not found in image**, using current date."
+                 date_warning = get_text("ocr_date_fallback", lang)
 
-        # Ask for confirmation
-        # Get language
-        lang = user.language or "en"
-        
         msg = get_text("ocr_confirm", lang,
             sys=ocr_result.systolic,
             dia=ocr_result.diastolic,
@@ -570,23 +583,23 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         if date_warning:
              msg += f"\n({date_warning})"
-             
+
         btn_confirm_txt = get_text("btn_confirm", lang)
         btn_edit_txt = get_text("btn_edit", lang)
-        
+
         keyboard = [
             [
                 InlineKeyboardButton(btn_confirm_txt, callback_data="save_ocr"),
                 InlineKeyboardButton(btn_edit_txt, callback_data="edit_ocr")
             ]
         ]
-        
+
         await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return OCR_CONFIRM
 
     except Exception as e:
         logger.error(f"OCR Error: {e}")
-        await processing_msg.edit_text("❌ System error.")
+        await processing_msg.edit_text(get_text("error", lang))
         return ConversationHandler.END
 
 async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -598,27 +611,14 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "save_ocr":
         ocr_data = context.user_data.get('ocr_temp')
         if not ocr_data:
-            await query.edit_message_text("❌ Session expired. Please upload again.")
+            user = BotService.get_user_by_telegram_id(update.effective_user.id)
+            lang = (user.language or "en") if user else "en"
+            await query.edit_message_text(get_text("session_expired", lang))
             return ConversationHandler.END
-            
-        # Parse date/time strings to objects if needed, or pass as is if BotService handles it
-        # BotService.create_bp_record currently takes separate args, assumes current time if not provided
-        # I need to update BotService to accept measurement_date/time OR handle it here.
-        # Let's inspect BotService.create_bp_record first. Assuming it uses now_th().
-        # I should probably update BotService first to accept explicit date/time.
-        # But for now, let's look at `create_bp_record` definition.
-        # It takes `systolic`, `diastolic`, `pulse`, `notes`.
-        # I should update BotService to accept `measurement_date` and `measurement_time` in kwargs or args.
-        
-        # Wait, I cannot see BotService definition here. I viewed it earlier?
-        # Yes, step 832. create_bp_record: (user_id, systolic, diastolic, pulse, notes)
-        # It uses `now_th()` inside. I need to UPDATE `BotService` to accept date/time.
-        
-        # I'll update BotService in the next step. For now, let's write this handler code assuming BotService is updated.
-        
-        # Get user lang
-        user = BotService.get_user_by_telegram_id(ocr_data['user_id'])
-        lang = user.language or "en" if user else "en"
+
+        # Get user lang via telegram_id (not DB user_id)
+        user = BotService.get_user_by_telegram_id(update.effective_user.id)
+        lang = (user.language or "en") if user else "en"
         
         record, is_new = BotService.create_bp_record(
             user_id=ocr_data['user_id'],
@@ -641,53 +641,56 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
         
     elif data == "edit_ocr":
+        user = BotService.get_user_by_telegram_id(update.effective_user.id)
+        lang = (user.language or "en") if user else "en"
         await query.edit_message_text(
-            "Please type the values in this format:\n"
-            "**SYS/DIA PULSE**\n"
-            "Example: `120/80 72`",
+            get_text("ocr_edit_prompt", lang),
             parse_mode="Markdown"
         )
         return OCR_EDIT
 
 async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    # Parse generic "120/80 72" or "120 80 72"
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
     try:
         # Normalize separators
         text = text.replace("/", " ").replace("-", " ").replace(",", " ")
         parts = text.split()
-        
+
         if len(parts) >= 3:
-            sys = int(parts[0])
-            dia = int(parts[1])
-            pulse = int(parts[2])
-            
+            sys_val = int(parts[0])
+            dia_val = int(parts[1])
+            pulse_val = int(parts[2])
+
             ocr_data = context.user_data.get('ocr_temp')
-            user_id = ocr_data['user_id'] if ocr_data else BotService.get_user_by_telegram_id(update.effective_chat.id).id
-            
-            # Use current time for manual edit, or keep OCR time? 
-            # Usually manual edit implies correcting numbers. Time usually remains valid from image.
-            # But let's use the OCR time if available.
+            user_id = ocr_data['user_id'] if ocr_data else user.id
+
             m_date = ocr_data.get('date') if ocr_data else None
             m_time = ocr_data.get('time') if ocr_data else None
-            
-            BotService.create_bp_record(
+
+            record, is_new = BotService.create_bp_record(
                 user_id=user_id,
-                systolic=sys,
-                diastolic=dia,
-                pulse=pulse,
-                notes="Bot Manual Entry",
+                systolic=sys_val,
+                diastolic=dia_val,
+                pulse=pulse_val,
+                notes="Bot OCR Edit",
                 measurement_date=m_date,
                 measurement_time=m_time
             )
-            await update.message.reply_text("✅ **Record Saved Successfully!**", parse_mode="Markdown")
-            BotLogService.log(user_id, "OUT", "save_manual", "Manual Record Saved", user_id)
+            if is_new:
+                msg = get_text("save_success", lang, sys=sys_val, dia=dia_val, pulse=pulse_val)
+            else:
+                msg = get_text("save_duplicate", lang)
+            await update.message.reply_text(msg, parse_mode="Markdown")
+            BotLogService.log(user_id, "OUT", "save_ocr_edit", f"OCR Edit: {sys_val}/{dia_val}/{pulse_val}", user_id)
             return ConversationHandler.END
         else:
-            await update.message.reply_text("⚠️ Invalid format. Try: 120/80 72")
+            await update.message.reply_text(get_text("ocr_edit_invalid", lang))
             return OCR_EDIT
     except ValueError:
-        await update.message.reply_text("⚠️ Numbers only please. Try: 120/80 72")
+        await update.message.reply_text(get_text("ocr_edit_invalid", lang))
         return OCR_EDIT
 
 # ============================================================================
@@ -699,7 +702,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = BotService.get_user_by_telegram_id(chat_id)
     if not user:
-        await update.message.reply_text("⚠️ Please /start and link your account first.")
+        await update.message.reply_text(get_text("not_linked", "en"))
         return
 
     try:
@@ -842,12 +845,12 @@ async def manual_bp_confirm_callback(update: Update, context: ContextTypes.DEFAU
     data = query.data
     bp_data = context.user_data.get('manual_bp_temp')
 
-    if not bp_data:
-        await query.edit_message_text("❌ Session expired. Please try again.")
-        return ConversationHandler.END
-
     user = BotService.get_user_by_telegram_id(update.effective_user.id)
-    lang = user.language or "en" if user else "en"
+    lang = (user.language or "en") if user else "en"
+
+    if not bp_data:
+        await query.edit_message_text(get_text("session_expired", lang))
+        return ConversationHandler.END
 
     if data == "manual_bp_save":
         try:
@@ -916,8 +919,526 @@ def get_ocr_handler():
         conversation_timeout=180,  # 3 minutes
     )
 
-# ... inside main setup in main.py, we need to register these ...
-# Wait, I am editing handlers.py, I need to make sure these are EXPORTED or used.
-# The `main.py` likely imports specific functions or a setup function.
-# Let me verify `app/bot/main.py` next to see how handlers are attached.
-# For now, I'll add the functions here.
+
+# ============================================================================
+# /profile — View / Edit Profile
+# ============================================================================
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user profile with edit buttons."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    profile = BotService.get_user_profile(user.id)
+    if not profile:
+        await update.message.reply_text(get_text("error", lang))
+        return ConversationHandler.END
+
+    msg = get_text("profile_title", lang) + "\n\n"
+    msg += get_text("profile_info", lang,
+        name=profile["name"], phone=profile["phone"], email=profile["email"],
+        gender=profile["gender"], dob=profile["dob"], role=profile["role"],
+        tz=profile["timezone"], sub=profile["subscription"]
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(get_text("btn_edit_name", lang), callback_data="profile_edit_name"),
+            InlineKeyboardButton(get_text("btn_edit_email", lang), callback_data="profile_edit_email"),
+        ],
+        [InlineKeyboardButton(get_text("btn_close", lang), callback_data="profile_edit_close")]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return PROFILE_VIEW
+
+
+async def profile_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle profile edit button clicks."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    if not user:
+        await query.edit_message_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+
+    if data == "profile_edit_close":
+        await query.edit_message_text(get_text("profile_no_change", lang))
+        return ConversationHandler.END
+
+    if data == "profile_edit_name":
+        context.user_data['profile_edit_field'] = 'name'
+        context.user_data['profile_user_id'] = user.id
+        await query.edit_message_text(get_text("profile_edit_name", lang), parse_mode="Markdown")
+        return PROFILE_EDIT
+
+    if data == "profile_edit_email":
+        context.user_data['profile_edit_field'] = 'email'
+        context.user_data['profile_user_id'] = user.id
+        await query.edit_message_text(get_text("profile_edit_email", lang), parse_mode="Markdown")
+        return PROFILE_EDIT
+
+    return ConversationHandler.END
+
+
+async def profile_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle text input for profile editing."""
+    text = update.message.text.strip()
+    field = context.user_data.get('profile_edit_field')
+    user_id = context.user_data.get('profile_user_id')
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    if field == 'name':
+        success = BotService.update_user_name(user_id, text)
+        if success:
+            await update.message.reply_text(get_text("profile_updated", lang))
+        else:
+            await update.message.reply_text(get_text("error", lang))
+        return ConversationHandler.END
+
+    if field == 'email':
+        success = BotService.update_user_email(user_id, text)
+        if success:
+            await update.message.reply_text(get_text("profile_updated", lang))
+        else:
+            await update.message.reply_text(get_text("profile_invalid_email", lang))
+            return PROFILE_EDIT
+
+    return ConversationHandler.END
+
+
+def get_profile_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("profile", profile_command)],
+        states={
+            PROFILE_VIEW: [CallbackQueryHandler(profile_edit_callback, pattern='^profile_edit_')],
+            PROFILE_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, profile_edit_input)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,
+    )
+
+
+# ============================================================================
+# /delete — Delete BP Records
+# ============================================================================
+
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show recent records for deletion."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    records = BotService.get_recent_records(user.id, limit=10)
+
+    if not records:
+        await update.message.reply_text(get_text("delete_no_records", lang))
+        return ConversationHandler.END
+
+    context.user_data['delete_user_id'] = user.id
+
+    msg = get_text("delete_title", lang)
+    keyboard = []
+    for r in records:
+        label = f"{r['date']} {r['time']} — {r['sys']}/{r['dia']} ({r['pulse']})"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"del_select_{r['id']}")])
+
+    keyboard.append([InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="del_select_cancel")])
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return DELETE_SELECT
+
+
+async def delete_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle record selection for deletion."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+
+    if data == "del_select_cancel":
+        await query.edit_message_text(get_text("delete_cancelled", lang))
+        return ConversationHandler.END
+
+    record_id = int(data.replace("del_select_", ""))
+    context.user_data['delete_record_id'] = record_id
+
+    # Fetch record details for confirmation
+    records = BotService.get_recent_records(context.user_data.get('delete_user_id', 0))
+    record = next((r for r in records if r['id'] == record_id), None)
+
+    if not record:
+        await query.edit_message_text(get_text("error", lang))
+        return ConversationHandler.END
+
+    msg = get_text("delete_confirm", lang,
+        date=record['date'], time=record['time'],
+        sys=record['sys'], dia=record['dia'], pulse=record['pulse']
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🗑 " + (get_text("btn_confirm", lang)), callback_data="del_confirm_yes"),
+            InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="del_confirm_no")
+        ]
+    ]
+
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return DELETE_CONFIRM
+
+
+async def delete_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deletion confirmation."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+
+    if data == "del_confirm_yes":
+        record_id = context.user_data.get('delete_record_id')
+        user_id = context.user_data.get('delete_user_id')
+        result = BotService.delete_bp_record(user_id, record_id)
+        if result:
+            await query.edit_message_text(get_text("delete_success", lang))
+        else:
+            await query.edit_message_text(get_text("error", lang))
+    else:
+        await query.edit_message_text(get_text("delete_cancelled", lang))
+
+    context.user_data.pop('delete_record_id', None)
+    context.user_data.pop('delete_user_id', None)
+    return ConversationHandler.END
+
+
+def get_delete_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("delete", delete_command)],
+        states={
+            DELETE_SELECT: [CallbackQueryHandler(delete_select_callback, pattern='^del_select_')],
+            DELETE_CONFIRM: [CallbackQueryHandler(delete_confirm_callback, pattern='^del_confirm_')],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,
+    )
+
+
+# ============================================================================
+# /password — Change / Reset Password
+# ============================================================================
+
+async def password_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show password management options."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    context.user_data['pw_user_id'] = user.id
+
+    msg = get_text("password_title", lang)
+    keyboard = [
+        [InlineKeyboardButton(get_text("btn_change_pw", lang), callback_data="pw_change")],
+        [InlineKeyboardButton(get_text("btn_forgot_pw", lang), callback_data="pw_forgot")],
+        [InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="pw_cancel")]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return PW_CHOICE
+
+
+async def password_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle password action choice."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+
+    if data == "pw_cancel":
+        await query.edit_message_text(get_text("cancel", lang))
+        return ConversationHandler.END
+
+    if data == "pw_change":
+        context.user_data['_auth_state'] = 'password'
+        await query.edit_message_text(get_text("password_enter_current", lang), parse_mode="Markdown")
+        return PW_CURRENT
+
+    if data == "pw_forgot":
+        # Send OTP to user's registered contact
+        user_id = context.user_data.get('pw_user_id')
+        contact = BotService.get_user_contact_for_otp(user_id)
+        if contact:
+            try:
+                from app.otp_service import otp_service
+                target = contact['email'] or contact['phone']
+                if target:
+                    purpose = "password_reset"
+                    otp_service.generate_and_send(target, purpose)
+                    context.user_data['pw_otp_target'] = target
+                    await query.edit_message_text(get_text("password_otp_sent", lang))
+                    context.user_data['_auth_state'] = 'password'
+                    return PW_OTP
+            except Exception as e:
+                logger.error(f"OTP send error: {e}")
+        await query.edit_message_text(get_text("error", lang))
+        return ConversationHandler.END
+
+    return ConversationHandler.END
+
+
+async def password_current(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify current password."""
+    password = update.message.text
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    # Verify current password
+    from app.utils.security import verify_password
+    from app.database import SessionLocal
+    from app.models import User
+
+    user_id = context.user_data.get('pw_user_id')
+    with SessionLocal() as db:
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user and verify_password(password, db_user.password_hash):
+            await update.message.reply_text(get_text("password_enter_new", lang), parse_mode="Markdown")
+            return PW_NEW
+        else:
+            await update.message.reply_text(get_text("password_wrong_current", lang))
+            return PW_CURRENT
+
+
+async def password_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive new password."""
+    password = update.message.text
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    if len(password) < 8:
+        await update.message.reply_text(get_text("password_too_short", lang))
+        return PW_NEW
+
+    context.user_data['pw_new'] = password
+    await update.message.reply_text(get_text("password_confirm_new", lang), parse_mode="Markdown")
+    return PW_CONFIRM
+
+
+async def password_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm new password and save."""
+    password = update.message.text
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    new_pw = context.user_data.get('pw_new')
+    if password != new_pw:
+        await update.message.reply_text(get_text("password_mismatch", lang))
+        return PW_NEW
+
+    user_id = context.user_data.get('pw_user_id')
+    # Use change_password with the verified current password path
+    # Since we already verified, use reset_password_direct
+    success = BotService.reset_password_direct(user_id, new_pw)
+    if success:
+        await update.message.reply_text(get_text("password_success", lang))
+    else:
+        await update.message.reply_text(get_text("error", lang))
+
+    context.user_data.pop('pw_new', None)
+    context.user_data.pop('_auth_state', None)
+    return ConversationHandler.END
+
+
+async def password_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify OTP for password reset."""
+    otp_code = update.message.text.strip()
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    try:
+        from app.otp_service import otp_service
+        target = context.user_data.get('pw_otp_target')
+        if target and otp_service.verify(target, otp_code, "password_reset"):
+            await update.message.reply_text(get_text("password_enter_new", lang), parse_mode="Markdown")
+            return PW_NEW_AFTER_OTP
+    except Exception as e:
+        logger.error(f"OTP verify error: {e}")
+
+    await update.message.reply_text(get_text("password_otp_invalid", lang))
+    return PW_OTP
+
+
+async def password_new_after_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """New password after OTP verification."""
+    password = update.message.text
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    if len(password) < 8:
+        await update.message.reply_text(get_text("password_too_short", lang))
+        return PW_NEW_AFTER_OTP
+
+    context.user_data['pw_new'] = password
+    await update.message.reply_text(get_text("password_confirm_new", lang), parse_mode="Markdown")
+    return PW_CONFIRM_AFTER_OTP
+
+
+async def password_confirm_after_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm new password after OTP reset."""
+    password = update.message.text
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    new_pw = context.user_data.get('pw_new')
+    if password != new_pw:
+        await update.message.reply_text(get_text("password_mismatch", lang))
+        return PW_NEW_AFTER_OTP
+
+    user_id = context.user_data.get('pw_user_id')
+    success = BotService.reset_password_direct(user_id, new_pw)
+    if success:
+        await update.message.reply_text(get_text("password_success", lang))
+    else:
+        await update.message.reply_text(get_text("error", lang))
+
+    context.user_data.pop('pw_new', None)
+    context.user_data.pop('_auth_state', None)
+    return ConversationHandler.END
+
+
+def get_password_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("password", password_command)],
+        states={
+            PW_CHOICE: [CallbackQueryHandler(password_choice_callback, pattern='^pw_')],
+            PW_CURRENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_current)],
+            PW_NEW: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_new)],
+            PW_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_confirm)],
+            PW_OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_otp)],
+            PW_NEW_AFTER_OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_new_after_otp)],
+            PW_CONFIRM_AFTER_OTP: [MessageHandler(filters.TEXT & ~filters.COMMAND, password_confirm_after_otp)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=300,
+    )
+
+
+# ============================================================================
+# /deactivate — Account Deactivation
+# ============================================================================
+
+async def deactivate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show deactivation warning."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    context.user_data['deactivate_user_id'] = user.id
+    context.user_data['deactivate_lang'] = lang
+
+    msg = get_text("deactivate_warning", lang)
+    keyboard = [
+        [InlineKeyboardButton(get_text("btn_confirm_deactivate", lang), callback_data="deactivate_yes")],
+        [InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="deactivate_no")]
+    ]
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return DEACTIVATE_CONFIRM
+
+
+async def deactivate_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle first confirmation button."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    lang = context.user_data.get('deactivate_lang', 'en')
+
+    if data == "deactivate_no":
+        await query.edit_message_text(get_text("deactivate_cancelled", lang))
+        return ConversationHandler.END
+
+    if data == "deactivate_yes":
+        await query.edit_message_text(get_text("deactivate_confirm_type", lang), parse_mode="Markdown")
+        return DEACTIVATE_TYPE
+
+    return ConversationHandler.END
+
+
+async def deactivate_type_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Verify typed confirmation text."""
+    text = update.message.text.strip()
+    lang = context.user_data.get('deactivate_lang', 'en')
+
+    expected = "DELETE" if lang == "en" else "ลบบัญชี"
+
+    if text != expected:
+        await update.message.reply_text(get_text("deactivate_type_mismatch", lang), parse_mode="Markdown")
+        return DEACTIVATE_TYPE
+
+    user_id = context.user_data.get('deactivate_user_id')
+
+    # Send final message before deactivation (telegram will be unlinked)
+    success = BotService.deactivate_account(user_id)
+    if success:
+        await update.message.reply_text(get_text("deactivate_success", lang))
+    else:
+        await update.message.reply_text(get_text("error", lang))
+
+    return ConversationHandler.END
+
+
+def get_deactivate_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("deactivate", deactivate_command)],
+        states={
+            DEACTIVATE_CONFIRM: [CallbackQueryHandler(deactivate_confirm_callback, pattern='^deactivate_')],
+            DEACTIVATE_TYPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, deactivate_type_confirm)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,
+    )
