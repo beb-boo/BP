@@ -20,7 +20,7 @@ cryptography
 
 # External Services & Utils
 google-generativeai
-python-telegram-bot
+python-telegram-bot[job-queue]
 phonenumbers
 pillow
 pillow-heif  # HEIC/HEIF image support (iPhone photos)

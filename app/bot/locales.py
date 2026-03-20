@@ -15,14 +15,14 @@ LOCALES = {
         "reg_success": "✅ Registration Complete!\nWe have linked this Telegram account.\n\nType /help to see what I can do, or send a photo to record BP!",
         "login_success": "✅ Login Successful!\nWelcome {name}.",
         "login_fail": "❌ Invalid password. Please try again.",
-        "ocr_confirm": "I read:\nSys: **{sys}**\nDia: **{dia}**\nPulse: **{pulse}**\nDate: **{date}**\nTime: **{time}**\n\nIs this correct?",
+        "ocr_confirm": "I read:\nSys: **{sys}**\nDia: **{dia}**\nPulse: **{pulse}**\nDate: **{date}**\nTime: **{time}**\n\n⬇️ **Tap a button below to confirm or edit.**\nIf not pressed, data will be auto-saved in 2 minutes.",
         "btn_confirm": "✅ Confirm",
         "btn_edit": "✏️ Edit",
         "save_success": "✅ Saved! ({sys}/{dia} {pulse})\nSee /stats for trends.",
         "save_duplicate": "⚠️ Duplicate Record.\nYou already recorded this recently.",
         "stats_header": "**Your BP Profile**\n**Average** (Last 30 Records):\n{sys}/{dia} mmHg (Pulse {pulse})\n\n**Latest Entries**:",
         "no_records": "- No records found.",
-        "help_msg": "**Need Help?** 🤖\n\n**General Commands:**\n/start - Register or Connect Account\n/settings - Manage Settings (Language/Timezone)\n/stats - View your Blood Pressure trends\n/help - Show this message\n/cancel - Cancel current operation\n\n**Account Management:** 👤\n/profile - View or Edit your Profile\n/password - Change or Reset Password\n/delete - Delete a BP Record\n/deactivate - Deactivate your Account\n\n**Subscription & Premium:** 💎\n/upgrade - Upgrade to Premium Plan\n/subscription - Check Subscription Status\n\n**How to Record BP:**\nJust send a photo of your monitor! 📸\n(If numbers are wrong, click 'Edit' to fix them)",        "lang_select": "Please select your language / กรุณาเลือกภาษา:",
+        "help_msg": "**Need Help?** 🤖\n\n**📸 How to Record BP:**\n• Send a photo of your BP monitor!\n• Or type values directly: **130 90 65**\n(If numbers are wrong, click 'Edit' to fix them)\n\n**General Commands:**\n/start - Register or Connect Account\n/settings - Manage Settings (Language/Timezone)\n/stats - View your Blood Pressure trends\n/help - Show this message\n/cancel - Cancel current operation\n\n**Account:** 👤\n/profile - View or Edit your Profile\n/password - Change or Reset Password\n\n**Records:** 📋\n/edit - Edit a BP Record\n/delete - Delete a BP Record\n\n**Premium:** 💎\n/upgrade - Upgrade to Premium Plan\n/subscription - Check Subscription Status\n\n——————————————\n⚠️ **Danger Zone:**\n/deactivate - Permanently delete your account and all data",        "lang_select": "Please select your language / กรุณาเลือกภาษา:",
         "lang_set": "✅ Language set to English.",
         "cancel": "Cancelled.",
         "error": "❌ An error occurred. Please try again.",
@@ -54,7 +54,7 @@ LOCALES = {
         "link_success": "✅ Account Linked Successfully!\nYou can now use the bot.",
         "link_fail_password": "❌ Incorrect Password. Please try again or /cancel.",
         "creating_account": "⏳ Creating account...",
-        "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130/90/65**",
+        "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130 90 65**",
 
         # Common
         "not_linked": "⚠️ Please /start and link your account first.",
@@ -71,14 +71,15 @@ LOCALES = {
         "ocr_no_values": "⚠️ Could not clearly read numbers. Please try again.",
         "ocr_date_fallback": "\n⚠️ **Date not found in image**, using current date.",
         "heic_not_supported": "❌ HEIC format is not supported. Please convert to JPEG or PNG and try again.",
+        "ocr_auto_saved": "⏰ **Auto-saved!** ({sys}/{dia} {pulse})\nYou didn't confirm within 2 minutes, so it was saved automatically.\nIf values are wrong, use /delete to remove and re-upload.",
 
         # Manual BP input (Feature 2)
         "manual_bp_confirm": "You entered:\nSys: **{sys}** / Dia: **{dia}** / Pulse: **{pulse}**\nDate: **{date}** {time}\n\nSave this record?",
         "manual_bp_saved": "✅ Saved! ({sys}/{dia} {pulse})\nSee /stats for trends.",
         "manual_bp_cancelled": "❌ Cancelled. Record was not saved.",
-        "ocr_edit_prompt": "Please type the values in this format:\n**SYS/DIA PULSE**\nExample: `120/80 72`",
-        "ocr_edit_invalid": "⚠️ Invalid format. Try: **120/80 72**",
-        "manual_bp_invalid_format": "⚠️ Invalid format.\nPlease type BP as: **130/90/65** or **130-90-65**\n(systolic/diastolic/pulse)",
+        "ocr_edit_prompt": "Please type the values in this format:\n**SYS DIA PULSE**\nExample: `120 80 72`",
+        "ocr_edit_invalid": "⚠️ Invalid format. Try: **120 80 72**",
+        "manual_bp_invalid_format": "⚠️ Invalid format.\nPlease type BP as: **130 90 65** or **130/90/65**\n(systolic/diastolic/pulse)",
         "manual_bp_out_of_range": "⚠️ Values out of range.\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nPlease try again.",
 
         # /profile
@@ -99,6 +100,14 @@ LOCALES = {
         "delete_confirm": "Delete this record?\n\n📅 {date} {time}\n💓 {sys}/{dia} mmHg (Pulse {pulse})",
         "delete_success": "✅ Record deleted.",
         "delete_cancelled": "❌ Deletion cancelled.",
+
+        # /edit
+        "edit_title": "✏️ **Edit BP Record**\nSelect a record to edit:",
+        "edit_no_records": "📭 No records found.",
+        "edit_prompt": "Current record:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (Pulse {pulse})\n\nType new values: **SYS DIA PULSE**\nExample: `120 80 72`",
+        "edit_success": "✅ Record updated! ({sys}/{dia} {pulse})",
+        "edit_cancelled": "❌ Edit cancelled.",
+        "edit_invalid_format": "⚠️ Invalid format. Type: **120 80 72**",
 
         # /password
         "password_title": "🔐 **Password Management**",
@@ -134,6 +143,15 @@ LOCALES = {
         "pay_session_expired": "❌ Session expired. Please use /upgrade again.",
         "sub_premium": "💎 *Premium Member*\n\nExpires: {expires}\nRemaining: {days} days",
         "sub_free": "📦 *Free Member*\n\nLimited to 30 latest records.\nType /upgrade to unlock Premium.",
+
+        # Broadcast (Admin)
+        "broadcast_enter_msg": "📢 **Broadcast Message**\nType the message to send to all users:",
+        "broadcast_empty": "❌ Message cannot be empty.",
+        "broadcast_preview": "📢 **Preview:**\n\n{message}\n\n———\nSend this to all users?",
+        "broadcast_cancelled": "❌ Broadcast cancelled.",
+        "broadcast_sending": "📤 Sending broadcast...",
+        "broadcast_report": "✅ **Broadcast Complete!**\n\nSent: {success}/{total}\nFailed: {fail}",
+        "broadcast_not_admin": "⛔ Access denied.",
     },
     "th": {
         "welcome": "ยินดีต้อนรับกลับครับ, {name}! ✅\nบัญชีของคุณเชื่อมต่อเรียบร้อยแล้ว\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปมาเพื่อบันทึกได้เลยครับ",
@@ -149,14 +167,14 @@ LOCALES = {
         "reg_success": "✅ ลงทะเบียนสำเร็จ!\nเชื่อมต่อบัญชี Telegram เรียบร้อยแล้ว\n\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดันได้เลย!",
         "login_success": "✅ เข้าสู่ระบบสำเร็จ!\nยินดีต้อนรับ {name} ครับ",
         "login_fail": "❌ รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ครับ",
-        "ocr_confirm": "อ่านค่าได้ดังนี้ครับ:\nบน: **{sys}**\nล่าง: **{dia}**\nชีพจร: **{pulse}**\nวันที่: **{date}**\nเวลา: **{time}**\n\nถูกต้องไหมครับ?",
+        "ocr_confirm": "อ่านค่าได้ดังนี้ครับ:\nบน: **{sys}**\nล่าง: **{dia}**\nชีพจร: **{pulse}**\nวันที่: **{date}**\nเวลา: **{time}**\n\n⬇️ **กรุณากดปุ่มด้านล่างเพื่อยืนยันหรือแก้ไข**\nถ้าไม่กดภายใน 2 นาที ระบบจะบันทึกอัตโนมัติ",
         "btn_confirm": "✅ ถูกต้อง",
         "btn_edit": "✏️ แก้ไข",
         "save_success": "✅ บันทึกแล้ว! ({sys}/{dia} {pulse})\nดูสถิติพิมพ์ /stats",
         "save_duplicate": "⚠️ ข้อมูลซ้ำ\nคุณเพิ่งบันทึกค่านี้ไปเมื่อสักครู่นี้เองครับ",
         "stats_header": "**ข้อมูลสุขภาพของคุณ**\n**ค่าเฉลี่ย** (30 ครั้งล่าสุด):\n{sys}/{dia} mmHg (ชีพจร {pulse})\n\n**รายการล่าสุด**:",
         "no_records": "- ไม่พบประวัติการบันทึก",
-        "help_msg": "**ช่วยเหลือ** 🤖\n\n**คำสั่งทั่วไป:**\n/start - เริ่มต้น / เชื่อมต่อบัญชี\n/settings - ตั้งค่า (เปลี่ยนภาษา / เขตเวลา)\n/stats - ดูสถิติความดันโลหิต\n/help - แสดงข้อความนี้\n/cancel - ยกเลิกรายการ\n\n**จัดการบัญชี:** 👤\n/profile - ดู/แก้ไขโปรไฟล์\n/password - เปลี่ยนหรือรีเซ็ตรหัสผ่าน\n/delete - ลบรายการบันทึก\n/deactivate - ยกเลิกบัญชี\n\n**สมาชิก & พรีเมียม:** 💎\n/upgrade - อัพเกรดเป็นพรีเมียม\n/subscription - เช็คสถานะวันหมดอายุ\n\n**วิธีบันทึกค่าความดัน:**\nเพียงแค่ **ส่งรูปถ่าย** หน้าจอเครื่องวัดมาที่นี่! 📸\n(ถ้าเลขผิด สามารถกดปุ่ม 'แก้ไข' ได้ครับ)",
+        "help_msg": "**ช่วยเหลือ** 🤖\n\n**📸 วิธีบันทึกค่าความดัน:**\n• ส่งรูปถ่ายหน้าจอเครื่องวัดมาที่นี่!\n• หรือพิมพ์ค่าเลย เช่น **130 90 65**\n(ถ้าเลขผิด สามารถกดปุ่ม 'แก้ไข' ได้)\n\n**คำสั่งทั่วไป:**\n/start - เริ่มต้น / เชื่อมต่อบัญชี\n/settings - ตั้งค่า (เปลี่ยนภาษา / เขตเวลา)\n/stats - ดูสถิติความดันโลหิต\n/help - แสดงข้อความนี้\n/cancel - ยกเลิกรายการ\n\n**บัญชี:** 👤\n/profile - ดู/แก้ไขโปรไฟล์\n/password - เปลี่ยนหรือรีเซ็ตรหัสผ่าน\n\n**จัดการรายการ:** 📋\n/edit - แก้ไขรายการบันทึก\n/delete - ลบรายการบันทึก\n\n**พรีเมียม:** 💎\n/upgrade - อัพเกรดเป็นพรีเมียม\n/subscription - เช็คสถานะวันหมดอายุ\n\n——————————————\n⚠️ **คำสั่งอันตราย:**\n/deactivate - ลบบัญชีและข้อมูลทั้งหมดถาวร",
         "lang_select": "กรุณาเลือกภาษา / Please select your language:",
         "lang_set": "✅ เปลี่ยนภาษาเป็น ภาษาไทย เรียบร้อยครับ",
         "cancel": "ยกเลิกรายการแล้ว",
@@ -189,7 +207,7 @@ LOCALES = {
         "link_success": "✅ เชื่อมต่อบัญชีสำเร็จ!\nคุณสามารถใช้งานบอทได้แล้วครับ",
         "link_fail_password": "❌ รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ หรือพิมพ์ /cancel",
         "creating_account": "⏳ กำลังสร้างบัญชี...",
-        "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130/90/65**",
+        "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130 90 65**",
 
         # Common
         "not_linked": "⚠️ กรุณาพิมพ์ /start เพื่อเชื่อมต่อบัญชีก่อนครับ",
@@ -206,14 +224,15 @@ LOCALES = {
         "ocr_no_values": "⚠️ ไม่สามารถอ่านตัวเลขได้ชัดเจน กรุณาลองใหม่ครับ",
         "ocr_date_fallback": "\n⚠️ **ไม่พบวันที่ในรูป** ใช้วันที่ปัจจุบันแทน",
         "heic_not_supported": "❌ ไม่รองรับ HEIC กรุณาแปลงเป็น JPEG หรือ PNG แล้วลองใหม่",
+        "ocr_auto_saved": "⏰ **บันทึกอัตโนมัติ!** ({sys}/{dia} {pulse})\nคุณไม่ได้กดยืนยันภายใน 2 นาที จึงบันทึกให้อัตโนมัติ\nถ้าค่าไม่ถูกต้อง ใช้ /delete เพื่อลบแล้วส่งรูปใหม่",
 
         # Manual BP input (Feature 2)
         "manual_bp_confirm": "คุณกรอก:\nบน: **{sys}** / ล่าง: **{dia}** / ชีพจร: **{pulse}**\nวันที่: **{date}** {time}\n\nบันทึกข้อมูลนี้ไหมครับ?",
         "manual_bp_saved": "✅ บันทึกแล้ว! ({sys}/{dia} {pulse})\nดูสถิติพิมพ์ /stats",
         "manual_bp_cancelled": "❌ ยกเลิกแล้ว ไม่ได้บันทึกข้อมูล",
-        "ocr_edit_prompt": "กรุณาพิมพ์ค่าในรูปแบบนี้:\n**บน/ล่าง ชีพจร**\nตัวอย่าง: `120/80 72`",
-        "ocr_edit_invalid": "⚠️ รูปแบบไม่ถูกต้อง ลองใหม่: **120/80 72**",
-        "manual_bp_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง\nกรุณาพิมพ์ค่าความดัน: **130/90/65** หรือ **130-90-65**\n(บน/ล่าง/ชีพจร)",
+        "ocr_edit_prompt": "กรุณาพิมพ์ค่าในรูปแบบนี้:\n**บน ล่าง ชีพจร**\nตัวอย่าง: `120 80 72`",
+        "ocr_edit_invalid": "⚠️ รูปแบบไม่ถูกต้อง ลองใหม่: **120 80 72**",
+        "manual_bp_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง\nกรุณาพิมพ์ค่าความดัน: **130 90 65** หรือ **130/90/65**\n(บน/ล่าง/ชีพจร)",
         "manual_bp_out_of_range": "⚠️ ค่าไม่อยู่ในช่วงที่กำหนด\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nกรุณาลองใหม่",
 
         # /profile
@@ -234,6 +253,14 @@ LOCALES = {
         "delete_confirm": "ลบรายการนี้ไหม?\n\n📅 {date} {time}\n💓 {sys}/{dia} mmHg (ชีพจร {pulse})",
         "delete_success": "✅ ลบรายการเรียบร้อยแล้ว",
         "delete_cancelled": "❌ ยกเลิกการลบแล้ว",
+
+        # /edit
+        "edit_title": "✏️ **แก้ไขรายการบันทึก**\nเลือกรายการที่ต้องการแก้ไข:",
+        "edit_no_records": "📭 ไม่พบรายการบันทึก",
+        "edit_prompt": "รายการปัจจุบัน:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (ชีพจร {pulse})\n\nพิมพ์ค่าใหม่: **บน ล่าง ชีพจร**\nตัวอย่าง: `120 80 72`",
+        "edit_success": "✅ แก้ไขเรียบร้อย! ({sys}/{dia} {pulse})",
+        "edit_cancelled": "❌ ยกเลิกการแก้ไข",
+        "edit_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง พิมพ์: **120 80 72**",
 
         # /password
         "password_title": "🔐 **จัดการรหัสผ่าน**",
@@ -269,6 +296,15 @@ LOCALES = {
         "pay_session_expired": "❌ เซสชันหมดอายุ กรุณาใช้ /upgrade ใหม่",
         "sub_premium": "💎 *Premium Member*\n\nหมดอายุ: {expires}\nเหลืออีก: {days} วัน",
         "sub_free": "📦 *Free Member*\n\nจำกัด 30 รายการล่าสุด\nพิมพ์ /upgrade เพื่ออัพเกรดเป็น Premium",
+
+        # Broadcast (Admin)
+        "broadcast_enter_msg": "📢 **ส่งข้อความประกาศ**\nพิมพ์ข้อความที่ต้องการส่งถึงผู้ใช้ทุกคน:",
+        "broadcast_empty": "❌ ข้อความไม่สามารถเว้นว่างได้",
+        "broadcast_preview": "📢 **ตัวอย่าง:**\n\n{message}\n\n———\nส่งข้อความนี้ไปถึงผู้ใช้ทุกคน?",
+        "broadcast_cancelled": "❌ ยกเลิกการประกาศ",
+        "broadcast_sending": "📤 กำลังส่งข้อความประกาศ...",
+        "broadcast_report": "✅ **ส่งประกาศเสร็จสิ้น!**\n\nส่งสำเร็จ: {success}/{total}\nล้มเหลว: {fail}",
+        "broadcast_not_admin": "⛔ ไม่มีสิทธิ์เข้าถึง",
     }
 }
 

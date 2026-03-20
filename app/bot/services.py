@@ -517,6 +517,23 @@ class BotService:
             db.commit()
             return info
 
+    @staticmethod
+    def update_bp_record(user_id: int, record_id: int, systolic: int, diastolic: int, pulse: int) -> bool:
+        """Update an existing BP record's values."""
+        with SessionLocal() as db:
+            record = db.query(BloodPressureRecord).filter(
+                BloodPressureRecord.id == record_id,
+                BloodPressureRecord.user_id == user_id
+            ).first()
+            if not record:
+                return False
+            record.systolic = systolic
+            record.diastolic = diastolic
+            record.pulse = pulse
+            record.notes = (record.notes or "") + " (Edited)"
+            db.commit()
+            return True
+
     # ================================================================
     # Password Management
     # ================================================================
@@ -570,6 +587,30 @@ class BotService:
                 "phone": user.phone_number,
                 "user_id": user.id,
             }
+
+    # ================================================================
+    # Broadcast
+    # ================================================================
+
+    @staticmethod
+    def get_all_broadcast_chat_ids():
+        """Get all active users' decrypted telegram_ids for broadcast."""
+        with SessionLocal() as db:
+            users = db.query(User).filter(
+                User.telegram_id_hash.isnot(None),
+                User.is_active == True
+            ).all()
+
+            result = []
+            for user in users:
+                tid = user.telegram_id
+                if tid:
+                    result.append({
+                        "user_id": user.id,
+                        "telegram_id": tid,
+                        "language": user.language or "th"
+                    })
+            return result
 
     # ================================================================
     # Account Deactivation

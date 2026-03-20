@@ -38,6 +38,7 @@ ENCRYPTION_KEY=<generated-fernet-key>
 API_KEYS=bp-mobile-app-key,bp-web-app-key
 GOOGLE_AI_API_KEY=your_gemini_api_key
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+ADMIN_TELEGRAM_IDS=123456789,987654321
 APP_TIMEZONE=Asia/Bangkok
 ```
 
@@ -142,6 +143,7 @@ API_KEYS=<your-api-keys>
 GOOGLE_AI_API_KEY=<gemini-key>
 TELEGRAM_BOT_TOKEN=<bot-token>
 TELEGRAM_BOT_USERNAME=<bot-username>
+ADMIN_TELEGRAM_IDS=<comma-separated-admin-ids>
 BOT_MODE=webhook
 WEBHOOK_URL=https://your-backend.vercel.app
 WEBHOOK_SECRET=<random-secret>
@@ -227,7 +229,8 @@ cd frontend && npm run build && npm start
 
 ### For Patients
 
-* **Smart Recording**: Scan photo with AI, auto-extract values, duplicate prevention.
+* **Smart Recording**: Scan photo with AI or type values (`120/80/72` or `120 80 72`).
+* **Auto-Save**: OCR data is automatically saved after 2 minutes if the user forgets to confirm.
 * **Intelligent Timestamp**: OCR screen time > EXIF metadata > Current time.
 * **Trends & History**: Free (30 records) / Premium (unlimited).
 * **Doctor Access**: Grant or revoke access for doctors.
@@ -269,7 +272,11 @@ Fully bilingual: English and Thai. Change via web settings or Telegram `/languag
 | `/upgrade` | Upgrade to Premium |
 | `/subscription` | Check subscription status |
 | `/help` | Show all commands |
-| *Send photo* | AI extracts BP values |
+| `/edit` | Edit a recent BP record |
+| `/delete` | Delete a BP record |
+| `/broadcast` | **[Admin]** Send messages to all users |
+| *Send photo* | AI extracts BP values (Auto-saves after 2 mins) |
+| *Type text* | Enter BP manually (e.g. `120 80 72` or `120/80/72`) |
 
 ### Webhook Security
 

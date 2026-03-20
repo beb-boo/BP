@@ -11,6 +11,7 @@ import logging
 import tempfile
 import os
 import re
+import asyncio
 
 # --- Language States ---
 SELECT_LANG = 99
@@ -166,8 +167,16 @@ PW_OTP = 64
 PW_NEW_AFTER_OTP = 65
 PW_CONFIRM_AFTER_OTP = 66
 
-# Regex for manual BP input: 130/90/65 or 130-90-65
-BP_TEXT_PATTERN = re.compile(r'^(\d{2,3})[/\-](\d{2,3})[/\-](\d{2,3})$')
+# --- Broadcast States ---
+BROADCAST_MSG = 70
+BROADCAST_CONFIRM = 71
+
+# --- Edit States ---
+EDIT_SELECT = 80
+EDIT_INPUT = 81
+
+# Regex for manual BP input: 130/90/65 or 130-90-65 or 130 90 65
+BP_TEXT_PATTERN = re.compile(r'^(\d{2,3})[/\-\s](\d{2,3})[/\-\s](\d{2,3})$')
 
 # ============================================================================
 # Auth / Registration Flow
@@ -595,6 +604,25 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
 
         await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+        # Schedule auto-save job (2 min) — Approach C
+        if context.job_queue:
+            job_name = f"ocr_autosave_{chat_id}"
+            current_jobs = context.job_queue.get_jobs_by_name(job_name)
+            for job in current_jobs:
+                job.schedule_removal()
+
+            context.job_queue.run_once(
+                ocr_auto_save_job,
+                when=120,
+                chat_id=chat_id,
+                name=job_name,
+                data={
+                    "ocr_data": context.user_data['ocr_temp'].copy(),
+                    "lang": lang,
+                }
+            )
+
         return OCR_CONFIRM
 
     except Exception as e:
@@ -605,7 +633,14 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
+    # Cancel auto-save job since user responded
+    if context.job_queue:
+        job_name = f"ocr_autosave_{update.effective_chat.id}"
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+
     data = query.data
     
     if data == "save_ocr":
@@ -650,6 +685,13 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return OCR_EDIT
 
 async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Cancel auto-save job since user is editing
+    if context.job_queue:
+        job_name = f"ocr_autosave_{update.effective_chat.id}"
+        current_jobs = context.job_queue.get_jobs_by_name(job_name)
+        for job in current_jobs:
+            job.schedule_removal()
+
     text = update.message.text.strip()
     user = BotService.get_user_by_telegram_id(update.effective_chat.id)
     lang = (user.language or "en") if user else "en"
@@ -692,6 +734,40 @@ async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text(get_text("ocr_edit_invalid", lang))
         return OCR_EDIT
+
+# ============================================================================
+# OCR Auto-Save Job (Approach C)
+# ============================================================================
+
+async def ocr_auto_save_job(context: ContextTypes.DEFAULT_TYPE):
+    """Auto-save OCR data when user doesn't confirm within timeout."""
+    job = context.job
+    ocr_data = job.data['ocr_data']
+    lang = job.data['lang']
+    chat_id = job.chat_id
+
+    try:
+        record, is_new = BotService.create_bp_record(
+            user_id=ocr_data['user_id'],
+            systolic=ocr_data['sys'],
+            diastolic=ocr_data['dia'],
+            pulse=ocr_data['pulse'],
+            notes=f"Bot OCR Auto-save (timeout)",
+            measurement_date=ocr_data.get('date'),
+            measurement_time=ocr_data.get('time')
+        )
+
+        if is_new:
+            msg = get_text("ocr_auto_saved", lang,
+                sys=ocr_data['sys'], dia=ocr_data['dia'], pulse=ocr_data['pulse'])
+            await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode="Markdown")
+
+        BotLogService.log(ocr_data['user_id'], "OUT", "auto_save_ocr",
+            f"OCR Auto-saved: {ocr_data['sys']}/{ocr_data['dia']}/{ocr_data['pulse']}",
+            ocr_data['user_id'])
+    except Exception as e:
+        logger.error(f"OCR auto-save error: {e}")
+
 
 # ============================================================================
 # Stats
@@ -770,11 +846,11 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_text("unknown_msg", lang), parse_mode="Markdown")
 
 # ============================================================================
-# Manual BP Text Input (e.g., 130/90/65 or 130-90-65)
+# Manual BP Text Input (e.g., 130/90/65 or 130-90-65 or 130 90 65)
 # ============================================================================
 
 async def manual_bp_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Parse text like 130/90/65 and show confirmation with inline buttons."""
+    """Parse text like 130/90/65 or 130 90 65 and show confirmation with inline buttons."""
     chat_id = update.effective_chat.id
     user = BotService.get_user_by_telegram_id(chat_id)
 
@@ -1025,6 +1101,7 @@ def get_profile_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=120,
+        allow_reentry=True,
     )
 
 
@@ -1134,6 +1211,129 @@ def get_delete_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=120,
+        allow_reentry=True,
+    )
+
+
+# ============================================================================
+# /edit — Edit BP Record
+# ============================================================================
+
+async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show recent records for editing."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+
+    lang = user.language or "en"
+    records = BotService.get_recent_records(user.id, limit=10)
+
+    if not records:
+        await update.message.reply_text(get_text("edit_no_records", lang))
+        return ConversationHandler.END
+
+    context.user_data['edit_user_id'] = user.id
+
+    msg = get_text("edit_title", lang)
+    keyboard = []
+    for r in records:
+        label = f"{r['date']} {r['time']} — {r['sys']}/{r['dia']} ({r['pulse']})"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"edit_select_{r['id']}")])
+
+    keyboard.append([InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="edit_select_cancel")])
+
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return EDIT_SELECT
+
+
+async def edit_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle record selection for editing."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+
+    if data == "edit_select_cancel":
+        await query.edit_message_text(get_text("edit_cancelled", lang))
+        return ConversationHandler.END
+
+    record_id = int(data.replace("edit_select_", ""))
+    context.user_data['edit_record_id'] = record_id
+
+    # Show current values and ask for new ones
+    records = BotService.get_recent_records(context.user_data.get('edit_user_id', 0))
+    record = next((r for r in records if r['id'] == record_id), None)
+
+    if not record:
+        await query.edit_message_text(get_text("error", lang))
+        return ConversationHandler.END
+
+    msg = get_text("edit_prompt", lang,
+        date=record['date'], time=record['time'],
+        sys=record['sys'], dia=record['dia'], pulse=record['pulse']
+    )
+
+    await query.edit_message_text(msg, parse_mode="Markdown")
+    return EDIT_INPUT
+
+
+async def edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle new values input for editing."""
+    text = update.message.text.strip()
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    try:
+        # Normalize separators (accept / - space ,)
+        text = text.replace("/", " ").replace("-", " ").replace(",", " ")
+        parts = text.split()
+
+        if len(parts) >= 3:
+            sys_val = int(parts[0])
+            dia_val = int(parts[1])
+            pulse_val = int(parts[2])
+
+            # Validate ranges
+            if not (50 <= sys_val <= 300 and 30 <= dia_val <= 200 and 30 <= pulse_val <= 200):
+                await update.message.reply_text(get_text("manual_bp_out_of_range", lang))
+                return EDIT_INPUT
+
+            record_id = context.user_data.get('edit_record_id')
+            user_id = context.user_data.get('edit_user_id')
+
+            success = BotService.update_bp_record(user_id, record_id, sys_val, dia_val, pulse_val)
+            if success:
+                msg = get_text("edit_success", lang, sys=sys_val, dia=dia_val, pulse=pulse_val)
+                await update.message.reply_text(msg, parse_mode="Markdown")
+                BotLogService.log(user_id, "OUT", "edit_record",
+                    f"Edit #{record_id}: {sys_val}/{dia_val}/{pulse_val}", user_id)
+            else:
+                await update.message.reply_text(get_text("error", lang))
+
+            context.user_data.pop('edit_record_id', None)
+            context.user_data.pop('edit_user_id', None)
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text(get_text("edit_invalid_format", lang))
+            return EDIT_INPUT
+    except ValueError:
+        await update.message.reply_text(get_text("edit_invalid_format", lang))
+        return EDIT_INPUT
+
+
+def get_edit_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("edit", edit_command)],
+        states={
+            EDIT_SELECT: [CallbackQueryHandler(edit_select_callback, pattern='^edit_select_')],
+            EDIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_input)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,
+        allow_reentry=True,
     )
 
 
@@ -1362,6 +1562,7 @@ def get_password_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=300,
+        allow_reentry=True,
     )
 
 
@@ -1441,4 +1642,128 @@ def get_deactivate_handler():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=120,
+        allow_reentry=True,
+    )
+
+
+# ============================================================================
+# /broadcast — Admin Broadcast
+# ============================================================================
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point for /broadcast — Admin only."""
+    chat_id = update.effective_chat.id
+
+    # Admin check via env var
+    admin_ids_str = os.getenv("ADMIN_TELEGRAM_IDS", "")
+    admin_ids = []
+    for x in admin_ids_str.split(","):
+        x = x.strip()
+        if x:
+            try:
+                admin_ids.append(int(x))
+            except ValueError:
+                pass
+
+    if chat_id not in admin_ids:
+        user = BotService.get_user_by_telegram_id(chat_id)
+        lang = (user.language or "en") if user else "en"
+        await update.message.reply_text(get_text("broadcast_not_admin", lang))
+        return ConversationHandler.END
+
+    user = BotService.get_user_by_telegram_id(chat_id)
+    lang = (user.language or "en") if user else "en"
+
+    await update.message.reply_text(get_text("broadcast_enter_msg", lang), parse_mode="Markdown")
+    return BROADCAST_MSG
+
+
+async def broadcast_msg_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive broadcast message text."""
+    text = update.message.text.strip()
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    if not text:
+        await update.message.reply_text(get_text("broadcast_empty", lang))
+        return BROADCAST_MSG
+
+    context.user_data['broadcast_msg'] = text
+
+    msg = get_text("broadcast_preview", lang, message=text)
+    keyboard = [
+        [
+            InlineKeyboardButton(get_text("btn_confirm", lang), callback_data="broadcast_send"),
+            InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="broadcast_cancel")
+        ]
+    ]
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return BROADCAST_CONFIRM
+
+
+async def broadcast_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle broadcast confirm/cancel."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+
+    if data == "broadcast_cancel":
+        await query.edit_message_text(get_text("broadcast_cancelled", lang))
+        context.user_data.pop('broadcast_msg', None)
+        return ConversationHandler.END
+
+    if data == "broadcast_send":
+        msg_text = context.user_data.get('broadcast_msg')
+        if not msg_text:
+            await query.edit_message_text(get_text("session_expired", lang))
+            return ConversationHandler.END
+
+        await query.edit_message_text(get_text("broadcast_sending", lang))
+
+        # Get all users with linked Telegram
+        users = BotService.get_all_broadcast_chat_ids()
+        success = 0
+        fail = 0
+
+        broadcast_text = f"📢 *ประกาศ / Announcement*\n\n{msg_text}"
+
+        for u in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=u['telegram_id'],
+                    text=broadcast_text,
+                    parse_mode="Markdown"
+                )
+                success += 1
+                await asyncio.sleep(0.05)  # Rate limit: ~20 msg/sec
+            except Exception as e:
+                fail += 1
+                logger.warning(f"Broadcast fail to user {u['user_id']}: {e}")
+
+        report = get_text("broadcast_report", lang,
+            success=success, fail=fail, total=len(users))
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text=report, parse_mode="Markdown")
+
+        context.user_data.pop('broadcast_msg', None)
+        BotLogService.log(update.effective_chat.id, "OUT", "broadcast",
+            f"Broadcast sent: {success}/{len(users)}")
+        return ConversationHandler.END
+
+    return ConversationHandler.END
+
+
+def get_broadcast_handler():
+    return ConversationHandler(
+        entry_points=[CommandHandler("broadcast", broadcast_command)],
+        states={
+            BROADCAST_MSG: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_msg_input)],
+            BROADCAST_CONFIRM: [CallbackQueryHandler(broadcast_confirm_callback, pattern='^broadcast_')],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=300,
+        allow_reentry=True,
     )

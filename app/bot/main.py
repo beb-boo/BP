@@ -7,7 +7,9 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHan
 from telegram.error import NetworkError, TimedOut, TelegramError
 from telegram.request import HTTPXRequest
 from .handlers import (get_auth_handler, get_ocr_handler, get_manual_bp_handler,
-                       get_profile_handler, get_delete_handler, get_password_handler, get_deactivate_handler,
+                       get_profile_handler, get_delete_handler, get_edit_handler,
+                       get_password_handler, get_deactivate_handler,
+                       get_broadcast_handler,
                        stats, help_command, unknown, language_command, language_callback,
                        settings_command, settings_callback, timezone_callback)
 from .payment_handlers import get_payment_handler, subscription_command
@@ -236,14 +238,19 @@ def build_application():
     # OCR & Record Logic
     application.add_handler(get_ocr_handler())
 
-    # Manual BP Text Input (e.g., "130/90/65")
-    application.add_handler(get_manual_bp_handler())
-
-    # User Management Commands
-    application.add_handler(get_profile_handler())
+    # ALL ConversationHandlers that accept TEXT input in their states
+    # MUST be registered BEFORE manual_bp_handler, because manual_bp uses
+    # a Regex entry_point (BP_TEXT_PATTERN) that matches values like "140 89 78"
+    # which would intercept text input meant for other active conversations.
+    application.add_handler(get_edit_handler())
     application.add_handler(get_delete_handler())
+    application.add_handler(get_profile_handler())
     application.add_handler(get_password_handler())
     application.add_handler(get_deactivate_handler())
+    application.add_handler(get_broadcast_handler())
+
+    # Manual BP Text Input (e.g., "130 90 65") — MUST be LAST ConversationHandler
+    application.add_handler(get_manual_bp_handler())
 
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))
