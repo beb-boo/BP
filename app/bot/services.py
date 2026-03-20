@@ -201,10 +201,11 @@ class BotService:
             final_time = measurement_time
 
         with SessionLocal() as db:
-            # Check for duplicate
+            from sqlalchemy import func
+            # Check for duplicate: Compare only the DATE part of measurement_date
             existing = db.query(BloodPressureRecord).filter(
                 BloodPressureRecord.user_id == user_id,
-                BloodPressureRecord.measurement_date == final_date,
+                func.date(BloodPressureRecord.measurement_date) == final_date.date(),
                 BloodPressureRecord.measurement_time == final_time,
                 BloodPressureRecord.systolic == systolic,
                 BloodPressureRecord.diastolic == diastolic,

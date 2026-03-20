@@ -140,9 +140,12 @@ async def create_bp_record(
     request_id = generate_request_id()
     
     # Duplicate Check
+    from sqlalchemy import func
+    expected_date = record.measurement_date.date() if record.measurement_date else now_th().date()
+    
     existing = db.query(BloodPressureRecord).filter(
         BloodPressureRecord.user_id == current_user.id,
-        BloodPressureRecord.measurement_date == record.measurement_date,
+        func.date(BloodPressureRecord.measurement_date) == expected_date,
         BloodPressureRecord.measurement_time == record.measurement_time,
         BloodPressureRecord.systolic == record.systolic,
         BloodPressureRecord.diastolic == record.diastolic,
