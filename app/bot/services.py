@@ -1,7 +1,7 @@
 
 from sqlalchemy.orm import Session
 from app.models import User, BloodPressureRecord, UserSession, DoctorPatient, Payment
-from app.utils.security import verify_password, hash_password, SECRET_KEY, ALGORITHM
+from app.utils.security import verify_password, hash_password, SECRET_KEY, ALGORITHM, check_premium
 from app.utils.encryption import encrypt_value, decrypt_value, hash_value
 from app.utils.tmc_checker import verify_doctor_with_tmc
 from app.utils.timezone import now_tz, TIMEZONE_CHOICES, is_valid_timezone, format_datetime
@@ -231,51 +231,76 @@ class BotService:
 
     @staticmethod
     def get_user_stats(user_id: int, days: int = 30):
-        """Get recent stats for a user (Last N days)."""
+        """Get recent stats for a user with clinical metrics."""
         from app.models import BloodPressureRecord
+        from app.routers.bp_records import classify_bp, compute_trend
         from sqlalchemy import func
         from datetime import timedelta
-        
+        import statistics as stats_module
+
         with SessionLocal() as db:
-            # Get last 30 records (Any date)
+            # Check premium status
+            user = db.query(User).filter(User.id == user_id).first()
+            is_premium = check_premium(user) if user else False
+
+            # Get last 30 records
             recent = db.query(BloodPressureRecord)\
                 .filter(BloodPressureRecord.user_id == user_id)\
                 .order_by(BloodPressureRecord.measurement_date.desc(), BloodPressureRecord.created_at.desc())\
                 .limit(30)\
                 .all()
-                
-            # Get average of last N RECORDS (Count-based, aligning with Web Logic)
-            # Use 'days' param as 'limit_count'
-            limit_count = 30
-            
-            # Complex query: We need to average the "Latest 30". 
-            # Fix SAWarning: Fetch IDs first (List) then filter. Safer and cleaner for small limits.
-            
-            recent_ids_result = db.query(BloodPressureRecord.id)\
-                .filter(BloodPressureRecord.user_id == user_id)\
-                .order_by(BloodPressureRecord.measurement_date.desc())\
-                .limit(limit_count)\
-                .all()
-            
-            recent_ids = [r[0] for r in recent_ids_result]
-            
-            if not recent_ids:
-                 return {
-                    "recent": recent, # from earlier query
-                    "average": None
-                 }
-                
-            avg = db.query(
-                func.avg(BloodPressureRecord.systolic).label('avg_sys'),
-                func.avg(BloodPressureRecord.diastolic).label('avg_dia'),
-                func.avg(BloodPressureRecord.pulse).label('avg_pulse')
-            ).filter(
-                BloodPressureRecord.id.in_(recent_ids)
-            ).first()
-            
+
+            if not recent:
+                return {
+                    "recent": recent,
+                    "average": None,
+                    "classification": None,
+                    "is_premium": is_premium,
+                    "advanced": None
+                }
+
+            # Calculate averages
+            sys_vals = [r.systolic for r in recent]
+            dia_vals = [r.diastolic for r in recent]
+            pulse_vals = [r.pulse for r in recent]
+            n = len(recent)
+
+            avg_sys = round(sum(sys_vals) / n, 1)
+            avg_dia = round(sum(dia_vals) / n, 1)
+            avg_pulse = round(sum(pulse_vals) / n, 1)
+
+            # Classification (free + premium)
+            classification = classify_bp(avg_sys, avg_dia)
+
+            # Advanced stats (premium only)
+            advanced = None
+            if is_premium:
+                has_enough = n >= 2
+                sd_sys = round(stats_module.stdev(sys_vals), 1) if has_enough else 0
+                sd_dia = round(stats_module.stdev(dia_vals), 1) if has_enough else 0
+                pp_avg = round(avg_sys - avg_dia, 1)
+                map_avg = round((avg_sys + 2 * avg_dia) / 3, 1)
+                trend = compute_trend(recent)
+                advanced = {
+                    "sd_sys": sd_sys,
+                    "sd_dia": sd_dia,
+                    "pulse_pressure": pp_avg,
+                    "map": map_avg,
+                    "trend": trend
+                }
+
+            class AvgResult:
+                def __init__(self, s, d, p):
+                    self.avg_sys = s
+                    self.avg_dia = d
+                    self.avg_pulse = p
+
             return {
                 "recent": recent,
-                "average": avg
+                "average": AvgResult(avg_sys, avg_dia, avg_pulse),
+                "classification": classification,
+                "is_premium": is_premium,
+                "advanced": advanced
             }
 
 

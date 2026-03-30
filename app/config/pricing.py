@@ -12,11 +12,15 @@ SUBSCRIPTION_PLANS: Dict[str, dict] = {
             "th": [
                 "บันทึกความดันได้ไม่จำกัด",
                 "ดูประวัติย้อนหลังทั้งหมด",
+                "วิเคราะห์ค่า SD, Median, Pulse Pressure, MAP",
+                "วิเคราะห์แนวโน้ม (Trend Analysis)",
                 "Export ข้อมูลไม่จำกัด"
             ],
             "en": [
                 "Unlimited BP records",
                 "Full history access",
+                "Advanced analytics (SD, Median, Pulse Pressure, MAP)",
+                "Trend Analysis",
                 "Unlimited data export"
             ]
         }
@@ -30,12 +34,16 @@ SUBSCRIPTION_PLANS: Dict[str, dict] = {
             "th": [
                 "บันทึกความดันได้ไม่จำกัด",
                 "ดูประวัติย้อนหลังทั้งหมด",
+                "วิเคราะห์ค่า SD, Median, Pulse Pressure, MAP",
+                "วิเคราะห์แนวโน้ม (Trend Analysis)",
                 "Export ข้อมูลไม่จำกัด",
                 "ประหยัด 9 บาท (เทียบกับรายเดือน)"
             ],
             "en": [
                 "Unlimited BP records",
                 "Full history access",
+                "Advanced analytics (SD, Median, Pulse Pressure, MAP)",
+                "Trend Analysis",
                 "Unlimited data export",
                 "Save 9 THB (vs Monthly)"
             ]

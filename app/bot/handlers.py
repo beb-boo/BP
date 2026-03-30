@@ -790,27 +790,73 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recent = data['recent']
     avg = data['average']
 
+    if not avg:
+        lang = user.language or "en"
+        await update.message.reply_text(get_text("no_records", lang))
+        BotLogService.log(chat_id, "OUT", "stats", "No records", user.id)
+        return
+
     avg_sys = int(avg.avg_sys) if avg.avg_sys else 0
     avg_dia = int(avg.avg_dia) if avg.avg_dia else 0
     avg_pulse = int(avg.avg_pulse) if avg.avg_pulse else 0
 
     lang = user.language or "en"
 
+    total_records = len(recent) if recent else 0
+
     msg = get_text(
         "stats_header",
         lang,
         sys=avg_sys,
         dia=avg_dia,
-        pulse=avg_pulse
+        pulse=avg_pulse,
+        n=total_records
     )
 
-    if not recent:
-        msg += "\n" + get_text("no_records", lang)
-    else:
-        for r in recent:
+    # BP Classification (Free + Premium)
+    classification = data.get("classification")
+    if classification:
+        label = classification["label_th"] if lang == "th" else classification["label_en"]
+        level = classification["level"]
+        emoji = {"normal": "🟢", "elevated": "🟡", "stage_1": "🟠", "stage_2": "🔴", "hypertensive_crisis": "🚨"}.get(level, "⚪")
+        msg += f"\n{emoji} {get_text('stats_classification', lang)}: **{label}**"
+
+    # Advanced stats (Premium only)
+    advanced = data.get("advanced")
+    if advanced:
+        sd_sys = advanced["sd_sys"]
+        sd_dia = advanced["sd_dia"]
+        pp = advanced["pulse_pressure"]
+        map_val = advanced["map"]
+        trend = advanced["trend"]
+
+        trend_emoji = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}.get(trend["direction"], "➡️")
+        trend_label = get_text(f"stats_trend_{trend['direction']}", lang)
+
+        msg += f"\n\n{get_text('stats_advanced_header', lang)}"
+        msg += f"\n• SD: {avg_sys} ± {sd_sys} / {avg_dia} ± {sd_dia} mmHg"
+        msg += f"\n• Pulse Pressure: {pp} mmHg"
+        msg += f"\n• MAP: {map_val} mmHg"
+        msg += f"\n• {get_text('stats_trend', lang)}: {trend_emoji} {trend_label} ({trend['systolic_slope']:+.1f} mmHg/{get_text('stats_per_day', lang)})"
+    elif not data.get("is_premium"):
+        msg += f"\n\n🔒 {get_text('stats_premium_hint', lang)}"
+
+    if recent:
+        display_limit = 10
+        shown = min(len(recent), display_limit)
+        msg += f"\n\n{get_text('stats_latest', lang)} ({shown}/{total_records})"
+        for r in recent[:display_limit]:
             date_str = r.measurement_date.strftime("%d/%m/%Y")
             time_str = r.measurement_time if r.measurement_time else ""
             msg += f"\n- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})"
+
+        # Hint for viewing more
+        if total_records > display_limit:
+            dashboard_url = os.getenv("WEB_DASHBOARD_URL", "")
+            if dashboard_url:
+                msg += f"\n\n{get_text('stats_view_more', lang, url=dashboard_url)}"
+            else:
+                msg += f"\n\n{get_text('stats_view_more_no_url', lang)}"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
 

@@ -33,6 +33,49 @@ VALID_API_KEYS = [k.strip() for k in _raw_keys.split(",") if k.strip()]
 
 logger = logging.getLogger(__name__)
 
+# Premium bypass — comma-separated: user IDs, Telegram chat IDs, or phone numbers
+# e.g. PREMIUM_BYPASS_USERS=+66645293605,123456789
+# Read lazily because dotenv loads AFTER module imports in main.py
+_premium_bypass_cache = None
+
+
+def _get_bypass_ids() -> set:
+    global _premium_bypass_cache
+    if _premium_bypass_cache is None:
+        raw = os.getenv("PREMIUM_BYPASS_USERS", "")
+        _premium_bypass_cache = {x.strip() for x in raw.split(",") if x.strip()}
+    return _premium_bypass_cache
+
+
+def check_premium(user) -> bool:
+    """Check if user has active premium subscription or is in bypass list.
+
+    Bypass matches against user.id, user.telegram_id, or user.phone_number.
+    Useful for testing and promotions.
+    """
+    bypass_ids = _get_bypass_ids()
+    if bypass_ids:
+        if str(user.id) in bypass_ids:
+            return True
+        try:
+            tg_id = user.telegram_id
+            if tg_id and str(tg_id) in bypass_ids:
+                return True
+        except Exception:
+            pass
+        try:
+            phone = user.phone_number
+            if phone:
+                # Match with or without '+' prefix
+                if phone in bypass_ids or f"+{phone}" in bypass_ids or phone.lstrip("+") in bypass_ids:
+                    return True
+        except Exception:
+            pass
+    if user.subscription_tier == "premium":
+        if user.subscription_expires_at and user.subscription_expires_at > now_tz():
+            return True
+    return False
+
 # ── Startup warnings for default/fallback values ────────────────
 if not SECRET_KEY or SECRET_KEY == "your-secret-key-here":
     raise RuntimeError("SECRET_KEY must be set and not use default value")

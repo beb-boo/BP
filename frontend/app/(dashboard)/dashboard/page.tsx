@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
-import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight, Crown } from "lucide-react";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -134,6 +134,7 @@ export default function DashboardPage() {
 function PatientView({ user }: { user: any }) {
     const { t } = useLanguage();
     const [stats, setStats] = useState<any>(null);
+    const [isPremium, setIsPremium] = useState(false);
     const [graphRecords, setGraphRecords] = useState<any[]>([]);
     const [tableRecords, setTableRecords] = useState<any[]>([]);
     const [pagination, setPagination] = useState<any>({ current_page: 1, total_pages: 1 });
@@ -164,6 +165,7 @@ function PatientView({ user }: { user: any }) {
 
             if (statsRes.data.data.stats) {
                 setStats(statsRes.data.data.stats);
+                setIsPremium(!!statsRes.data.data.is_premium);
             }
 
             const records = recordsRes.data.data.records;
@@ -280,11 +282,33 @@ function PatientView({ user }: { user: any }) {
     };
 
     // Derived values
-    const lastReading = graphRecords.length > 0 ? graphRecords[0] : null; // Uses graphRecords (latest)
+    const lastReading = graphRecords.length > 0 ? graphRecords[0] : null;
     const avgPulse = stats ? Math.round(stats.pulse.avg) : "-";
+
+    // Classification helpers
+    const classificationColor: Record<string, string> = {
+        normal: "text-green-600",
+        elevated: "text-yellow-600",
+        stage_1: "text-orange-600",
+        stage_2: "text-red-600",
+        hypertensive_crisis: "text-red-700",
+    };
+    const classificationBg: Record<string, string> = {
+        normal: "bg-green-50",
+        elevated: "bg-yellow-50",
+        stage_1: "bg-orange-50",
+        stage_2: "bg-red-50",
+        hypertensive_crisis: "bg-red-100",
+    };
+    const trendIcon = (direction: string) => {
+        if (direction === "increasing") return <TrendingUp className="h-4 w-4 text-red-500" />;
+        if (direction === "decreasing") return <TrendingDown className="h-4 w-4 text-green-500" />;
+        return <Minus className="h-4 w-4 text-slate-400" />;
+    };
 
     return (
         <div className="space-y-6">
+            {/* Row 1: Basic Stats (Free) */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -307,7 +331,11 @@ function PatientView({ user }: { user: any }) {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{avgPulse} bpm</div>
-                        <p className="text-xs text-slate-500">Last 30 records</p>
+                        <p className="text-xs text-slate-500">
+                            {stats?.systolic?.sd !== undefined
+                                ? `${Math.round(stats.systolic.avg)} ± ${stats.systolic.sd} mmHg`
+                                : t('dashboard.last_30', 'Last 30 records')}
+                        </p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -317,10 +345,98 @@ function PatientView({ user }: { user: any }) {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">{stats ? stats.total_records_all_time : 0}</div>
-                        <p className="text-xs text-slate-500">All time records</p>
+                        <p className="text-xs text-slate-500">{t('dashboard.all_time', 'All time records')}</p>
                     </CardContent>
                 </Card>
+                {/* BP Classification Card (Free) */}
+                {stats?.classification && (
+                    <Card className={classificationBg[stats.classification.level] || ""}>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">{t('dashboard.classification', 'BP Level')}</CardTitle>
+                            <Heart className="h-4 w-4 text-rose-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className={`text-lg font-bold ${classificationColor[stats.classification.level] || ""}`}>
+                                {stats.classification.label_en}
+                            </div>
+                            <p className="text-xs text-slate-500">{t('dashboard.based_on_avg', 'Based on average')}</p>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
+
+            {/* Row 2: Advanced Stats (Premium) or Upgrade Prompt */}
+            {isPremium && stats?.pulse_pressure ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Pulse Pressure</CardTitle>
+                            <Crown className="h-4 w-4 text-amber-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.pulse_pressure.avg} <span className="text-sm font-normal">mmHg</span></div>
+                            <p className={`text-xs ${stats.pulse_pressure.avg > 60 ? "text-red-500" : "text-green-600"}`}>
+                                {stats.pulse_pressure.avg > 60 ? t('dashboard.pp_high', 'Above normal (>60)') : t('dashboard.pp_normal', 'Normal (40-60)')}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">MAP</CardTitle>
+                            <Crown className="h-4 w-4 text-amber-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.map.avg} <span className="text-sm font-normal">mmHg</span></div>
+                            <p className={`text-xs ${stats.map.avg >= 65 ? "text-green-600" : "text-red-500"}`}>
+                                {stats.map.avg >= 65 ? t('dashboard.map_adequate', 'Adequate perfusion') : t('dashboard.map_low', 'Low perfusion')}
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">{t('dashboard.variability', 'BP Variability')}</CardTitle>
+                            <Crown className="h-4 w-4 text-amber-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.systolic.sd} <span className="text-sm font-normal">SD</span></div>
+                            <p className="text-xs text-slate-500">CV: {stats.systolic.cv}%</p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">{t('dashboard.trend', 'Trend')}</CardTitle>
+                            {stats.trend && trendIcon(stats.trend.direction)}
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold flex items-center gap-2">
+                                {stats.trend ? `${stats.trend.systolic_slope > 0 ? "+" : ""}${stats.trend.systolic_slope}` : "--"}
+                                <span className="text-sm font-normal">mmHg/{t('dashboard.per_day', 'day')}</span>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                                {stats.trend?.direction === "increasing" ? t('dashboard.trend_up', 'Trending up') :
+                                 stats.trend?.direction === "decreasing" ? t('dashboard.trend_down', 'Trending down') :
+                                 t('dashboard.trend_stable', 'Stable')}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+            ) : !isPremium && stats && (
+                <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+                    <CardContent className="flex items-center justify-between py-4">
+                        <div className="flex items-center gap-3">
+                            <Lock className="h-5 w-5 text-amber-600" />
+                            <div>
+                                <p className="font-medium text-amber-900">{t('dashboard.premium_unlock', 'Unlock Advanced Analytics')}</p>
+                                <p className="text-xs text-amber-700">{t('dashboard.premium_desc', 'SD, Trend Analysis, Pulse Pressure, MAP and more')}</p>
+                            </div>
+                        </div>
+                        <Button variant="outline" size="sm" className="border-amber-400 text-amber-700 hover:bg-amber-100"
+                            onClick={() => window.location.href = '/subscription'}>
+                            <Crown className="h-4 w-4 mr-1" /> {t('dashboard.upgrade', 'Upgrade')}
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="flex gap-4">
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>

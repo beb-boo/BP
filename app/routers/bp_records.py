@@ -9,11 +9,12 @@ from ..schemas import (
     StandardResponse, BloodPressureRecordCreate,
     BloodPressureRecordResponse, BloodPressureRecordUpdate, PaginationMeta
 )
-from ..utils.security import verify_api_key, get_current_user
+from ..utils.security import verify_api_key, get_current_user, check_premium
 from ..utils.timezone import now_th
 from ..utils.chart_generator import generate_bp_chart
 import logging
 import uuid
+import statistics as stats_module
 from typing import Optional, List
 from datetime import datetime, timedelta
 
@@ -60,15 +61,8 @@ async def get_bp_records(
         query = query.filter(BloodPressureRecord.measurement_date <= end_date)
 
     # --- Monetization Logic: Free Tier Limit (Last 30 Days) ---
-    is_premium = False
-    if current_user.subscription_tier == "premium":
-        # Check expiry
-        if current_user.subscription_expires_at and current_user.subscription_expires_at > now_th():
-            is_premium = True
-        else:
-            # Expired, fallback to free
-            is_premium = False
-    
+    is_premium = check_premium(current_user)
+
     if not is_premium:
         # Free User: Restrict to latest 30 records
         # limit() applies to the result set. Since we sort by date desc later, 
@@ -277,31 +271,84 @@ async def delete_bp_record(
         request_id=request_id
     )
 
+def classify_bp(avg_sys: float, avg_dia: float) -> dict:
+    """Classify BP based on AHA/ACC 2017 guidelines using average values."""
+    if avg_sys > 180 or avg_dia > 120:
+        return {"level": "hypertensive_crisis", "label_en": "Hypertensive Crisis", "label_th": "วิกฤตความดันสูง"}
+    elif avg_sys >= 140 or avg_dia >= 90:
+        return {"level": "stage_2", "label_en": "Stage 2 Hypertension", "label_th": "ความดันสูงระยะที่ 2"}
+    elif (130 <= avg_sys <= 139) or (80 <= avg_dia <= 89):
+        return {"level": "stage_1", "label_en": "Stage 1 Hypertension", "label_th": "ความดันสูงระยะที่ 1"}
+    elif 120 <= avg_sys <= 129 and avg_dia < 80:
+        return {"level": "elevated", "label_en": "Elevated", "label_th": "ความดันสูงเล็กน้อย"}
+    else:
+        return {"level": "normal", "label_en": "Normal", "label_th": "ปกติ"}
+
+
+def compute_trend(records) -> dict:
+    """Compute linear regression slope for systolic and diastolic over time."""
+    if len(records) < 3:
+        return {"systolic_slope": 0, "diastolic_slope": 0, "direction": "stable"}
+
+    # Sort chronologically (oldest first)
+    sorted_records = sorted(records, key=lambda r: r.measurement_date)
+    base_date = sorted_records[0].measurement_date
+    x_days = [(r.measurement_date - base_date).total_seconds() / 86400 for r in sorted_records]
+
+    def linear_slope(x_vals, y_vals):
+        n = len(x_vals)
+        if n < 2:
+            return 0.0
+        x_mean = sum(x_vals) / n
+        y_mean = sum(y_vals) / n
+        numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, y_vals))
+        denominator = sum((x - x_mean) ** 2 for x in x_vals)
+        return numerator / denominator if denominator != 0 else 0.0
+
+    sys_slope = round(linear_slope(x_days, [r.systolic for r in sorted_records]), 2)
+    dia_slope = round(linear_slope(x_days, [r.diastolic for r in sorted_records]), 2)
+
+    # Direction based on systolic slope significance
+    if sys_slope > 0.5:
+        direction = "increasing"
+    elif sys_slope < -0.5:
+        direction = "decreasing"
+    else:
+        direction = "stable"
+
+    return {"systolic_slope": sys_slope, "diastolic_slope": dia_slope, "direction": direction}
+
+
 @stats_router.get("/summary", response_model=StandardResponse)
 async def get_bp_stats(
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
     current_user: User = Depends(get_current_user),
     api_key: str = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
-    """Get blood pressure statistics (avg, min, max)"""
+    """Get blood pressure statistics with clinical metrics.
+
+    Free tier: avg, min, max, classification.
+    Premium tier: + SD, median, CV, pulse pressure, MAP, trend analysis.
+    """
     request_id = generate_request_id()
 
-    # If Free Tier, standard is limit to latest 30 records (not days)
-    # Logic: Get Latest N records, then stats them.
-    
+    # --- Premium check ---
+    is_premium = check_premium(current_user)
+
+    # --- Query records ---
+    # Both tiers: get latest N records (count-based, not date-based)
+    # Free: max 30 records, Premium: up to `days` records (no hard cap)
     query = db.query(BloodPressureRecord).filter(
         BloodPressureRecord.user_id == current_user.id
-    )
-    
-    # Use 'days' roughly as 'count' limit for stats if Free
-    limit_count = 30 
-    
-    records = query.order_by(desc(BloodPressureRecord.measurement_date))\
-                   .limit(limit_count)\
-                   .all()
+    ).order_by(desc(BloodPressureRecord.measurement_date))
 
-    # Get total all time count (Always calculate this)
+    if is_premium:
+        records = query.limit(days).all()
+    else:
+        records = query.limit(30).all()
+
+    # Total all-time count
     total_all_time = db.query(BloodPressureRecord).filter(
         BloodPressureRecord.user_id == current_user.id
     ).count()
@@ -309,13 +356,15 @@ async def get_bp_stats(
     if not records:
         return create_standard_response(
             status="success",
-            message=f"No records found in last {days} days",
+            message="No records found",
             data={
-                "period_days": days, # Fix key consistency
+                "period_days": days,
+                "is_premium": is_premium,
                 "stats": {
                     "systolic": {"avg": 0, "min": 0, "max": 0},
                     "diastolic": {"avg": 0, "min": 0, "max": 0},
                     "pulse": {"avg": 0, "min": 0, "max": 0},
+                    "classification": classify_bp(0, 0),
                     "total_records_period": 0,
                     "total_records_all_time": total_all_time
                 }
@@ -323,40 +372,78 @@ async def get_bp_stats(
             request_id=request_id
         )
 
-    # Calculate stats
-    # Calculate stats
+    # --- Extract values ---
     systolic_values = [r.systolic for r in records]
     diastolic_values = [r.diastolic for r in records]
     pulse_values = [r.pulse for r in records]
+    n = len(records)
 
-    # total_all_time is already calculated above
+    # --- Basic stats (Free + Premium) ---
+    avg_sys = round(sum(systolic_values) / n, 1)
+    avg_dia = round(sum(diastolic_values) / n, 1)
+    avg_pulse = round(sum(pulse_values) / n, 1)
 
-    stats = {
+    bp_stats = {
         "systolic": {
-            "avg": sum(systolic_values) / len(records) if records else 0,
-            "min": min(systolic_values) if records else 0,
-            "max": max(systolic_values) if records else 0
+            "avg": avg_sys,
+            "min": min(systolic_values),
+            "max": max(systolic_values)
         },
         "diastolic": {
-            "avg": sum(diastolic_values) / len(records) if records else 0,
-            "min": min(diastolic_values) if records else 0,
-            "max": max(diastolic_values) if records else 0
+            "avg": avg_dia,
+            "min": min(diastolic_values),
+            "max": max(diastolic_values)
         },
         "pulse": {
-            "avg": sum(pulse_values) / len(records) if records else 0,
-            "min": min(pulse_values) if records else 0,
-            "max": max(pulse_values) if records else 0
+            "avg": avg_pulse,
+            "min": min(pulse_values),
+            "max": max(pulse_values)
         },
-        "total_records_period": len(records),
+        "classification": classify_bp(avg_sys, avg_dia),
+        "total_records_period": n,
         "total_records_all_time": total_all_time
     }
+
+    # --- Advanced stats (Premium only) ---
+    if is_premium:
+        has_enough = n >= 2
+
+        # SD, Median, CV for each metric
+        for key, values in [("systolic", systolic_values), ("diastolic", diastolic_values), ("pulse", pulse_values)]:
+            sd = round(stats_module.stdev(values), 1) if has_enough else 0
+            median = round(stats_module.median(values), 1)
+            avg_val = bp_stats[key]["avg"]
+            cv = round((sd / avg_val) * 100, 1) if avg_val > 0 and has_enough else 0
+            bp_stats[key]["sd"] = sd
+            bp_stats[key]["median"] = median
+            bp_stats[key]["cv"] = cv
+
+        # Pulse Pressure (SBP - DBP)
+        pp_values = [s - d for s, d in zip(systolic_values, diastolic_values)]
+        bp_stats["pulse_pressure"] = {
+            "avg": round(sum(pp_values) / n, 1),
+            "min": min(pp_values),
+            "max": max(pp_values)
+        }
+
+        # MAP = (SBP + 2*DBP) / 3
+        map_values = [(s + 2 * d) / 3 for s, d in zip(systolic_values, diastolic_values)]
+        bp_stats["map"] = {
+            "avg": round(sum(map_values) / n, 1),
+            "min": round(min(map_values), 1),
+            "max": round(max(map_values), 1)
+        }
+
+        # Trend Analysis
+        bp_stats["trend"] = compute_trend(records)
 
     return create_standard_response(
         status="success",
         message="Statistics calculated successfully",
         data={
             "period_days": days,
-            "stats": stats
+            "is_premium": is_premium,
+            "stats": bp_stats
         },
         request_id=request_id
     )

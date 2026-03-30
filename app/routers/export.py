@@ -5,7 +5,7 @@ from sqlalchemy import desc
 from ..database import get_db
 from ..models import User, BloodPressureRecord
 from ..schemas import StandardResponse
-from ..utils.security import verify_api_key, get_current_user
+from ..utils.security import verify_api_key, get_current_user, check_premium
 from ..utils.encryption import decrypt_value
 from ..utils.timezone import now_tz, format_datetime
 import logging
@@ -61,18 +61,10 @@ async def export_my_data(
             BloodPressureRecord.user_id == current_user.id
         )
 
-        is_premium = False
-        if current_user.subscription_tier == "premium":
-             # Simple checking for now, assuming UTC logic or timezone aware handled by model?
-             # Actually expires_at is nullable.
-             is_premium = True # Assume valid if marked premium for now, or add check
-             if current_user.subscription_expires_at:
-                  # Naive check vs system time (should use timezone aware if possible)
-                  # But let's just use simple date compare
-                  pass 
+        is_premium = check_premium(current_user)
 
         export_note = "Full History (Premium)"
-        if current_user.subscription_tier != "premium":
+        if not is_premium:
             # Free: Limit to last 30 records
             records = query.order_by(desc(BloodPressureRecord.measurement_date)).limit(30).all()
             export_note = "Limited to last 30 records (Free Tier)"
