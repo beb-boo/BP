@@ -796,9 +796,9 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         BotLogService.log(chat_id, "OUT", "stats", "No records", user.id)
         return
 
-    avg_sys = int(avg.avg_sys) if avg.avg_sys else 0
-    avg_dia = int(avg.avg_dia) if avg.avg_dia else 0
-    avg_pulse = int(avg.avg_pulse) if avg.avg_pulse else 0
+    avg_sys = round(avg.avg_sys) if avg.avg_sys else 0
+    avg_dia = round(avg.avg_dia) if avg.avg_dia else 0
+    avg_pulse = round(avg.avg_pulse) if avg.avg_pulse else 0
 
     lang = user.language or "en"
 
