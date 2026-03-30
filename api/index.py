@@ -1,17 +1,21 @@
 import sys
-import traceback
 
 try:
     from app.main import app
-except Exception as e:
+except BaseException as e:
     # If import fails, create a minimal app that shows the error
+    # Use BaseException to catch everything including RuntimeError from missing env vars
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
 
     app = FastAPI()
 
     _error_msg = str(e)
-    _error_tb = traceback.format_exc()
+    try:
+        import traceback
+        _error_tb = traceback.format_exc()
+    except Exception:
+        _error_tb = "Could not format traceback"
 
     @app.get("/{path:path}")
     async def import_error(path: str = ""):
@@ -24,3 +28,5 @@ except Exception as e:
                 "python_version": sys.version,
             },
         )
+
+handler = app
