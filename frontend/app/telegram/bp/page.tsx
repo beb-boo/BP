@@ -68,6 +68,7 @@ export default function TelegramBPPage() {
   const [diastolic, setDiastolic] = useState("");
   const [pulse, setPulse] = useState("");
   const [saving, setSaving] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
 
   // Data
   const [stats, setStats] = useState<Stats | null>(null);
@@ -132,7 +133,7 @@ export default function TelegramBPPage() {
   const fetchRecords = useCallback(async () => {
     try {
       const res = await telegramApi.get("/bp-records?page=1&per_page=5");
-      setRecords(res.data.data || []);
+      setRecords(res.data.data?.records || []);
     } catch {
       // ignore
     }
@@ -177,6 +178,35 @@ export default function TelegramBPPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  // ── OCR Upload ──
+
+  async function handleOCR(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await telegramApi.post("/ocr/process-image", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const ocr = res.data.data;
+      if (ocr?.systolic) setSystolic(String(ocr.systolic));
+      if (ocr?.diastolic) setDiastolic(String(ocr.diastolic));
+      if (ocr?.pulse) setPulse(String(ocr.pulse));
+      getTelegramWebApp()?.showAlert("Photo read! Please verify and save.");
+    } catch (err: any) {
+      getTelegramWebApp()?.showAlert(
+        err.response?.data?.message || "Could not read photo"
+      );
+    } finally {
+      setOcrLoading(false);
+      // Reset input so same file can be re-selected
+      e.target.value = "";
     }
   }
 
@@ -278,13 +308,29 @@ export default function TelegramBPPage() {
           </div>
         </div>
 
-        <button
-          onClick={handleSave}
-          disabled={saving || !systolic || !diastolic || !pulse}
-          className="w-full rounded-lg bg-blue-600 text-white py-2.5 font-medium disabled:opacity-40 active:bg-blue-700 transition-colors"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
+        <div className="flex gap-2">
+          <label
+            className={`flex items-center justify-center rounded-lg border px-4 py-2.5 font-medium cursor-pointer active:opacity-70 transition-opacity ${
+              ocrLoading ? "opacity-40 pointer-events-none" : ""
+            } ${isDark ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"}`}
+          >
+            {ocrLoading ? "..." : "\uD83D\uDCF7"}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleOCR}
+              className="hidden"
+            />
+          </label>
+          <button
+            onClick={handleSave}
+            disabled={saving || !systolic || !diastolic || !pulse}
+            className="flex-1 rounded-lg bg-blue-600 text-white py-2.5 font-medium disabled:opacity-40 active:bg-blue-700 transition-colors"
+          >
+            {saving ? "Saving..." : "Save"}
+          </button>
+        </div>
       </div>
 
       {/* Stats Section */}
