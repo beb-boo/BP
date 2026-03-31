@@ -51,7 +51,9 @@ async def process_bp_image(
                 raise HTTPException(
                     status_code=413, detail="File too large. Maximum size is 10MB")
             content.extend(chunk)
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(status_code=400, detail="Error reading file")
 
     try:

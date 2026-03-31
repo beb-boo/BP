@@ -14,7 +14,7 @@ from datetime import timedelta
 from ..database import get_db
 from ..models import User
 from ..schemas import TelegramMiniAppAuth
-from ..utils.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from ..utils.security import create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, is_account_locked
 from ..utils.encryption import hash_value
 from ..utils.rate_limiter import limiter
 from ..utils.timezone import now_tz
@@ -118,6 +118,9 @@ async def telegram_mini_app_auth(
 
     if not user.is_active:
         raise HTTPException(status_code=401, detail="Account deactivated")
+
+    if is_account_locked(user):
+        raise HTTPException(status_code=423, detail="Account temporarily locked")
 
     # Issue JWT token
     token = create_access_token(

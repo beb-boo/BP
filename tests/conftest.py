@@ -5,6 +5,7 @@ import sys
 import types
 import pytest
 from unittest.mock import MagicMock
+from cryptography.fernet import Fernet
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -20,7 +21,7 @@ _mock_modules = {
     "google.ai.generativelanguage": {},
     "google.api_core": {},
     "google.protobuf": {},
-    "telegram": {},
+    "telegram": {"Update": MagicMock},
     "telegram.ext": {"Application": MagicMock, "CommandHandler": MagicMock,
                      "MessageHandler": MagicMock, "ConversationHandler": MagicMock,
                      "CallbackQueryHandler": MagicMock, "filters": MagicMock()},
@@ -54,7 +55,7 @@ for mod_name, attrs in _mock_modules.items():
 # Set test env vars BEFORE any app imports
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bp.db")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-testing")
-os.environ.setdefault("ENCRYPTION_KEY", "")  # Will auto-generate
+os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ.setdefault("API_KEYS", "test-api-key")
 os.environ.setdefault("BYPASS_OTP", "true")
 os.environ.setdefault("AUTO_CREATE_TABLES", "true")

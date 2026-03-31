@@ -6,6 +6,7 @@ import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { getApiErrorMessage } from "@/lib/api-helpers";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -51,9 +52,9 @@ function VerifyContent() {
             toast.success(t('auth.verify_success'));
             router.push("/auth/login");
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            const msg = error.response?.data?.detail || t('auth.verify_failed');
+            const msg = getApiErrorMessage(error, t('auth.verify_failed'));
             toast.error(msg);
         } finally {
             setIsLoading(false);
@@ -78,8 +79,8 @@ function VerifyContent() {
             });
             toast.success(t('auth.otp_sent', 'OTP sent to your email'));
             setResendTimer(60);
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || t('auth.resend_failed', 'Failed to resend OTP'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('auth.resend_failed', 'Failed to resend OTP')));
         }
     };
 

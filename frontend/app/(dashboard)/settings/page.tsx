@@ -15,12 +15,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { TIMEZONE_CHOICES } from "@/lib/date-utils";
+import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
+import type { AppUser } from "@/lib/app-types";
 
 export default function SettingsPage() {
     const { t, language } = useLanguage();
     const router = useRouter();
     const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<AppUser | null>(null);
     const [activeTab, setActiveTab] = useState("profile");
 
     // Profile Form State
@@ -58,7 +60,7 @@ export default function SettingsPage() {
     const [emailOtp, setEmailOtp] = useState("");
     const [emailOtpTimer, setEmailOtpTimer] = useState(0);
 
-    const applyProfile = (profile: any) => {
+    const applyProfile = (profile: AppUser) => {
         setUser(profile);
         setFullName(profile.full_name || "");
         setEmail(profile.email || "");
@@ -86,7 +88,7 @@ export default function SettingsPage() {
     useEffect(() => {
         const fetchProfile = async () => {
             try {
-                const res = await api.get("/users/me");
+                const res = await api.get<ApiResponse<{ profile: AppUser }>>("/users/me");
                 applyProfile(res.data.data.profile);
             } catch (error) {
                 console.error("Failed to fetch profile", error);
@@ -102,7 +104,21 @@ export default function SettingsPage() {
         e.preventDefault();
         setIsSaving(true);
         try {
-            const payload: any = {
+            const payload: {
+                full_name: string;
+                email: string;
+                phone_number: string;
+                citizen_id: string;
+                date_of_birth: string | null;
+                gender: string | null;
+                blood_type: string | null;
+                height: number | null;
+                weight: number | null;
+                timezone: string | null;
+                current_password: string | null;
+                otp_code: string | null;
+                medical_license?: string;
+            } = {
                 full_name: fullName,
                 email: email || "", // Send empty string if cleared
                 phone_number: phone || "",
@@ -120,7 +136,7 @@ export default function SettingsPage() {
             };
 
             // Only send medical license if user is a doctor
-            if (user.role === 'doctor') {
+            if (user?.role === 'doctor') {
                 payload.medical_license = medicalLicense;
             }
 
@@ -141,8 +157,8 @@ export default function SettingsPage() {
             Cookies.set("user", JSON.stringify({ ...cookieUser, full_name: fullName }));
             router.refresh();
 
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
             console.error(error);
         } finally {
             setIsSaving(false);
@@ -158,8 +174,8 @@ export default function SettingsPage() {
             });
             toast.success("OTP sent to your email!");
             setOtpTimer(300); // 5 minutes
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to send OTP");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to send OTP"));
         }
     };
 
@@ -174,13 +190,14 @@ export default function SettingsPage() {
             });
             toast.success("Verification OTP sent to your email!");
             setEmailOtpTimer(300); // 5 minutes
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to send OTP");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to send OTP"));
             setIsVerifyingEmail(false);
         }
     };
 
     const handleConfirmEmailVerification = async () => {
+        if (!user?.email) return;
         try {
             await api.post("/auth/verify-contact", {
                 email: user.email,
@@ -191,8 +208,8 @@ export default function SettingsPage() {
             setIsVerifyingEmail(false);
             setUser({ ...user, is_email_verified: true });
             router.refresh();
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to verify OTP");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to verify OTP"));
         }
     };
 
@@ -236,13 +253,8 @@ export default function SettingsPage() {
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
-        } catch (error: any) {
-            let msg = error.response?.data?.detail || t('common.error');
-            // Handle validation errors (422)
-            if (Array.isArray(msg)) {
-                msg = msg.map((err: any) => err.msg).join(", ");
-            }
-            toast.error(msg);
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         } finally {
             setIsChangingPwd(false);
         }
@@ -255,8 +267,8 @@ export default function SettingsPage() {
             const link = res.data.data.link;
             window.open(link, '_blank');
             toast.success("Opening Telegram to verify...");
-        } catch (error: any) {
-            toast.error("Failed to generate link");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to generate link"));
         } finally {
             setIsGeneratingLink(false);
         }
@@ -511,7 +523,7 @@ export default function SettingsPage() {
                                                 <AlertCircle className="h-4 w-4" />
                                                 <AlertTitle>{t('settings.two_factor_auth')}</AlertTitle>
                                                 <AlertDescription className="space-y-3">
-                                                    <p>{t('settings.otp_change_phone')}: <strong>{user.email}</strong></p>
+                                                    <p>{t('settings.otp_change_phone')}: <strong>{user?.email ?? ''}</strong></p>
                                                     <div className="flex gap-2">
                                                         <Input
                                                             placeholder="Enter 4-digit OTP"
@@ -634,7 +646,7 @@ export default function SettingsPage() {
                                     <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-md border border-green-200">
                                         <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                                         <span className="font-medium">{t('settings.connected_telegram')}</span>
-                                        <span className="text-xs opacity-75">(ID: {user.telegram_id})</span>
+                                        <span className="text-xs opacity-75">(ID: {user?.telegram_id ?? '-'})</span>
                                     </div>
                                 ) : (
                                     <Button onClick={handleConnectTelegram} disabled={isGeneratingLink}>

@@ -3,18 +3,11 @@
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine, ReferenceArea } from 'recharts';
 import { useTheme } from "next-themes";
 import { calculateAge, getBPLimits } from "@/lib/bp-standards";
-
-interface BPRecord {
-    measurement_date: string;
-    measurement_time: string;
-    systolic: number;
-    diastolic: number;
-    pulse: number;
-}
+import type { BPRecord } from "@/lib/app-types";
 
 interface BPChartProps {
     data: BPRecord[];
-    userDob?: string; // Optional DOB to calculate limits
+    userDob?: string | null; // Optional DOB to calculate limits
 }
 
 // Moved outside component to prevent re-creation on render
@@ -44,7 +37,7 @@ export function BPChart({ data, userDob }: BPChartProps) {
     const { theme } = useTheme();
 
     // Calculate Limits
-    const age = calculateAge(userDob);
+    const age = calculateAge(userDob ?? undefined);
     const limits = getBPLimits(age);
 
     // Sort data by date ascending for the chart (old → new, left → right)

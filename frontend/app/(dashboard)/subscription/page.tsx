@@ -2,29 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Crown, Upload, Check, Loader2, ArrowLeft } from "lucide-react";
+import { CreditCard, Crown, Check, Loader2, ArrowLeft } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
+import type { PaymentAccount, Plan } from "@/lib/app-types";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
-interface Plan {
-    plan_type: string;
-    name: string;
-    name_en: string;
-    price: number;
-    duration_days: number;
-    features: string[];
-}
-
 export default function SubscriptionPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [plans, setPlans] = useState<Plan[]>([]);
-    const [paymentAccount, setPaymentAccount] = useState<any>(null);
+    const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null);
     const [currentTier, setCurrentTier] = useState("free");
     const [expiresAt, setExpiresAt] = useState<string | null>(null);
     const [lang, setLang] = useState("th"); // Default
@@ -39,14 +32,20 @@ export default function SubscriptionPage() {
 
     const fetchPlans = async () => {
         try {
-            const res = await api.get("/payment/plans");
+            const res = await api.get<ApiResponse<{
+                plans: Plan[];
+                payment_account: PaymentAccount;
+                current_tier: string;
+                expires_at: string | null;
+                language?: string;
+            }>>("/payment/plans");
             const data = res.data.data;
             setPlans(data.plans);
             setPaymentAccount(data.payment_account);
             setCurrentTier(data.current_tier);
             setExpiresAt(data.expires_at);
             if (data.language) setLang(data.language);
-        } catch (error) {
+        } catch {
             toast.error("Failed to load subscription plans");
         } finally {
             setLoading(false);
@@ -84,8 +83,8 @@ export default function SubscriptionPage() {
             // Scroll top
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
-        } catch (error: any) {
-            const errMsg = error.response?.data?.detail || (lang === "en" ? "Payment Failed" : "ชำระเงินไม่สำเร็จ");
+        } catch (error: unknown) {
+            const errMsg = getApiErrorMessage(error, lang === "en" ? "Payment Failed" : "ชำระเงินไม่สำเร็จ");
             toast.error(errMsg);
         } finally {
             setIsUploading(false);

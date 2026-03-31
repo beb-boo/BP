@@ -9,6 +9,13 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from dotenv import load_dotenv
 
+# Load environment variables before importing modules that read required env vars.
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+else:
+    load_dotenv()
+
 # Import database setup
 from .database import engine, Base
 
@@ -17,13 +24,6 @@ from .utils.rate_limiter import limiter
 
 # Import routers
 from .routers import auth, users, bp_records, ocr, doctor, export, payment, telegram_auth
-
-# Load environment variables
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path)
-else:
-    load_dotenv()
 
 # Configure logging
 logging.basicConfig(

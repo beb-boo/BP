@@ -307,18 +307,24 @@ async def auth_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
-    user = BotService.verify_user_password(phone_number, password)
-    if user:
-        BotService.link_telegram_account(user.id, update.effective_chat.id)
+    verification = BotService.verify_user_password(phone_number, password)
+    if verification.user:
+        BotService.link_telegram_account(verification.user.id, update.effective_chat.id)
         # Save language choice to DB
-        BotService.update_user_language(user.id, lang)
+        BotService.update_user_language(verification.user.id, lang)
         await update.message.reply_text(get_text("link_success", lang))
         context.user_data.pop('_auth_state', None)  # Clear auth state
         return ConversationHandler.END
+
+    if verification.status == 'locked':
+        await update.message.reply_text(get_text("link_fail_locked", lang))
+    elif verification.status == 'inactive':
+        await update.message.reply_text(get_text("link_fail_inactive", lang))
     else:
         await update.message.reply_text(get_text("link_fail_password", lang))
-        context.user_data['_auth_state'] = 'auth_password'  # Still expecting password
-        return AUTH_PASSWORD
+
+    context.user_data['_auth_state'] = 'auth_password'  # Still expecting password
+    return AUTH_PASSWORD
 
 async def reg_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['full_name'] = update.message.text

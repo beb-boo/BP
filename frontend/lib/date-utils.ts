@@ -33,6 +33,18 @@ function getLocaleString(lang: string): string {
   return lang === "th" ? "th-TH" : "en-GB";
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function toValidDate(date: string | Date | null | undefined): Date | null {
+  if (!date) return null;
+
+  const parsed = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
 /**
  * Format a date with optional timezone
  * @param date - Date string or Date object
@@ -132,16 +144,10 @@ export function formatDateTime(
  * @param date - Date object or string
  */
 export function formatDateForInput(date: string | Date | null | undefined): string {
-  if (!date) return "";
+  const d = toValidDate(date);
+  if (!d) return "";
 
-  try {
-    const d = typeof date === "string" ? new Date(date) : date;
-    if (isNaN(d.getTime())) return "";
-
-    return d.toISOString().split("T")[0];
-  } catch {
-    return "";
-  }
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 /**
@@ -153,12 +159,10 @@ export function formatTimeForInput(
   date: string | Date | null | undefined,
   timezone?: string
 ): string {
-  if (!date) return "";
+  const d = toValidDate(date);
+  if (!d) return "";
 
   try {
-    const d = typeof date === "string" ? new Date(date) : date;
-    if (isNaN(d.getTime())) return "";
-
     if (timezone) {
       return d.toLocaleTimeString("en-GB", {
         hour: "2-digit",
@@ -168,14 +172,15 @@ export function formatTimeForInput(
       });
     }
 
-    return d.toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   } catch {
     return "";
   }
+}
+
+export function buildLocalDateTimePayload(date: string, time?: string): string {
+  const normalizedTime = time && time.trim() ? time.trim() : "00:00";
+  return `${date}T${normalizedTime}:00`;
 }
 
 /**

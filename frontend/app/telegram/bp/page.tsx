@@ -4,46 +4,13 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   getTelegramWebApp,
-  isTelegramWebView,
   telegramApi,
   setTelegramToken,
   type TelegramUser,
 } from "@/lib/telegram";
-
-// ── Types ──
-
-interface BPRecord {
-  id: number;
-  systolic: number;
-  diastolic: number;
-  pulse: number;
-  measurement_date: string;
-  measurement_time?: string;
-}
-
-interface Classification {
-  level: string;
-  label_en: string;
-  label_th: string;
-}
-
-interface Trend {
-  systolic_slope: number;
-  diastolic_slope: number;
-  direction: string;
-}
-
-interface Stats {
-  systolic: { avg: number; min: number; max: number; sd?: number; cv?: number };
-  diastolic: { avg: number; min: number; max: number; sd?: number };
-  pulse: { avg: number; min: number; max: number };
-  classification?: Classification;
-  pulse_pressure?: { avg: number };
-  map?: { avg: number };
-  trend?: Trend;
-  total_records_period: number;
-  total_records_all_time: number;
-}
+import { buildLocalDateTimePayload, formatDateForInput, formatTimeForInput } from "@/lib/date-utils";
+import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
+import type { BPRecord, BPStats, OCRResultPayload } from "@/lib/app-types";
 
 // ── Classification colors ──
 
@@ -60,7 +27,6 @@ export default function TelegramBPPage() {
   const [tgUser, setTgUser] = useState<TelegramUser | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
   const [isPremium, setIsPremium] = useState(false);
 
   // Form
@@ -73,7 +39,7 @@ export default function TelegramBPPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
 
   // Data
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<BPStats | null>(null);
   const [records, setRecords] = useState<BPRecord[]>([]);
 
   // Theme
@@ -101,19 +67,16 @@ export default function TelegramBPPage() {
 
   async function authenticate(initData: string) {
     try {
-      const res = await telegramApi.post("/auth/telegram/mini-app-auth", {
+      const res = await telegramApi.post<ApiResponse<{ access_token: string }>>("/auth/telegram/mini-app-auth", {
         init_data: initData,
       });
-      const { access_token, user } = res.data.data;
+      const { access_token } = res.data.data;
       setTelegramToken(access_token);
-      setAuthenticated(true);
 
       // Load data after auth
       await Promise.all([fetchStats(), fetchRecords()]);
-    } catch (err: any) {
-      const msg =
-        err.response?.data?.detail || err.response?.data?.message || "Authentication failed";
-      setAuthError(msg);
+    } catch (error: unknown) {
+      setAuthError(getApiErrorMessage(error, "Authentication failed"));
     } finally {
       setLoading(false);
     }
@@ -123,7 +86,7 @@ export default function TelegramBPPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await telegramApi.get("/stats/summary?days=30");
+      const res = await telegramApi.get<ApiResponse<{ stats: BPStats; is_premium: boolean }>>("/stats/summary?days=30");
       const data = res.data.data;
       setStats(data.stats);
       setIsPremium(data.is_premium);
@@ -134,7 +97,7 @@ export default function TelegramBPPage() {
 
   const fetchRecords = useCallback(async () => {
     try {
-      const res = await telegramApi.get("/bp-records?page=1&per_page=5");
+      const res = await telegramApi.get<ApiResponse<{ records: BPRecord[] }>>("/bp-records?page=1&per_page=5");
       setRecords(res.data.data?.records || []);
     } catch {
       // ignore
@@ -171,17 +134,15 @@ export default function TelegramBPPage() {
   async function doSave(sys: number, dia: number, pul: number) {
     setSaving(true);
     try {
-      // Use OCR date/time if available, otherwise current time
-      const date = measureDate
-        ? new Date(`${measureDate}T${measureTime || "00:00"}:00`)
-        : new Date();
-      const time = measureTime || date.toTimeString().slice(0, 5);
+      const now = new Date();
+      const date = measureDate || formatDateForInput(now);
+      const time = measureTime || formatTimeForInput(now);
 
       await telegramApi.post("/bp-records", {
         systolic: sys,
         diastolic: dia,
         pulse: pul,
-        measurement_date: date.toISOString(),
+        measurement_date: buildLocalDateTimePayload(date, time),
         measurement_time: time,
       });
 
@@ -196,9 +157,9 @@ export default function TelegramBPPage() {
       await Promise.all([fetchStats(), fetchRecords()]);
 
       getTelegramWebApp()?.showAlert("Saved!");
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || err.response?.data?.message || "";
-      getTelegramWebApp()?.showAlert(`Save failed: ${detail || err.message}`);
+    } catch (error: unknown) {
+      const detail = getApiErrorMessage(error, "Save failed");
+      getTelegramWebApp()?.showAlert(`Save failed: ${detail}`);
     } finally {
       setSaving(false);
     }
@@ -214,7 +175,7 @@ export default function TelegramBPPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await telegramApi.post("/ocr/process-image", formData, {
+      const res = await telegramApi.post<ApiResponse<{ ocr_result: OCRResultPayload }>>("/ocr/process-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       const ocr = res.data.data?.ocr_result;
@@ -233,10 +194,8 @@ export default function TelegramBPPage() {
       getTelegramWebApp()?.showAlert(
         `Read: ${parts.join(", ")}\nPlease check and press Save.`
       );
-    } catch (err: any) {
-      getTelegramWebApp()?.showAlert(
-        err.response?.data?.message || "Could not read photo. Please enter manually."
-      );
+    } catch (error: unknown) {
+      getTelegramWebApp()?.showAlert(getApiErrorMessage(error, "Could not read photo. Please enter manually."));
     } finally {
       setOcrLoading(false);
       // Reset input so same file can be re-selected

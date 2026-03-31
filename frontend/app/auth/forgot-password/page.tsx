@@ -7,6 +7,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { getApiErrorMessage } from "@/lib/api-helpers";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -48,9 +49,9 @@ export default function ForgotPasswordPage() {
             toast.success("OTP sent! Please check your " + (isMail ? "email" : "phone"));
             setStep(2);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            const msg = error.response?.data?.detail || "Failed to send OTP";
+            const msg = getApiErrorMessage(error, "Failed to send OTP");
             toast.error(msg);
         } finally {
             setIsLoading(false);
@@ -87,15 +88,9 @@ export default function ForgotPasswordPage() {
             toast.success("Password reset successfully! Please login.");
             router.push("/auth/login");
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            let msg = error.response?.data?.detail || "Failed to reset password";
-
-            // Handle validation errors (422) which return array of objects
-            if (Array.isArray(msg)) {
-                msg = msg.map((err: any) => err.msg).join(", ");
-            }
-
+            const msg = getApiErrorMessage(error, "Failed to reset password");
             toast.error(msg);
         } finally {
             setIsLoading(false);

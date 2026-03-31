@@ -1,7 +1,16 @@
 
 from sqlalchemy.orm import Session
 from app.models import User, BloodPressureRecord, UserSession, DoctorPatient, Payment
-from app.utils.security import verify_password, hash_password, SECRET_KEY, ALGORITHM, check_premium
+from app.utils.security import (
+    verify_password,
+    hash_password,
+    SECRET_KEY,
+    ALGORITHM,
+    check_premium,
+    is_account_locked,
+    lock_account,
+    MAX_LOGIN_ATTEMPTS,
+)
 from app.utils.encryption import encrypt_value, decrypt_value, hash_value
 from app.utils.tmc_checker import verify_doctor_with_tmc
 from app.utils.timezone import now_tz, TIMEZONE_CHOICES, is_valid_timezone, format_datetime
@@ -11,6 +20,12 @@ import jwt
 import re
 
 logger = logging.getLogger(__name__)
+
+
+class PasswordVerificationResult:
+    def __init__(self, user: User | None, status: str):
+        self.user = user
+        self.status = status
 
 class BotService:
     @staticmethod
@@ -47,16 +62,37 @@ class BotService:
             return None
 
     @staticmethod
-    def verify_user_password(phone_number: str, password: str) -> User | None:
-        """Verify password for a given phone number."""
+    def verify_user_password(phone_number: str, password: str) -> PasswordVerificationResult:
+        """Verify password for a given phone number using the same account rules as web login."""
         phone_h = hash_value(phone_number)
         if not phone_h:
-            return None
+            return PasswordVerificationResult(None, "not_found")
         with SessionLocal() as db:
             user = db.query(User).filter(User.phone_number_hash == phone_h).first()
-            if user and verify_password(password, user.password_hash):
-                return user
-            return None
+            if not user:
+                return PasswordVerificationResult(None, "not_found")
+
+            if is_account_locked(user):
+                return PasswordVerificationResult(None, "locked")
+
+            if not user.is_active:
+                return PasswordVerificationResult(None, "inactive")
+
+            if verify_password(password, user.password_hash):
+                user.failed_login_attempts = 0
+                user.account_locked_until = None
+                user.last_login = now_tz()
+                db.commit()
+                db.refresh(user)
+                return PasswordVerificationResult(user, "success")
+
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= MAX_LOGIN_ATTEMPTS:
+                lock_account(user, db)
+                return PasswordVerificationResult(None, "locked")
+
+            db.commit()
+            return PasswordVerificationResult(None, "invalid_password")
 
     @staticmethod
     def link_telegram_account(user_id: int, telegram_id: int):

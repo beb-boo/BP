@@ -2,7 +2,7 @@
 
 import os
 import logging
-import secrets
+import hashlib
 from fastapi import APIRouter, HTTPException, Request, Query
 from telegram import Update
 
@@ -10,13 +10,18 @@ logger = logging.getLogger(__name__)
 
 # Configurable webhook path — use a hard-to-guess path in production
 # Example: WEBHOOK_PATH=bot-a1b2c3d4e5f6 → endpoint becomes /bot-a1b2c3d4e5f6/webhook
+def _build_default_webhook_path() -> str:
+    seed = os.getenv("WEBHOOK_SECRET") or os.getenv("TELEGRAM_BOT_TOKEN") or "bp-webhook-dev"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
+    return f"bot-{digest}"
+
+
 _webhook_path = os.getenv("WEBHOOK_PATH", "")
 if not _webhook_path:
-    # Generate a random path for this session (won't persist across restarts)
-    _webhook_path = f"bot-{secrets.token_hex(16)}"
+    _webhook_path = _build_default_webhook_path()
     logger.warning(
-        f"WEBHOOK_PATH not set. Generated random path: /{_webhook_path}/webhook "
-        f"(Set WEBHOOK_PATH in .env for a stable, hard-to-guess webhook URL)"
+        f"WEBHOOK_PATH not set. Derived stable path: /{_webhook_path}/webhook "
+        f"(Set WEBHOOK_PATH in .env to override this default)"
     )
 else:
     logger.info(f"Telegram webhook path configured: /{_webhook_path}/webhook")

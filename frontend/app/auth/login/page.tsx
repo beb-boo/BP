@@ -9,6 +9,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
+import type { AppUser } from "@/lib/app-types";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -37,7 +39,7 @@ export default function LoginPage() {
                 password: password,
             };
 
-            const res = await api.post("/auth/login", payload);
+            const res = await api.post<ApiResponse<{ access_token: string; user: AppUser }>>("/auth/login", payload);
 
             const { access_token, user } = res.data.data;
 
@@ -49,9 +51,9 @@ export default function LoginPage() {
             router.push("/dashboard");
             router.refresh();
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            const msg = error.response?.data?.detail || t('common.error');
+            const msg = getApiErrorMessage(error, t('common.error'));
             toast.error(msg);
         } finally {
             setIsLoading(false);

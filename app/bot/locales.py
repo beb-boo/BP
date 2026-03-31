@@ -64,6 +64,8 @@ LOCALES = {
         "dob_invalid": "❌ Invalid format. Please use DD/MM/YYYY (e.g. 31/01/1990):",
         "link_success": "✅ Account Linked Successfully!\nYou can now use the bot.",
         "link_fail_password": "❌ Incorrect Password. Please try again or /cancel.",
+        "link_fail_locked": "❌ This account is temporarily locked because of multiple failed attempts. Please try again later.",
+        "link_fail_inactive": "❌ This account has been deactivated. Please contact support if you need help.",
         "creating_account": "⏳ Creating account...",
         "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130 90 65**",
 
@@ -233,6 +235,8 @@ LOCALES = {
         "dob_invalid": "❌ รูปแบบผิด กรุณาใช้ DD/MM/YYYY (เช่น 31/01/1990):",
         "link_success": "✅ เชื่อมต่อบัญชีสำเร็จ!\nคุณสามารถใช้งานบอทได้แล้วครับ",
         "link_fail_password": "❌ รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ หรือพิมพ์ /cancel",
+        "link_fail_locked": "❌ บัญชีนี้ถูกล็อกชั่วคราวจากการกรอกรหัสผ่านผิดหลายครั้ง กรุณาลองใหม่ภายหลัง",
+        "link_fail_inactive": "❌ บัญชีนี้ถูกปิดใช้งานแล้ว หากต้องการความช่วยเหลือกรุณาติดต่อผู้ดูแล",
         "creating_account": "⏳ กำลังสร้างบัญชี...",
         "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130 90 65**",
 

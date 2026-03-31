@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
-import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Upload, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock } from "lucide-react";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -41,10 +41,24 @@ import { Label } from "@/components/ui/label";
 import { BPChart } from "@/components/bp-chart";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { buildLocalDateTimePayload, formatDateForInput } from "@/lib/date-utils";
+import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
+import type {
+    AccessRequestItem,
+    AppUser,
+    AuthorizedDoctor,
+    BPRecord,
+    BPStats,
+    OCRResultPayload,
+    PaginationMeta,
+    PatientSummary,
+} from "@/lib/app-types";
+
+const defaultPagination: PaginationMeta = { current_page: 1, total_pages: 1 };
 
 export default function DashboardPage() {
     const router = useRouter();
-    const [user, setUser] = useState<any>(null);
+    const [user, setUser] = useState<AppUser | null>(null);
     const [loading, setLoading] = useState(true);
     const { t, setLanguage } = useLanguage();
 
@@ -55,12 +69,12 @@ export default function DashboardPage() {
             return;
         }
         try {
-            const userData = JSON.parse(userCookie);
+            const userData = JSON.parse(userCookie) as AppUser;
             setUser(userData);
-            if (userData.language) {
+            if (userData.language === "en" || userData.language === "th") {
                 setLanguage(userData.language);
             }
-        } catch (e) {
+        } catch {
             router.push("/auth/login");
         } finally {
             setLoading(false);
@@ -126,18 +140,18 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {user.role === "patient" ? <PatientView user={user} /> : <DoctorView user={user} />}
+            {user.role === "patient" ? <PatientView user={user} /> : <DoctorView />}
         </div>
     );
 }
 
-function PatientView({ user }: { user: any }) {
+function PatientView({ user }: { user: AppUser }) {
     const { t } = useLanguage();
-    const [stats, setStats] = useState<any>(null);
+    const [stats, setStats] = useState<BPStats | null>(null);
     const [isPremium, setIsPremium] = useState(false);
-    const [graphRecords, setGraphRecords] = useState<any[]>([]);
-    const [tableRecords, setTableRecords] = useState<any[]>([]);
-    const [pagination, setPagination] = useState<any>({ current_page: 1, total_pages: 1 });
+    const [graphRecords, setGraphRecords] = useState<BPRecord[]>([]);
+    const [tableRecords, setTableRecords] = useState<BPRecord[]>([]);
+    const [pagination, setPagination] = useState<PaginationMeta>(defaultPagination);
     const [loadingData, setLoadingData] = useState(true);
     const [isAddOpen, setIsAddOpen] = useState(false);
 
@@ -159,8 +173,8 @@ function PatientView({ user }: { user: any }) {
         setLoadingData(true);
         try {
             const [statsRes, recordsRes] = await Promise.all([
-                api.get("/stats/summary?days=30"),
-                api.get("/bp-records?per_page=30&page=1")
+                api.get<ApiResponse<{ stats?: BPStats; is_premium?: boolean }>>("/stats/summary?days=30"),
+                api.get<ApiResponse<{ records: BPRecord[] }, { pagination: PaginationMeta }>>("/bp-records?per_page=30&page=1")
             ]);
 
             if (statsRes.data.data.stats) {
@@ -169,13 +183,13 @@ function PatientView({ user }: { user: any }) {
             }
 
             const records = recordsRes.data.data.records;
-            const meta = recordsRes.data.meta.pagination;
+            const meta = recordsRes.data.meta?.pagination ?? defaultPagination;
 
             setGraphRecords(records); // Graph always shows latest 30
             setTableRecords(records); // Table starts with page 1
             setPagination(meta);
 
-        } catch (error) {
+        } catch (error: unknown) {
             console.error("Failed to fetch data", error);
         } finally {
             setLoadingData(false);
@@ -184,10 +198,10 @@ function PatientView({ user }: { user: any }) {
 
     const fetchTablePage = async (page: number) => {
         try {
-            const res = await api.get(`/bp-records?per_page=30&page=${page}`);
+            const res = await api.get<ApiResponse<{ records: BPRecord[] }, { pagination: PaginationMeta }>>(`/bp-records?per_page=30&page=${page}`);
             setTableRecords(res.data.data.records);
-            setPagination(res.data.meta.pagination);
-        } catch (error) {
+            setPagination(res.data.meta?.pagination ?? defaultPagination);
+        } catch (error: unknown) {
             console.error("Failed to fetch page", error);
         }
     };
@@ -197,7 +211,7 @@ function PatientView({ user }: { user: any }) {
         // Set default date/time when dialog opens (only if empty)
         if (isAddOpen && !measureDate) {
             const now = new Date();
-            setMeasureDate(now.toISOString().split('T')[0]);
+            setMeasureDate(formatDateForInput(now));
             setMeasureTime(now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
         }
     }, [isAddOpen]); // Depend on isAddOpen to reset defaults
@@ -215,7 +229,7 @@ function PatientView({ user }: { user: any }) {
 
         setOcrLoading(true);
         try {
-            const res = await api.post("/ocr/process-image", formData, {
+            const res = await api.post<ApiResponse<{ ocr_result: OCRResultPayload }>>("/ocr/process-image", formData, {
                 headers: { "Content-Type": "multipart/form-data" }
             });
 
@@ -238,9 +252,9 @@ function PatientView({ user }: { user: any }) {
             toast.success("Read successful! Please verify numbers and time.");
             setActiveTab("manual"); // Switch to manual tab for review
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("OCR Failed", error);
-            toast.error("Failed to process image. Please enter manually.");
+            toast.error(getApiErrorMessage(error, "Failed to process image. Please enter manually."));
         } finally {
             setOcrLoading(false);
             if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input so same file can be selected again
@@ -256,14 +270,11 @@ function PatientView({ user }: { user: any }) {
         e.preventDefault();
         setSubmitting(true);
         try {
-            // Construct ISO string from date and time inputs
-            const specificDate = new Date(`${measureDate}T${measureTime}:00`);
-
             await api.post("/bp-records", {
                 systolic: parseInt(sys),
                 diastolic: parseInt(dia),
                 pulse: parseInt(pulse),
-                measurement_date: specificDate.toISOString(),
+                measurement_date: buildLocalDateTimePayload(measureDate, measureTime),
                 measurement_time: measureTime,
                 notes: "Web Entry"
             });
@@ -274,8 +285,8 @@ function PatientView({ user }: { user: any }) {
             setPreviewUrl(null);
             setActiveTab("photo");
             fetchInitialData(); // Refresh both table and graph
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || "Failed to add record");
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, "Failed to add record"));
         } finally {
             setSubmitting(false);
         }
@@ -368,7 +379,7 @@ function PatientView({ user }: { user: any }) {
             </div>
 
             {/* Row 2: Advanced Stats (Premium) or Upgrade Prompt */}
-            {isPremium && stats?.pulse_pressure ? (
+            {isPremium && stats?.pulse_pressure && stats.map && stats.systolic.sd !== undefined && stats.systolic.cv !== undefined ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -647,8 +658,8 @@ function PatientView({ user }: { user: any }) {
 function ManageDoctorsDialog() {
     const { t } = useLanguage();
     const [open, setOpen] = useState(false);
-    const [doctors, setDoctors] = useState<any[]>([]);
-    const [requests, setRequests] = useState<any[]>([]);
+    const [doctors, setDoctors] = useState<AuthorizedDoctor[]>([]);
+    const [requests, setRequests] = useState<AccessRequestItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchId, setSearchId] = useState("");
     const [authorizing, setAuthorizing] = useState(false);
@@ -657,13 +668,13 @@ function ManageDoctorsDialog() {
         setLoading(true);
         try {
             const [docRes, reqRes] = await Promise.all([
-                api.get("/patient/authorized-doctors"),
-                api.get("/patient/access-requests")
+                api.get<ApiResponse<{ doctors: AuthorizedDoctor[] }>>("/patient/authorized-doctors"),
+                api.get<ApiResponse<{ requests: AccessRequestItem[] }>>("/patient/access-requests")
             ]);
             setDoctors(docRes.data.data.doctors || []);
             setRequests(reqRes.data.data.requests || []);
-        } catch (e) {
-            console.error("Failed to fetch doctor data", e);
+        } catch (error: unknown) {
+            console.error("Failed to fetch doctor data", error);
         } finally {
             setLoading(false);
         }
@@ -678,8 +689,8 @@ function ManageDoctorsDialog() {
             await api.post(`/patient/access-requests/${requestId}/approve`);
             toast.success(t('doctor.request_approved', 'Request approved'));
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         }
     };
 
@@ -688,8 +699,8 @@ function ManageDoctorsDialog() {
             await api.post(`/patient/access-requests/${requestId}/reject`);
             toast.success(t('doctor.request_rejected', 'Request rejected'));
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         }
     };
 
@@ -698,8 +709,8 @@ function ManageDoctorsDialog() {
             await api.delete(`/patient/authorized-doctors/${doctorId}`);
             toast.success(t('doctor.removed', 'Doctor removed'));
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         }
     };
 
@@ -711,8 +722,8 @@ function ManageDoctorsDialog() {
             toast.success(t('doctor.authorized', 'Doctor authorized'));
             setSearchId("");
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         } finally {
             setAuthorizing(false);
         }
@@ -752,7 +763,7 @@ function ManageDoctorsDialog() {
                         {requests.length > 0 && (
                             <div>
                                 <h4 className="font-medium mb-2">{t('doctor.pending_requests', 'Pending Requests')}</h4>
-                                {requests.map((req: any) => (
+                                {requests.map((req) => (
                                     <div key={req.request_id} className="flex items-center justify-between p-2 border rounded mb-2">
                                         <span className="text-sm">{req.doctor_name}</span>
                                         <div className="flex gap-2">
@@ -770,7 +781,7 @@ function ManageDoctorsDialog() {
                             {doctors.length === 0 ? (
                                 <p className="text-sm text-slate-500">{t('doctor.no_doctors', 'No authorized doctors')}</p>
                             ) : (
-                                doctors.map((doc: any) => (
+                                doctors.map((doc) => (
                                     <div key={doc.doctor_id} className="flex items-center justify-between p-2 border rounded mb-2">
                                         <div>
                                             <span className="text-sm font-medium">{doc.full_name}</span>
@@ -790,10 +801,10 @@ function ManageDoctorsDialog() {
     );
 }
 
-function DoctorView({ user }: { user: any }) {
+function DoctorView() {
     const { t } = useLanguage();
-    const [patients, setPatients] = useState<any[]>([]);
-    const [accessRequests, setAccessRequests] = useState<any[]>([]);
+    const [patients, setPatients] = useState<PatientSummary[]>([]);
+    const [accessRequests, setAccessRequests] = useState<AccessRequestItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchPatientId, setSearchPatientId] = useState("");
     const [requesting, setRequesting] = useState(false);
@@ -802,13 +813,13 @@ function DoctorView({ user }: { user: any }) {
         setLoading(true);
         try {
             const [patientsRes, requestsRes] = await Promise.all([
-                api.get("/doctor/patients"),
-                api.get("/doctor/access-requests")
+                api.get<ApiResponse<{ patients: PatientSummary[] }>>("/doctor/patients"),
+                api.get<ApiResponse<{ requests: AccessRequestItem[] }>>("/doctor/access-requests")
             ]);
             setPatients(patientsRes.data.data.patients || []);
             setAccessRequests(requestsRes.data.data.requests || []);
-        } catch (e) {
-            console.error("Failed to fetch doctor data", e);
+        } catch (error: unknown) {
+            console.error("Failed to fetch doctor data", error);
         } finally {
             setLoading(false);
         }
@@ -824,8 +835,8 @@ function DoctorView({ user }: { user: any }) {
             toast.success(t('doctor.request_sent', 'Access request sent'));
             setSearchPatientId("");
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         } finally {
             setRequesting(false);
         }
@@ -836,12 +847,12 @@ function DoctorView({ user }: { user: any }) {
             await api.delete(`/doctor/access-requests/${requestId}`);
             toast.success(t('doctor.request_cancelled', 'Request cancelled'));
             fetchData();
-        } catch (e: any) {
-            toast.error(e.response?.data?.detail || t('common.error'));
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
         }
     };
 
-    const pendingRequests = accessRequests.filter((r: any) => r.status === "pending");
+    const pendingRequests = accessRequests.filter((request) => request.status === "pending");
 
     return (
         <div className="space-y-6">
@@ -914,13 +925,13 @@ function DoctorView({ user }: { user: any }) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {patients.map((p: any) => (
-                                            <TableRow key={p.patient_id}>
-                                                <TableCell className="font-medium">{p.full_name}</TableCell>
-                                                <TableCell>{p.gender || "-"}</TableCell>
-                                                <TableCell>{p.age || "-"}</TableCell>
+                                        {patients.map((patient) => (
+                                            <TableRow key={patient.patient_id}>
+                                                <TableCell className="font-medium">{patient.full_name}</TableCell>
+                                                <TableCell>{patient.gender || "-"}</TableCell>
+                                                <TableCell>{patient.age || "-"}</TableCell>
                                                 <TableCell>
-                                                    <Button size="sm" variant="outline" onClick={() => toast.info(`View records for patient ${p.patient_id}`)}>
+                                                    <Button size="sm" variant="outline" onClick={() => toast.info(`View records for patient ${patient.patient_id}`)}>
                                                         {t('doctor.view_records', 'View Records')}
                                                     </Button>
                                                 </TableCell>
@@ -953,7 +964,7 @@ function DoctorView({ user }: { user: any }) {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {accessRequests.map((req: any) => (
+                                        {accessRequests.map((req) => (
                                             <TableRow key={req.request_id}>
                                                 <TableCell className="font-medium">{req.patient_name}</TableCell>
                                                 <TableCell>

@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { getApiErrorMessage } from "@/lib/api-helpers";
 
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -79,10 +80,9 @@ export default function RegisterPage() {
             toast.success(t('auth.reg_success')); // "Registration successful! Please login." -> Might want to update this text later or rely on next page context
             router.push(`/auth/verify-otp?email=${encodedEmail}`);
 
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            // Check for Axios response error first, then standard Error message, then fallback
-            const msg = error.response?.data?.detail || error.message || t('common.error');
+            const msg = getApiErrorMessage(error, t('common.error'));
             toast.error(msg);
         } finally {
             setIsLoading(false);
