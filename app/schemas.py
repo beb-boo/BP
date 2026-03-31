@@ -315,6 +315,10 @@ class OCRResult(BaseModel):
     raw_response: Optional[str] = None
 
 
+class TelegramMiniAppAuth(BaseModel):
+    init_data: str = Field(..., min_length=10, description="Telegram WebApp initData string")
+
+
 class AccessRequestInput(BaseModel):
     patient_id: int
     

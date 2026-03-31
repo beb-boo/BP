@@ -1,5 +1,5 @@
 
-from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import ContextTypes, ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from app.bot.services import BotService
 from app.bot.log_service import BotLogService
@@ -209,7 +209,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if linked_user:
         # Show bilingual welcome back
         msg = get_text("welcome_back_bilingual", "en", name=linked_user.full_name)
-        await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
+        webapp_url = os.getenv("TELEGRAM_WEBAPP_URL")
+        if webapp_url:
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(get_text("btn_record_bp", linked_user.language or "th"), web_app=WebAppInfo(url=webapp_url))],
+            ])
+            await update.message.reply_text(msg, reply_markup=keyboard)
+        else:
+            await update.message.reply_text(msg, reply_markup=ReplyKeyboardRemove())
         BotLogService.log(user.id, "OUT", "welcome", "Welcome back (bilingual)", linked_user.id)
         return ConversationHandler.END
 
@@ -884,6 +891,32 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg = get_text("help_msg", lang)
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def bp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Open BP recording Mini App via WebApp button."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        await update.message.reply_text(get_text("not_linked", "en"))
+        return
+
+    lang = user.language or "en"
+    webapp_url = os.getenv("TELEGRAM_WEBAPP_URL")
+
+    if not webapp_url:
+        await update.message.reply_text(get_text("bp_webapp_unavailable", lang))
+        return
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            get_text("btn_record_bp", lang),
+            web_app=WebAppInfo(url=webapp_url)
+        )]
+    ])
+    await update.message.reply_text(
+        get_text("bp_webapp_prompt", lang),
+        reply_markup=keyboard
+    )
+
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Reply to unknown messages."""

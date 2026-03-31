@@ -16,7 +16,7 @@ from .database import engine, Base
 from .utils.rate_limiter import limiter
 
 # Import routers
-from .routers import auth, users, bp_records, ocr, doctor, export, payment
+from .routers import auth, users, bp_records, ocr, doctor, export, payment, telegram_auth
 
 # Load environment variables
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -85,6 +85,7 @@ app.include_router(ocr.router)
 app.include_router(doctor.router)
 app.include_router(export.router)
 app.include_router(payment.router)
+app.include_router(telegram_auth.router)
 
 # Telegram Bot Webhook (conditional)
 BOT_MODE = os.getenv("BOT_MODE", "polling")

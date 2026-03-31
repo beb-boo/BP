@@ -67,6 +67,11 @@ LOCALES = {
         "creating_account": "⏳ Creating account...",
         "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130 90 65**",
 
+        # Mini App
+        "btn_record_bp": "📝 Record Blood Pressure",
+        "bp_webapp_prompt": "Tap the button below to record your blood pressure:",
+        "bp_webapp_unavailable": "Mini App is not configured. Please record BP by sending a photo or typing values (e.g. 130 90 65).",
+
         # Common
         "not_linked": "⚠️ Please /start and link your account first.",
         "session_expired": "❌ Session expired. Please try again.",
@@ -230,6 +235,11 @@ LOCALES = {
         "link_fail_password": "❌ รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่ หรือพิมพ์ /cancel",
         "creating_account": "⏳ กำลังสร้างบัญชี...",
         "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130 90 65**",
+
+        # Mini App
+        "btn_record_bp": "📝 บันทึกความดัน",
+        "bp_webapp_prompt": "กดปุ่มด้านล่างเพื่อบันทึกความดัน:",
+        "bp_webapp_unavailable": "Mini App ยังไม่ได้ตั้งค่า กรุณาบันทึกความดันโดยส่งรูปหรือพิมพ์ค่า เช่น 130 90 65",
 
         # Common
         "not_linked": "⚠️ กรุณาพิมพ์ /start เพื่อเชื่อมต่อบัญชีก่อนครับ",

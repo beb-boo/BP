@@ -10,7 +10,8 @@ from .handlers import (get_auth_handler, get_ocr_handler, get_manual_bp_handler,
                        get_profile_handler, get_delete_handler, get_edit_handler,
                        get_password_handler, get_deactivate_handler,
                        get_broadcast_handler,
-                       stats, help_command, unknown, language_command, language_callback,
+                       stats, help_command, unknown, bp_command,
+                       language_command, language_callback,
                        settings_command, settings_callback, timezone_callback)
 from .payment_handlers import get_payment_handler, subscription_command
 import warnings
@@ -254,6 +255,7 @@ def build_application():
 
     # Simple Commands
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("bp", bp_command))
     application.add_handler(CommandHandler("help", help_command))
 
     # Language
