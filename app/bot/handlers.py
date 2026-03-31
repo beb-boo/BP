@@ -857,7 +857,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_str = r.measurement_time if r.measurement_time else ""
             msg += f"\n- {date_str} {time_str}: **{r.systolic}/{r.diastolic}** ({r.pulse})"
 
-        # Hint for viewing more
+        # Hint for viewing more (only when truncated)
         if total_records > display_limit:
             dashboard_url = os.getenv("WEB_DASHBOARD_URL", "")
             if dashboard_url:
@@ -865,7 +865,18 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 msg += f"\n\n{get_text('stats_view_more_no_url', lang)}"
 
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    # Always show Mini App button + Dashboard link
+    webapp_url = os.getenv("TELEGRAM_WEBAPP_URL")
+    dashboard_url = os.getenv("WEB_DASHBOARD_URL", "")
+
+    buttons = []
+    if webapp_url:
+        buttons.append([InlineKeyboardButton(get_text("btn_record_bp", lang), web_app=WebAppInfo(url=webapp_url))])
+    if dashboard_url:
+        buttons.append([InlineKeyboardButton("🌐 Dashboard", url=dashboard_url)])
+
+    reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
+    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
 
     # Send BP trend chart image (if ≥ 2 records)
     if recent and len(recent) >= 2:

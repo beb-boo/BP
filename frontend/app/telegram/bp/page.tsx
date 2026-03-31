@@ -152,6 +152,21 @@ export default function TelegramBPPage() {
       return;
     }
 
+    // Confirmation dialog
+    const tg = getTelegramWebApp();
+    if (tg) {
+      tg.showConfirm(
+        `Save ${sys}/${dia} (${pul})?`,
+        (confirmed) => {
+          if (confirmed) doSave(sys, dia, pul);
+        }
+      );
+    } else {
+      doSave(sys, dia, pul);
+    }
+  }
+
+  async function doSave(sys: number, dia: number, pul: number) {
     setSaving(true);
     try {
       const now = new Date();
@@ -171,11 +186,10 @@ export default function TelegramBPPage() {
       // Refresh data
       await Promise.all([fetchStats(), fetchRecords()]);
 
-      getTelegramWebApp()?.showAlert("Saved successfully!");
+      getTelegramWebApp()?.showAlert("Saved!");
     } catch (err: any) {
-      getTelegramWebApp()?.showAlert(
-        err.response?.data?.message || "Failed to save"
-      );
+      const detail = err.response?.data?.detail || err.response?.data?.message || "";
+      getTelegramWebApp()?.showAlert(`Save failed: ${detail || err.message}`);
     } finally {
       setSaving(false);
     }

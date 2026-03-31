@@ -243,12 +243,15 @@ class BotService:
             user = db.query(User).filter(User.id == user_id).first()
             is_premium = check_premium(user) if user else False
 
-            # Get last 30 records
-            recent = db.query(BloodPressureRecord)\
+            # Get records — same logic as API endpoint
+            query = db.query(BloodPressureRecord)\
                 .filter(BloodPressureRecord.user_id == user_id)\
-                .order_by(BloodPressureRecord.measurement_date.desc(), BloodPressureRecord.created_at.desc())\
-                .limit(30)\
-                .all()
+                .order_by(BloodPressureRecord.measurement_date.desc())
+
+            if is_premium:
+                recent = query.limit(days).all()
+            else:
+                recent = query.limit(30).all()
 
             if not recent:
                 return {
