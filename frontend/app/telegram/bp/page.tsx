@@ -67,6 +67,8 @@ export default function TelegramBPPage() {
   const [systolic, setSystolic] = useState("");
   const [diastolic, setDiastolic] = useState("");
   const [pulse, setPulse] = useState("");
+  const [measureDate, setMeasureDate] = useState("");
+  const [measureTime, setMeasureTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
 
@@ -169,19 +171,26 @@ export default function TelegramBPPage() {
   async function doSave(sys: number, dia: number, pul: number) {
     setSaving(true);
     try {
-      const now = new Date();
+      // Use OCR date/time if available, otherwise current time
+      const date = measureDate
+        ? new Date(`${measureDate}T${measureTime || "00:00"}:00`)
+        : new Date();
+      const time = measureTime || date.toTimeString().slice(0, 5);
+
       await telegramApi.post("/bp-records", {
         systolic: sys,
         diastolic: dia,
         pulse: pul,
-        measurement_date: now.toISOString(),
-        measurement_time: now.toTimeString().slice(0, 5),
+        measurement_date: date.toISOString(),
+        measurement_time: time,
       });
 
       // Clear form
       setSystolic("");
       setDiastolic("");
       setPulse("");
+      setMeasureDate("");
+      setMeasureTime("");
 
       // Refresh data
       await Promise.all([fetchStats(), fetchRecords()]);
@@ -212,9 +221,18 @@ export default function TelegramBPPage() {
       if (ocr?.systolic) setSystolic(String(ocr.systolic));
       if (ocr?.diastolic) setDiastolic(String(ocr.diastolic));
       if (ocr?.pulse) setPulse(String(ocr.pulse));
+      if (ocr?.measurement_date) setMeasureDate(ocr.measurement_date);
+      if (ocr?.measurement_time) setMeasureTime(ocr.measurement_time);
 
       // Same as web: fill form, let user verify & press Save
-      getTelegramWebApp()?.showAlert("Read successful! Please verify and save.");
+      const parts = [
+        ocr?.systolic && ocr?.diastolic ? `${ocr.systolic}/${ocr.diastolic}` : null,
+        ocr?.pulse ? `Pulse ${ocr.pulse}` : null,
+        ocr?.measurement_date ? `${ocr.measurement_date} ${ocr.measurement_time || ""}`.trim() : null,
+      ].filter(Boolean);
+      getTelegramWebApp()?.showAlert(
+        `Read: ${parts.join(", ")}\nPlease check and press Save.`
+      );
     } catch (err: any) {
       getTelegramWebApp()?.showAlert(
         err.response?.data?.message || "Could not read photo. Please enter manually."
@@ -320,6 +338,32 @@ export default function TelegramBPPage() {
               value={pulse}
               onChange={(e) => setPulse(e.target.value)}
               className={`w-full rounded-lg border px-3 py-2.5 text-center text-lg font-bold ${inputClass}`}
+            />
+          </div>
+        </div>
+
+        {/* Date/Time row — shown when OCR fills values or user can edit */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">
+              DATE
+            </label>
+            <input
+              type="date"
+              value={measureDate}
+              onChange={(e) => setMeasureDate(e.target.value)}
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${inputClass}`}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">
+              TIME
+            </label>
+            <input
+              type="time"
+              value={measureTime}
+              onChange={(e) => setMeasureTime(e.target.value)}
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${inputClass}`}
             />
           </div>
         </div>
