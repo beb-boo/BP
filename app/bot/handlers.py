@@ -803,9 +803,11 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         BotLogService.log(chat_id, "OUT", "stats", "No records", user.id)
         return
 
-    avg_sys = round(avg.avg_sys) if avg.avg_sys else 0
-    avg_dia = round(avg.avg_dia) if avg.avg_dia else 0
-    avg_pulse = round(avg.avg_pulse) if avg.avg_pulse else 0
+    import math
+    # Use math.floor(x + 0.5) for half-up rounding (matches JavaScript Math.round)
+    avg_sys = math.floor(avg.avg_sys + 0.5) if avg.avg_sys else 0
+    avg_dia = math.floor(avg.avg_dia + 0.5) if avg.avg_dia else 0
+    avg_pulse = math.floor(avg.avg_pulse + 0.5) if avg.avg_pulse else 0
 
     lang = user.language or "en"
 
