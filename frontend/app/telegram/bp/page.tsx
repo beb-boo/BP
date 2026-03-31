@@ -208,14 +208,16 @@ export default function TelegramBPPage() {
       const res = await telegramApi.post("/ocr/process-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const ocr = res.data.data;
+      const ocr = res.data.data?.ocr_result;
       if (ocr?.systolic) setSystolic(String(ocr.systolic));
       if (ocr?.diastolic) setDiastolic(String(ocr.diastolic));
       if (ocr?.pulse) setPulse(String(ocr.pulse));
-      getTelegramWebApp()?.showAlert("Photo read! Please verify and save.");
+
+      // Same as web: fill form, let user verify & press Save
+      getTelegramWebApp()?.showAlert("Read successful! Please verify and save.");
     } catch (err: any) {
       getTelegramWebApp()?.showAlert(
-        err.response?.data?.message || "Could not read photo"
+        err.response?.data?.message || "Could not read photo. Please enter manually."
       );
     } finally {
       setOcrLoading(false);

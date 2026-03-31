@@ -66,9 +66,21 @@ If you registered via the website, go to the Settings page on the web → click 
 
 ## 3. Record Blood Pressure
 
-There are 2 methods:
+There are 3 methods:
 
-### Method 1: Take a Photo of the Monitor (Recommended)
+### Method 1: Mini App (Recommended)
+
+Type `/bp` → press the **"📝 Record BP"** button → Mini App opens inside Telegram.
+
+Mini App features:
+- BP input form (SYS/DIA/PULSE) + camera button (OCR)
+- Average stats + AHA classification level
+- 5 most recent records
+- Advanced stats for Premium users (SD, PP, MAP, Trend)
+
+> The Mini App button also appears after `/start` and `/stats`.
+
+### Method 2: Take a Photo of the Monitor
 
 **Steps:**
 
@@ -89,7 +101,7 @@ Is this correct?
 ```
 
 4. **If the values are correct** → press the "✅ Correct" button → Record saved.
-5. **If the values are incorrect** → press the "✏️ Edit" button → Type the correct values manually (see Method 2).
+5. **If the values are incorrect** → press the "✏️ Edit" button → Type the correct values manually (see Method 3).
 
 > ⏳ **Auto-Save System:** If you send a photo and forget to press the confirm button, or if you close the chat, the system will assume the values are correct and **automatically save the data within 2 minutes** to prevent data loss.
 
@@ -100,7 +112,7 @@ Is this correct?
 - Ensure all 3 numbers (SYS, DIA, Pulse) are visible.
 - Make sure the monitor screen is bright enough.
 
-### Method 2: Manual Input
+### Method 3: Manual Input
 
 If you press "✏️ Edit" after the AI reads the values, or if you just want to record values directly, use the following format:
 
@@ -131,25 +143,63 @@ Meaning: Systolic 120, Diastolic 80, Pulse 72.
 
 The Bot will display:
 
-**1) Average Statistics (from the last 30 entries)**
+**1) Average Statistics + Classification**
 
 ```text
 📊 Blood Pressure Statistics
-Average (last 30 entries):
+Average (from 10 records):
 120/80 mmHg (Pulse 72)
+🟢 Classification: Normal
 ```
 
-**2) Recent Entries**
+Blood pressure classification per AHA/ACC 2017 guidelines:
+
+| Level | SBP | DBP | Symbol |
+|-------|-----|-----|--------|
+| Normal | < 120 | < 80 | 🟢 |
+| Elevated | 120-129 | < 80 | 🟡 |
+| Hypertension Stage 1 | 130-139 | 80-89 | 🟠 |
+| Hypertension Stage 2 | >= 140 | >= 90 | 🔴 |
+| Hypertensive Crisis | > 180 | > 120 | 🚨 |
+
+**2) Advanced Statistics (Premium only)**
 
 ```text
-Recent entries:
+Advanced Stats (Premium)
+• SD: 120 ± 8.5 / 80 ± 6.2 mmHg
+• Pulse Pressure: 40 mmHg
+• MAP: 93 mmHg
+• Trend: 📈 Increasing (+0.5 mmHg/day)
+```
+
+**Calculation formulas:**
+
+| Value | Formula | Meaning |
+|-------|---------|---------|
+| **Mean (Average)** | `sum(values) / n` | Central tendency |
+| **SD (Standard Deviation)** | `sqrt(sum((x - mean)^2) / (n-1))` | BP variability — high SD = unstable readings |
+| **Pulse Pressure (PP)** | `avg_SBP - avg_DBP` | PP > 60 = arterial stiffness |
+| **MAP (Mean Arterial Pressure)** | `(avg_SBP + 2 × avg_DBP) / 3` | MAP >= 65 = adequate perfusion |
+| **CV (Coefficient of Variation)** | `(SD / Mean) × 100` (%) | Compare variability between individuals |
+| **Median** | Middle value when sorted | Robust to outliers |
+| **Trend** | Linear regression slope | slope > 0 = BP increasing over time |
+
+**3) Recent Records**
+
+```text
+Recent entries: (10/25)
 - 15/03/2026 14:30: 120/80 (72)
 - 14/03/2026 10:15: 118/78 (70)
-- 13/03/2026 08:00: 125/82 (75)
 ...
 ```
 
-**3) Blood Pressure Trend Chart**
+**4) Quick Buttons**
+
+After /stats, buttons are shown:
+- **📝 Record BP** → Opens Mini App
+- **🌐 Dashboard** → Opens web Dashboard
+
+**5) Blood Pressure Trend Chart**
 
 If there are 2 or more entries, the Bot will automatically send a **Chart Image** showing:
 
@@ -206,6 +256,7 @@ Press "🕐 Timezone" → select from the list, e.g.:
 |---------|------|---------|
 | Record blood pressure | ✅ | ✅ |
 | View stats + charts | ✅ (last 30 entries) | ✅ (unlimited) |
+| Advanced stats (SD, PP, MAP, Trend) | ❌ | ✅ |
 | Export data (CSV/PDF) | ❌ | ✅ |
 | Full history | ❌ (last 30 entries) | ✅ (unlimited) |
 
@@ -238,6 +289,7 @@ Remaining: 31 days
 | Command | Usage |
 |---------|-------|
 | `/start` | Start / Sign up / Connect account |
+| `/bp` | Open Mini App to record blood pressure |
 | `/stats` | View blood pressure statistics and charts |
 | `/profile` | View and edit personal information |
 | `/edit` | Edit the most recent blood pressure entries |

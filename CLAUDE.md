@@ -80,7 +80,7 @@ BP/
 │   ├── bot/              # Telegram bot (dual-mode: polling + webhook)
 │   │   ├── main.py       # Bot entry, build_application(), run_polling()
 │   │   ├── webhook.py    # FastAPI webhook handler for serverless
-│   │   ├── handlers.py   # Conversation handlers
+│   │   ├── handlers.py   # Conversation handlers (/bp, /stats, OCR, etc.)
 │   │   └── locales.py    # i18n (EN, TH)
 │   ├── chart-renderer/    # Server-side Chart.js renderer (Node.js)
 │   │   ├── render.js     # Chart.js + @napi-rs/canvas → PNG
@@ -92,14 +92,18 @@ BP/
 │       ├── rate_limiter.py # Centralized rate limiter (Memory / Redis)
 │       ├── chart_generator.py # BP chart generation (calls Node.js subprocess)
 │       └── ocr_helper.py # Gemini integration
+│   ├── routers/
+│   │   └── telegram_auth.py # Telegram Mini App auth (HMAC verify → JWT)
 ├── frontend/             # Next.js web dashboard
 │   ├── app/              # App directory structure
 │   │   ├── auth/        # Login/register pages
 │   │   ├── (dashboard)/ # Protected dashboard routes
+│   │   ├── telegram/bp/ # Telegram Mini App (auto-login BP recording)
 │   │   ├── error.tsx    # Custom error page
 │   │   └── not-found.tsx # Custom 404 page
 │   ├── proxy.ts          # Auth guard (Next.js 16, replaces middleware.ts)
 │   ├── lib/api.ts       # Axios instance (base: localhost:8888/api/v1)
+│   ├── lib/telegram.ts  # Telegram WebApp SDK types + helpers
 │   └── contexts/        # React contexts (Language)
 └── MobileApp/           # React Native (Expo)
 ```
@@ -112,6 +116,7 @@ BP/
 - JWT tokens (7-day expiry) in `Authorization: Bearer` header
 - API key required in `X-API-Key` header
 - Account locking after failed login attempts
+- **Telegram Mini App**: HMAC-SHA256 verify `initData` → issue JWT (no API key needed for auth endpoint)
 
 ### Data Encryption
 
@@ -125,8 +130,36 @@ Priority: OCR screen time → EXIF metadata → Current time
 
 ### Subscription Tiers
 
-- Free: 30-day history limit
-- Premium: Unlimited history, export features
+- Free: 30 records limit, basic stats (avg/min/max + BP classification)
+- Premium: Unlimited history, advanced stats (SD, CV, PP, MAP, Trend), export features
+- `PREMIUM_BYPASS_USERS` env: comma-separated user IDs, Telegram IDs, or phone numbers for testing
+
+### Clinical Statistics (Stats Endpoint)
+
+`GET /api/v1/stats/summary?days=30` returns clinical metrics:
+
+| Metric | Formula | Free | Premium |
+|--------|---------|------|---------|
+| **Average** | `sum(values) / n` | Yes | Yes |
+| **Min / Max** | `min(values)`, `max(values)` | Yes | Yes |
+| **BP Classification** | AHA/ACC 2017: Normal (<120/<80), Elevated (120-129/<80), Stage 1 (130-139/80-89), Stage 2 (>=140/>=90), Crisis (>180/>120) | Yes | Yes |
+| **SD (Std Dev)** | `sqrt(sum((x - mean)^2) / (n-1))` — requires >= 2 records | No | Yes |
+| **Median** | Middle value when sorted | No | Yes |
+| **CV (Coeff of Variation)** | `(SD / Mean) * 100` (%) | No | Yes |
+| **Pulse Pressure (PP)** | `avg_SBP - avg_DBP` — >60 = arterial stiffness | No | Yes |
+| **MAP (Mean Arterial Pressure)** | `(avg_SBP + 2 * avg_DBP) / 3` — >=65 = adequate perfusion | No | Yes |
+| **Trend (Linear Regression)** | Slope via least squares: `slope = (n*sum(xi*yi) - sum(xi)*sum(yi)) / (n*sum(xi^2) - sum(xi)^2)` where xi = day index, yi = SBP/DBP | No | Yes |
+
+**Rounding**: API returns 1 decimal (`round(x, 1)`). Display uses half-up rounding: Python `math.floor(x + 0.5)`, JavaScript `Math.round(x)`.
+
+### Telegram Mini App
+
+- **Route**: `/telegram/bp` — WebApp opened from Telegram chat button
+- **Auth flow**: `initData` (HMAC-SHA256 signed by BOT_TOKEN) → `POST /api/v1/auth/telegram/mini-app-auth` → JWT
+- **UI**: BP form + OCR photo upload + Stats (tier-aware) + 5 recent records
+- **Bot commands**: `/bp` opens Mini App button, `/start` shows it in welcome
+- **SDK**: `telegram-web-app.js` loaded in `frontend/app/telegram/layout.tsx`
+- **No separate auth needed**: JWT from mini-app-auth works with all existing API endpoints
 
 ## Deployment Modes
 
@@ -215,6 +248,9 @@ NEXT_PUBLIC_API_KEY=    # Frontend API key override
 ALLOWED_ORIGINS=*       # CORS origins (comma-separated)
 CHART_RENDERER=auto     # auto | nodejs | quickchart
 BACKEND_URL=            # Frontend rewrites target (server-side, Vercel only)
+TELEGRAM_WEBAPP_URL=    # Mini App URL (HTTPS required, e.g. https://frontend.vercel.app/telegram/bp)
+WEB_DASHBOARD_URL=      # Web dashboard URL shown in bot /stats
+PREMIUM_BYPASS_USERS=   # Comma-separated: user IDs, Telegram IDs, phone numbers
 ```
 
 ## API Response Format
