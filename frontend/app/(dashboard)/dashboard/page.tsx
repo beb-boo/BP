@@ -441,7 +441,7 @@ function PatientView({ user }: { user: AppUser }) {
                                         trendConfidence === 'strong' ? 'text-blue-600' :
                                         trendConfidence === 'moderate' ? 'text-amber-600' : 'text-slate-400'
                                     }`}>
-                                        (R\u00b2={trendRSquared} {trendConfidenceLabel})
+                                        (R²={trendRSquared} {trendConfidenceLabel})
                                     </span>
                                 )}
                             </p>
