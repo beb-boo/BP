@@ -39,7 +39,11 @@ export const th = {
         last_reading: "การวัดล่าสุด",
         tap_scan: "แตะเพื่อสแกน / อัพโหลด",
         supports_img: "รองรับ JPG, PNG",
-        ai_hint: "AI จะอ่านวันเวลาจากภาพ หรือใช้เวลาปัจจุบันหากไม่พบ"
+        ai_hint: "AI จะอ่านวันเวลาจากภาพ หรือใช้เวลาปัจจุบันหากไม่พบ",
+        trend_confidence_strong: "ชัดเจน",
+        trend_confidence_moderate: "ปานกลาง",
+        trend_confidence_weak: "ไม่ชัดเจน",
+        trend_confidence_insufficient_data: "ข้อมูลไม่เพียงพอ"
     },
     doctor: {
         total_patients: "คนไข้ทั้งหมด",

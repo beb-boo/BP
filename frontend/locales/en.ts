@@ -39,7 +39,11 @@ export const en = {
         last_reading: "Last Reading",
         tap_scan: "Tap to Scan / Upload",
         supports_img: "Supports JPG, PNG",
-        ai_hint: "AI reads Date/Time from screen, EXIF, or fallback."
+        ai_hint: "AI reads Date/Time from screen, EXIF, or fallback.",
+        trend_confidence_strong: "strong",
+        trend_confidence_moderate: "moderate",
+        trend_confidence_weak: "weak",
+        trend_confidence_insufficient_data: "insufficient data"
     },
     doctor: {
         total_patients: "Total Patients",

@@ -2,10 +2,13 @@
 
 import importlib
 import io
+from datetime import datetime
 from datetime import timedelta
+from types import SimpleNamespace
 
 from app.bot.services import BotService
 from app.models import User
+from app.routers.bp_records import compute_trend
 from app.utils.security import MAX_LOGIN_ATTEMPTS, hash_password
 from app.utils.timezone import now_tz
 
@@ -119,3 +122,59 @@ class TestOCRAndWebhookRegression:
 
         assert first_path == second_path
         assert module._webhook_path == first_path
+
+
+class TestTrendRegression:
+    @staticmethod
+    def _record(day_offset: int, systolic: int, diastolic: int):
+        return SimpleNamespace(
+            measurement_date=datetime(2026, 1, 1) + timedelta(days=day_offset),
+            systolic=systolic,
+            diastolic=diastolic,
+        )
+
+    def test_compute_trend_treats_flat_series_as_strong_stable_fit(self):
+        trend = compute_trend([
+            self._record(0, 120, 80),
+            self._record(1, 120, 80),
+            self._record(2, 120, 80),
+        ])
+
+        assert trend["direction"] == "stable"
+        assert trend["confidence"] == "strong"
+        assert trend["systolic_r_squared"] == 1.0
+        assert trend["diastolic_r_squared"] == 1.0
+
+    def test_compute_trend_marks_identical_timestamps_as_insufficient_data(self):
+        trend = compute_trend([
+            self._record(0, 120, 80),
+            self._record(0, 130, 85),
+            self._record(0, 140, 90),
+        ])
+
+        assert trend["direction"] == "stable"
+        assert trend["confidence"] == "insufficient_data"
+        assert trend["systolic_r_squared"] == 0.0
+        assert trend["diastolic_r_squared"] == 0.0
+
+
+class TestFrontendTrendConfidenceLocalization:
+    def test_dashboard_uses_translated_trend_confidence_labels(self):
+        with open("frontend/app/(dashboard)/dashboard/page.tsx") as file_obj:
+            content = file_obj.read()
+
+        assert "dashboard.trend_confidence_" in content
+        assert "trendConfidenceLabel" in content
+
+    def test_frontend_locales_include_trend_confidence_labels(self):
+        with open("frontend/locales/en.ts") as file_obj:
+            english = file_obj.read()
+        with open("frontend/locales/th.ts") as file_obj:
+            thai = file_obj.read()
+
+        assert "trend_confidence_strong" in english
+        assert "trend_confidence_moderate" in english
+        assert "trend_confidence_weak" in english
+        assert "trend_confidence_strong" in thai
+        assert "trend_confidence_moderate" in thai
+        assert "trend_confidence_weak" in thai

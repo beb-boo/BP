@@ -316,6 +316,13 @@ function PatientView({ user }: { user: AppUser }) {
         if (direction === "decreasing") return <TrendingDown className="h-4 w-4 text-green-500" />;
         return <Minus className="h-4 w-4 text-slate-400" />;
     };
+    const trendConfidence = stats?.trend?.confidence;
+    const trendConfidenceLabel = trendConfidence
+        ? t(`dashboard.trend_confidence_${trendConfidence}`, trendConfidence)
+        : "";
+    const trendRSquared = typeof stats?.trend?.systolic_r_squared === "number"
+        ? stats.trend.systolic_r_squared.toFixed(3)
+        : null;
 
     return (
         <div className="space-y-6">
@@ -429,6 +436,14 @@ function PatientView({ user }: { user: AppUser }) {
                                 {stats.trend?.direction === "increasing" ? t('dashboard.trend_up', 'Trending up') :
                                  stats.trend?.direction === "decreasing" ? t('dashboard.trend_down', 'Trending down') :
                                  t('dashboard.trend_stable', 'Stable')}
+                                {trendConfidence && trendConfidence !== "insufficient_data" && trendRSquared && (
+                                    <span className={`ml-1 ${
+                                        trendConfidence === 'strong' ? 'text-blue-600' :
+                                        trendConfidence === 'moderate' ? 'text-amber-600' : 'text-slate-400'
+                                    }`}>
+                                        (R\u00b2={trendRSquared} {trendConfidenceLabel})
+                                    </span>
+                                )}
                             </p>
                         </CardContent>
                     </Card>

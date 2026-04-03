@@ -286,27 +286,55 @@ def classify_bp(avg_sys: float, avg_dia: float) -> dict:
 
 
 def compute_trend(records) -> dict:
-    """Compute linear regression slope for systolic and diastolic over time."""
+    """Compute linear regression slope with R-squared for systolic and diastolic over time.
+    
+    R² (coefficient of determination) indicates how well the linear model fits:
+      - R² >= 0.7: strong linear trend
+      - 0.3 <= R² < 0.7: moderate trend
+      - R² < 0.3: weak/no clear linear trend
+    """
     if len(records) < 3:
-        return {"systolic_slope": 0, "diastolic_slope": 0, "direction": "stable"}
+        return {
+            "systolic_slope": 0, "diastolic_slope": 0,
+            "systolic_r_squared": 0, "diastolic_r_squared": 0,
+            "direction": "stable", "confidence": "insufficient_data"
+        }
 
     # Sort chronologically (oldest first)
     sorted_records = sorted(records, key=lambda r: r.measurement_date)
     base_date = sorted_records[0].measurement_date
     x_days = [(r.measurement_date - base_date).total_seconds() / 86400 for r in sorted_records]
 
-    def linear_slope(x_vals, y_vals):
+    def linear_regression(x_vals, y_vals):
+        """Returns (slope, r_squared, has_sufficient_variation) using least-squares method."""
         n = len(x_vals)
         if n < 2:
-            return 0.0
+            return 0.0, 0.0, False
         x_mean = sum(x_vals) / n
         y_mean = sum(y_vals) / n
-        numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, y_vals))
-        denominator = sum((x - x_mean) ** 2 for x in x_vals)
-        return numerator / denominator if denominator != 0 else 0.0
+        ss_xy = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, y_vals))
+        ss_xx = sum((x - x_mean) ** 2 for x in x_vals)
+        ss_yy = sum((y - y_mean) ** 2 for y in y_vals)
 
-    sys_slope = round(linear_slope(x_days, [r.systolic for r in sorted_records]), 2)
-    dia_slope = round(linear_slope(x_days, [r.diastolic for r in sorted_records]), 2)
+        if ss_xx == 0:
+            return 0.0, 0.0, False
+
+        slope = ss_xy / ss_xx
+
+        # A perfectly flat series still fits the regression line exactly.
+        if ss_yy == 0:
+            return slope, 1.0, True
+
+        r_squared = (ss_xy ** 2) / (ss_xx * ss_yy)
+        return slope, r_squared, True
+
+    sys_slope, sys_r2, has_trend_data = linear_regression(x_days, [r.systolic for r in sorted_records])
+    dia_slope, dia_r2, _ = linear_regression(x_days, [r.diastolic for r in sorted_records])
+
+    sys_slope = round(sys_slope, 2)
+    dia_slope = round(dia_slope, 2)
+    sys_r2 = round(sys_r2, 3)
+    dia_r2 = round(dia_r2, 3)
 
     # Direction based on systolic slope significance
     if sys_slope > 0.5:
@@ -316,7 +344,24 @@ def compute_trend(records) -> dict:
     else:
         direction = "stable"
 
-    return {"systolic_slope": sys_slope, "diastolic_slope": dia_slope, "direction": direction}
+    # Confidence based on systolic R² (primary clinical metric)
+    if not has_trend_data:
+        confidence = "insufficient_data"
+    elif sys_r2 >= 0.7:
+        confidence = "strong"
+    elif sys_r2 >= 0.3:
+        confidence = "moderate"
+    else:
+        confidence = "weak"
+
+    return {
+        "systolic_slope": sys_slope,
+        "diastolic_slope": dia_slope,
+        "systolic_r_squared": sys_r2,
+        "diastolic_r_squared": dia_r2,
+        "direction": direction,
+        "confidence": confidence
+    }
 
 
 @stats_router.get("/summary", response_model=StandardResponse)

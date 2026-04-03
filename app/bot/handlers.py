@@ -853,6 +853,13 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"\n• Pulse Pressure: {pp} mmHg"
         msg += f"\n• MAP: {map_val} mmHg"
         msg += f"\n• {get_text('stats_trend', lang)}: {trend_emoji} {trend_label} ({trend['systolic_slope']:+.1f} mmHg/{get_text('stats_per_day', lang)})"
+
+        # Show R² confidence if available
+        confidence = trend.get('confidence', 'weak')
+        r2 = trend.get('systolic_r_squared', 0)
+        if confidence != 'insufficient_data':
+            confidence_label = get_text(f'stats_confidence_{confidence}', lang)
+            msg += f" | R\u00b2={r2:.3f} ({confidence_label})"
     elif not data.get("is_premium"):
         msg += f"\n\n🔒 {get_text('stats_premium_hint', lang)}"
 

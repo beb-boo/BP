@@ -43,7 +43,10 @@ export interface Classification {
 export interface Trend {
   systolic_slope: number;
   diastolic_slope: number;
+  systolic_r_squared?: number;
+  diastolic_r_squared?: number;
   direction: string;
+  confidence?: string;
 }
 
 export interface BPStats {
