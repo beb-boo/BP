@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { CreditCard, Crown, Check, Loader2, ArrowLeft } from "lucide-react";
+import { CreditCard, Crown, Check, Loader2, ArrowLeft, Clock, History } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
@@ -13,44 +13,72 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 
+interface PaymentHistoryItem {
+    id: number;
+    plan_type: string;
+    amount: number;
+    status: string;
+    trans_date: string | null;
+    created_at: string;
+    verified_at: string | null;
+}
+
 export default function SubscriptionPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [plans, setPlans] = useState<Plan[]>([]);
     const [paymentAccount, setPaymentAccount] = useState<PaymentAccount | null>(null);
     const [currentTier, setCurrentTier] = useState("free");
+    const [isActive, setIsActive] = useState(false);
     const [expiresAt, setExpiresAt] = useState<string | null>(null);
-    const [lang, setLang] = useState("th"); // Default
+    const [daysRemaining, setDaysRemaining] = useState(0);
+    const [lang, setLang] = useState("th");
 
     const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
     const [slipFile, setSlipFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
 
-    useEffect(() => {
-        fetchPlans();
-    }, []);
+    const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>([]);
 
-    const fetchPlans = async () => {
+    const fetchPlans = useCallback(async () => {
         try {
             const res = await api.get<ApiResponse<{
                 plans: Plan[];
                 payment_account: PaymentAccount;
                 current_tier: string;
+                is_active: boolean;
                 expires_at: string | null;
+                days_remaining: number;
                 language?: string;
             }>>("/payment/plans");
             const data = res.data.data;
             setPlans(data.plans);
             setPaymentAccount(data.payment_account);
             setCurrentTier(data.current_tier);
+            setIsActive(data.is_active ?? false);
             setExpiresAt(data.expires_at);
+            setDaysRemaining(data.days_remaining ?? 0);
             if (data.language) setLang(data.language);
         } catch {
             toast.error("Failed to load subscription plans");
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
+
+    const fetchHistory = useCallback(async () => {
+        try {
+            const res = await api.get<ApiResponse<{ payments: PaymentHistoryItem[] }>>("/payment/history");
+            setPaymentHistory(res.data.data.payments ?? []);
+        } catch {
+            // silent
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchPlans();
+        fetchHistory();
+    }, [fetchPlans, fetchHistory]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -67,20 +95,19 @@ export default function SubscriptionPage() {
         formData.append("file", slipFile);
 
         try {
-            const res = await api.post("/payment/verify-slip", formData, {
+            await api.post("/payment/verify-slip", formData, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
 
             const successMsg = lang === "en" ? "Payment Successful! Upgraded to Premium." : "ชำระเงินสำเร็จ! อัพเกรดเป็น Premium แล้ว";
             toast.success(successMsg);
 
-            // Reload state
-            setCurrentTier("premium");
-            setExpiresAt(res.data.data.subscription_expires_at);
+            // Refetch server state instead of optimistic update
+            await fetchPlans();
+            await fetchHistory();
             setSelectedPlan(null);
             setSlipFile(null);
 
-            // Scroll top
             window.scrollTo({ top: 0, behavior: 'smooth' });
 
         } catch (error: unknown) {
@@ -101,6 +128,7 @@ export default function SubscriptionPage() {
         subtitle: lang === "en" ? "Upgrade to Premium for full access" : "อัพเกรดเป็น Premium เพื่อใช้งานเต็มรูปแบบ",
         currentStatus: lang === "en" ? "Current Status" : "สถานะปัจจุบัน",
         expires: lang === "en" ? "Expires: " : "หมดอายุ: ",
+        daysLeft: lang === "en" ? "days remaining" : "วันที่เหลือ",
         perDay: lang === "en" ? "Days" : "วัน",
         price: lang === "en" ? "THB" : "บาท",
         payTitle: lang === "en" ? "Payment" : "ชำระเงิน",
@@ -114,7 +142,27 @@ export default function SubscriptionPage() {
         verifying: lang === "en" ? "Verifying..." : "กำลังตรวจสอบ...",
         back: lang === "en" ? "Back" : "กลับ",
         free: "Free",
-        premium: "Premium"
+        premium: "Premium",
+        premiumActive: lang === "en" ? "Premium Active" : "Premium ใช้งานอยู่",
+        premiumExpired: lang === "en" ? "Expired" : "หมดอายุแล้ว",
+        historyTitle: lang === "en" ? "Payment History" : "ประวัติการชำระเงิน",
+        noHistory: lang === "en" ? "No payment history" : "ยังไม่มีประวัติการชำระเงิน",
+        date: lang === "en" ? "Date" : "วันที่",
+        plan: lang === "en" ? "Plan" : "แพลน",
+        amountCol: lang === "en" ? "Amount" : "ยอดเงิน",
+        statusCol: lang === "en" ? "Status" : "สถานะ",
+    };
+
+    // Derive status badge
+    const getStatusBadge = () => {
+        if (isActive) {
+            return <Badge variant="default" className="bg-green-600">{t.premiumActive}</Badge>;
+        }
+        if (currentTier === "premium" || expiresAt) {
+            // Expired premium — server already normalized tier to "free"
+            return <Badge variant="destructive">{t.premiumExpired}</Badge>;
+        }
+        return <Badge variant="secondary">{t.free}</Badge>;
     };
 
     return (
@@ -139,13 +187,17 @@ export default function SubscriptionPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center gap-4">
-                        <Badge variant={currentTier === "premium" ? "default" : "secondary"}>
-                            {currentTier === "premium" ? t.premium : t.free}
-                        </Badge>
+                    <div className="flex items-center gap-4 flex-wrap">
+                        {getStatusBadge()}
                         {expiresAt && (
                             <span className="text-sm text-slate-500">
                                 {t.expires} {new Date(expiresAt).toLocaleDateString(lang === 'en' ? 'en-US' : 'th-TH')}
+                            </span>
+                        )}
+                        {isActive && daysRemaining > 0 && (
+                            <span className="text-sm text-slate-500 flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" />
+                                {daysRemaining} {t.daysLeft}
                             </span>
                         )}
                     </div>
@@ -239,6 +291,55 @@ export default function SubscriptionPage() {
                     </CardFooter>
                 </Card>
             )}
+
+            {/* Payment History */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <History className="h-5 w-5" />
+                        {t.historyTitle}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {paymentHistory.length === 0 ? (
+                        <p className="text-sm text-slate-500">{t.noHistory}</p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b text-left text-slate-500">
+                                        <th className="pb-2 pr-4">{t.date}</th>
+                                        <th className="pb-2 pr-4">{t.plan}</th>
+                                        <th className="pb-2 pr-4">{t.amountCol}</th>
+                                        <th className="pb-2">{t.statusCol}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paymentHistory.map((item) => (
+                                        <tr key={item.id} className="border-b last:border-0">
+                                            <td className="py-2 pr-4">
+                                                {new Date(item.created_at).toLocaleDateString(
+                                                    lang === "en" ? "en-US" : "th-TH"
+                                                )}
+                                            </td>
+                                            <td className="py-2 pr-4 capitalize">{item.plan_type}</td>
+                                            <td className="py-2 pr-4">{item.amount} {t.price}</td>
+                                            <td className="py-2">
+                                                <Badge
+                                                    variant={item.status === "verified" ? "default" : "destructive"}
+                                                    className="text-xs"
+                                                >
+                                                    {item.status}
+                                                </Badge>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

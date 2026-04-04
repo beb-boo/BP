@@ -8,6 +8,7 @@ from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate
 from ..utils.security import verify_api_key, get_current_user, verify_password
 from ..utils.timezone import now_tz, get_timezone_choices_dict, is_valid_timezone
 from ..utils.encryption import decrypt_value, encrypt_value, hash_value
+from ..utils.subscription import get_subscription_info
 from ..otp_service import otp_service
 import hashlib
 import logging
@@ -43,9 +44,14 @@ async def get_current_user_profile(
     user_profile = UserProfileResponse.model_validate(current_user)
     
     user_data = user_profile.dict()
-    # Explicitly handle decrypted fields if manual override needed, 
-    # but the Model properties should handle it.
-    
+
+    # Overlay normalized subscription state
+    sub_info = get_subscription_info(current_user)
+    user_data["subscription_tier"] = sub_info["subscription_tier"]
+    user_data["is_premium_active"] = sub_info["is_premium_active"]
+    user_data["subscription_expires_at"] = sub_info["subscription_expires_at"]
+    user_data["days_remaining"] = sub_info["days_remaining"]
+
     return create_standard_response(
         status="success",
         message="Profile retrieved successfully",
@@ -174,8 +180,14 @@ async def update_user_profile(
 
         user_profile = UserProfileResponse.model_validate(current_user)
         user_data = user_profile.dict()
-        
-        # Ensure sensitive fields are returned decrypted (Properties handle this)
+
+        # Overlay normalized subscription state (same as GET /me)
+        sub_info = get_subscription_info(current_user)
+        user_data["subscription_tier"] = sub_info["subscription_tier"]
+        user_data["is_premium_active"] = sub_info["is_premium_active"]
+        user_data["subscription_expires_at"] = sub_info["subscription_expires_at"]
+        user_data["days_remaining"] = sub_info["days_remaining"]
+
         return create_standard_response(
             status="success",
             message="Profile updated successfully",

@@ -269,3 +269,28 @@ class Payment(Base):
     verified_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="payments")
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action = Column(String, nullable=False)
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=now_tz)
+
+
+class StaffManagementState(Base):
+    __tablename__ = "staff_management_states"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    management_source = Column(String, nullable=False, index=True, default="env")
+    original_role = Column(String, nullable=False)
+    last_sync_action = Column(String, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=now_tz)
+    updated_at = Column(DateTime, default=now_tz, onupdate=now_tz)
+
+    user = relationship("User")

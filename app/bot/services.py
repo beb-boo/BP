@@ -12,8 +12,9 @@ from app.utils.security import (
     MAX_LOGIN_ATTEMPTS,
 )
 from app.utils.encryption import encrypt_value, decrypt_value, hash_value
-from app.utils.tmc_checker import verify_doctor_with_tmc
+from app.utils.tmc_checker import verify_doctor_with_tmc_v3
 from app.utils.timezone import now_tz, TIMEZONE_CHOICES, is_valid_timezone, format_datetime
+from app.utils.subscription import get_subscription_info, normalize_subscription_state
 from app.database import SessionLocal
 import logging
 import jwt
@@ -165,25 +166,44 @@ class BotService:
         """
         with SessionLocal() as db:
             try:
+                # 0. Check duplicate medical license
+                if user_data.get('medical_license'):
+                    from app.utils.encryption import hash_value
+                    lic_hash = hash_value(user_data['medical_license'])
+                    existing_lic = db.query(User).filter(User.medical_license_hash == lic_hash).first()
+                    if existing_lic:
+                        logger.warning(f"Duplicate medical license during bot registration")
+                        return None
+
                 # 1. Check if Doctor -> Verify with TMC
                 verification_status = "verified" # Default for patient
                 verification_logs = None
-                
+
                 if user_data['role'] == 'doctor':
-                    # Split name for checking (Simple split, ideally ask user for First/Last separately)
+                    import json as _json
                     parts = user_data['full_name'].split()
                     if len(parts) >= 2:
                         first_name = parts[0]
                         last_name = " ".join(parts[1:])
-                        # This should be awaited if async, but we are inside a blocking DB call?
-                        # Wait, handlers are async. This service method should probably be async too 
-                        # or we await the TMC check outside DB transaction.
-                        result = await verify_doctor_with_tmc(first_name, last_name)
-                        if result['verified']:
+                        result = await verify_doctor_with_tmc_v3(
+                            first_name_th=first_name,
+                            last_name_th=last_name,
+                        )
+                        if result.verified:
                             verification_status = "verified"
+                        elif result.license_suspended:
+                            verification_status = "rejected"
                         else:
                             verification_status = "pending"
-                        verification_logs = f"Bot Auto-Check: {result['message']}"
+                        verification_logs = _json.dumps({
+                            "source": "bot",
+                            "checked_at": str(now_tz()),
+                            "verified": result.verified,
+                            "name_th": result.full_name_th,
+                            "name_en": result.full_name_en,
+                            "license_suspended": result.license_suspended,
+                            "message": result.message,
+                        }, ensure_ascii=False)
                     else:
                         verification_status = "pending"
                         verification_logs = "Bot Auto-Check: Name format invalid"
@@ -202,6 +222,7 @@ class BotService:
                     verification_logs=verification_logs,
                     language=user_data.get('register_lang', 'th'),
                     timezone=user_data.get('timezone', 'Asia/Bangkok'),
+                    medical_license=user_data.get('medical_license'),
                     created_at=now_tz(),
                     updated_at=now_tz()
                 )
@@ -345,136 +366,51 @@ class BotService:
 
     @staticmethod
     def get_subscription_status(user_id: int):
-        """Get user subscription status."""
-        from datetime import datetime
+        """Get user subscription status (normalized via central utility)."""
         with SessionLocal() as db:
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
                 return None
-            
-            is_active = False
-            days_remaining = 0
-            
-            if user.subscription_tier == "premium" and user.subscription_expires_at:
-                if user.subscription_expires_at > now_tz():
-                    is_active = True
-                    days_remaining = (user.subscription_expires_at - now_tz()).days
-            
+
+            # Self-heal: persist downgrade if expired premium
+            normalize_subscription_state(user, db=db)
+
+            sub_info = get_subscription_info(user)
+
             return {
-                "tier": user.subscription_tier,
-                "is_active": is_active,
+                "tier": sub_info["subscription_tier"],
+                "is_active": sub_info["is_premium_active"],
                 "expires_at": user.subscription_expires_at.strftime("%Y-%m-%d") if user.subscription_expires_at else "-",
-                "days_remaining": days_remaining,
+                "days_remaining": sub_info["days_remaining"],
                 "language": user.language or "th",
                 "timezone": user.timezone or "Asia/Bangkok"
             }
 
     @staticmethod
     def verify_slip_payment(user_id: int, image_bytes: bytes, plan_type: str):
-        """Verify slip and upgrade user."""
-        from app.services.slipok import slipok_service
-        from app.config.pricing import get_plan, is_valid_amount
-        from app.models import Payment
-        import uuid
-        import json
-        from datetime import timedelta
+        """Verify slip and upgrade user (delegates to shared payment service)."""
+        from app.services.payment_service import verify_and_upgrade, PaymentError
+        from app.config.pricing import SUBSCRIPTION_PLANS
 
-        # 1. Get User Config
         with SessionLocal() as db:
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
                 return {"success": False, "error": "User not found"}
-            
+
             lang = user.language or "th"
-            
-            # 2. Validate Plan
-            plan = get_plan(plan_type)
-            if not plan:
-                return {"success": False, "error": "Invalid Plan"}
 
-            # 3. Check Service
-            if not slipok_service.api_key:
-                return {"success": False, "error": "Payment Service Unavailable"}
-
-            # 4. Verify with SlipOK
-            expected_amount = plan["price"]
-            result = slipok_service.verify_slip_image(image_bytes, expected_amount, language=lang)
-            
-            if not result.success:
-                 # Log Failure
-                payment = Payment(
-                    user_id=user_id,
-                    trans_ref=f"FAILED-{uuid.uuid4()}",
-                    trans_ref_hash=hash_value(f"FAILED-{uuid.uuid4()}-{now_tz()}"),
-                    amount=0,
-                    plan_type=plan_type,
-                    plan_amount=expected_amount,
-                    status="failed",
-                    error_code=result.error_code,
-                    error_message=result.error_message,
-                    verification_response=json.dumps(result.raw_response) if result.raw_response else None
-                )
-                db.add(payment)
-                db.commit()
-                return {"success": False, "error": result.error_message}
-
-            # 5. Check Duplicate
-            trans_ref_hash = hash_value(result.trans_ref)
-            existing = db.query(Payment).filter(
-                Payment.trans_ref_hash == trans_ref_hash,
-                Payment.status == "verified"
-            ).first()
-
-            if existing:
-                msg = "Slip already used" if lang == "en" else "สลิปนี้เคยใช้ชำระเงินแล้ว"
-                return {"success": False, "error": msg}
-
-            # 6. Verify Amount
-            if not is_valid_amount(expected_amount, result.amount):
-                msg = f"Amount mismatch ({result.amount} vs {expected_amount})" if lang == "en" \
-                      else f"ยอดเงิน ({result.amount} บาท) ไม่ตรงกับราคาแพลน ({expected_amount} บาท)"
-                return {"success": False, "error": msg}
-
-            # 7. Success - Save Payment
-            payment = Payment(
-                user_id=user_id,
-                trans_ref=result.trans_ref,
-                trans_ref_hash=trans_ref_hash,
-                amount=result.amount,
-                sending_bank=result.sending_bank,
-                sender_name_encrypted=encrypt_value(result.sender_name) if result.sender_name else None,
-                receiver_name=result.receiver_name,
-                trans_date=result.trans_date,
-                trans_time=result.trans_time,
-                plan_type=plan_type,
-                plan_amount=expected_amount,
-                status="verified",
-                verification_response=json.dumps(result.raw_response),
-                verified_at=now_tz()
-            )
-            db.add(payment)
-
-            # 8. Upgrade User
-            duration_days = plan["duration_days"]
-            if (user.subscription_tier == "premium" and
-                user.subscription_expires_at and
-                user.subscription_expires_at > now_tz()):
-                new_expiry = user.subscription_expires_at + timedelta(days=duration_days)
-            else:
-                new_expiry = now_tz() + timedelta(days=duration_days)
-
-            user.subscription_tier = "premium"
-            user.subscription_expires_at = new_expiry
-            user.updated_at = now_tz()
-
-            db.commit()
-            
-            return {
-                "success": True,
-                "amount": result.amount,
-                "expires_at": new_expiry.strftime("%Y-%m-%d"),
-                "plan_name": plan['name']
-            }
+            try:
+                result = verify_and_upgrade(db, user, image_bytes, plan_type, lang)
+                plan = SUBSCRIPTION_PLANS.get(plan_type, {})
+                plan_name = plan.get("name_en") if lang == "en" else plan.get("name", plan_type)
+                return {
+                    "success": True,
+                    "amount": result["amount"],
+                    "expires_at": result["subscription_expires_at"],
+                    "plan_name": plan_name,
+                }
+            except PaymentError as e:
+                return {"success": False, "error": e.message}
 
     # ================================================================
     # Profile Management
@@ -488,11 +424,16 @@ class BotService:
             if not user:
                 return None
 
+            # Self-heal: persist downgrade if expired premium
+            normalize_subscription_state(user, db=db)
+
             gender_map = {"male": "Male", "female": "Female", "other": "Other"}
             role_map = {"patient": "Patient", "doctor": "Doctor"}
 
             dob = user.date_of_birth
             dob_str = dob.strftime("%d/%m/%Y") if dob else "-"
+
+            sub_info = get_subscription_info(user)
 
             return {
                 "name": user.full_name or "-",
@@ -502,7 +443,10 @@ class BotService:
                 "dob": dob_str,
                 "role": role_map.get(user.role, user.role or "-"),
                 "timezone": user.timezone or "Asia/Bangkok",
-                "subscription": user.subscription_tier or "free",
+                "subscription": sub_info["subscription_tier"],
+                "is_premium_active": sub_info["is_premium_active"],
+                "subscription_expires_at": user.subscription_expires_at.strftime("%Y-%m-%d") if user.subscription_expires_at else "-",
+                "days_remaining": sub_info["days_remaining"],
                 "language": user.language or "th",
             }
 

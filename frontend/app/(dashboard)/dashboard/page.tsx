@@ -45,14 +45,20 @@ import { buildLocalDateTimePayload, formatDateForInput } from "@/lib/date-utils"
 import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
 import type {
     AccessRequestItem,
+    AdminAuditEntry,
+    AdminUserItem,
     AppUser,
     AuthorizedDoctor,
     BPRecord,
     BPStats,
+    DoctorSearchResult,
     OCRResultPayload,
     PaginationMeta,
     PatientSummary,
 } from "@/lib/app-types";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ShieldCheck, UserX, UserCheck, ClipboardList } from "lucide-react";
 
 const defaultPagination: PaginationMeta = { current_page: 1, total_pages: 1 };
 
@@ -63,23 +69,62 @@ export default function DashboardPage() {
     const { t, setLanguage } = useLanguage();
 
     useEffect(() => {
-        const userCookie = Cookies.get("user");
-        if (!userCookie) {
-            router.push("/auth/login");
-            return;
-        }
-        try {
-            const userData = JSON.parse(userCookie) as AppUser;
-            setUser(userData);
-            if (userData.language === "en" || userData.language === "th") {
-                setLanguage(userData.language);
+        let isMounted = true;
+
+        const loadUser = async () => {
+            const userCookie = Cookies.get("user");
+            if (!userCookie) {
+                router.push("/auth/login");
+                return;
             }
-        } catch {
-            router.push("/auth/login");
-        } finally {
-            setLoading(false);
-        }
-    }, [router, setLanguage]);
+
+            let cachedUser: AppUser;
+            try {
+                cachedUser = JSON.parse(userCookie) as AppUser;
+                if (cachedUser.language === "en" || cachedUser.language === "th") {
+                    setLanguage(cachedUser.language);
+                }
+            } catch {
+                Cookies.remove("token");
+                Cookies.remove("user");
+                router.push("/auth/login");
+                return;
+            }
+
+            try {
+                const res = await api.get<ApiResponse<{ profile: AppUser }>>("/users/me");
+                const freshUser = res.data.data.profile;
+                if (!isMounted) {
+                    return;
+                }
+
+                setUser(freshUser);
+                if (freshUser.language === "en" || freshUser.language === "th") {
+                    setLanguage(freshUser.language);
+                }
+                Cookies.set("user", JSON.stringify(freshUser), { expires: 7 });
+            } catch (error: unknown) {
+                if (!isMounted) {
+                    return;
+                }
+                Cookies.remove("token");
+                Cookies.remove("user");
+                toast.error(getApiErrorMessage(error, t('common.error')));
+                router.push("/auth/login");
+                return;
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        loadUser();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [router, setLanguage, t]);
 
     const handleLogout = async () => {
         try {
@@ -140,7 +185,7 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {user.role === "patient" ? <PatientView user={user} /> : <DoctorView />}
+            {user.role === "staff" ? <AdminView /> : user.role === "patient" ? <PatientView user={user} /> : <DoctorView user={user} />}
         </div>
     );
 }
@@ -676,7 +721,12 @@ function ManageDoctorsDialog() {
     const [doctors, setDoctors] = useState<AuthorizedDoctor[]>([]);
     const [requests, setRequests] = useState<AccessRequestItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [searchId, setSearchId] = useState("");
+
+    // Search state
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchBy, setSearchBy] = useState<"name" | "license" | "phone">("name");
+    const [searching, setSearching] = useState(false);
+    const [searchResults, setSearchResults] = useState<DoctorSearchResult[]>([]);
     const [authorizing, setAuthorizing] = useState(false);
 
     const fetchData = async () => {
@@ -698,6 +748,40 @@ function ManageDoctorsDialog() {
     useEffect(() => {
         if (open) fetchData();
     }, [open]);
+
+    const handleSearch = async () => {
+        if (!searchQuery || searchQuery.trim().length < 2) return;
+        setSearching(true);
+        setSearchResults([]);
+        try {
+            const res = await api.get<ApiResponse<{ doctors: DoctorSearchResult[] }>>(
+                `/patient/search-doctors?q=${encodeURIComponent(searchQuery.trim())}&search_by=${searchBy}`
+            );
+            setSearchResults(res.data.data.doctors || []);
+            if ((res.data.data.doctors || []).length === 0) {
+                toast.info(t('doctor.search_no_results', 'No doctors found'));
+            }
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleAuthorize = async (doctorId: number) => {
+        setAuthorizing(true);
+        try {
+            await api.post("/patient/authorize-doctor", { doctor_id: doctorId });
+            toast.success(t('doctor.authorized', 'Doctor authorized'));
+            setSearchResults([]);
+            setSearchQuery("");
+            fetchData();
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
+        } finally {
+            setAuthorizing(false);
+        }
+    };
 
     const handleApprove = async (requestId: number) => {
         try {
@@ -729,21 +813,6 @@ function ManageDoctorsDialog() {
         }
     };
 
-    const handleAuthorize = async () => {
-        if (!searchId) return;
-        setAuthorizing(true);
-        try {
-            await api.post("/patient/authorize-doctor", { doctor_id: parseInt(searchId) });
-            toast.success(t('doctor.authorized', 'Doctor authorized'));
-            setSearchId("");
-            fetchData();
-        } catch (error: unknown) {
-            toast.error(getApiErrorMessage(error, t('common.error')));
-        } finally {
-            setAuthorizing(false);
-        }
-    };
-
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -761,17 +830,59 @@ function ManageDoctorsDialog() {
                     <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
                 ) : (
                     <div className="space-y-6">
-                        {/* Authorize new doctor */}
-                        <div className="flex gap-2">
-                            <Input
-                                placeholder={t('doctor.enter_id', 'Doctor ID')}
-                                value={searchId}
-                                onChange={e => setSearchId(e.target.value)}
-                                type="number"
-                            />
-                            <Button onClick={handleAuthorize} disabled={authorizing || !searchId}>
-                                {authorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : t('doctor.authorize', 'Authorize')}
-                            </Button>
+                        {/* Search & Authorize doctor */}
+                        <div>
+                            <h4 className="font-medium mb-2">{t('doctor.search_title', 'Find & Authorize Doctor')}</h4>
+                            <div className="flex gap-2 mb-2">
+                                <Select value={searchBy} onValueChange={(v) => setSearchBy(v as "name" | "license" | "phone")}>
+                                    <SelectTrigger className="w-[160px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="name">{t('doctor.search_by_name', 'Name')}</SelectItem>
+                                        <SelectItem value="license">{t('doctor.search_by_license', 'License No.')}</SelectItem>
+                                        <SelectItem value="phone">{t('doctor.search_by_phone', 'Phone')}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Input
+                                    placeholder={
+                                        searchBy === "name" ? t('doctor.search_placeholder_name', 'Doctor name')
+                                        : searchBy === "license" ? t('doctor.search_placeholder_license', 'License number')
+                                        : t('doctor.search_placeholder_phone', 'Phone number')
+                                    }
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    onKeyDown={e => e.key === "Enter" && handleSearch()}
+                                />
+                                <Button onClick={handleSearch} disabled={searching || searchQuery.trim().length < 2}>
+                                    {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.search', 'Search')}
+                                </Button>
+                            </div>
+
+                            {/* Search results */}
+                            {searchResults.length > 0 && (
+                                <div className="border rounded p-2 space-y-1 max-h-48 overflow-y-auto">
+                                    {searchResults.map((doc) => (
+                                        <div key={doc.doctor_id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded">
+                                            <div>
+                                                <span className="text-sm font-medium">{doc.full_name}</span>
+                                                {doc.license_year && (
+                                                    <span className="text-xs text-slate-500 ml-2">
+                                                        {t('doctor.licensed_since', 'Licensed since')} {doc.license_year}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => handleAuthorize(doc.doctor_id)}
+                                                disabled={authorizing}
+                                            >
+                                                {authorizing ? <Loader2 className="h-3 w-3 animate-spin" /> : t('doctor.authorize', 'Authorize')}
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Pending requests */}
@@ -816,7 +927,7 @@ function ManageDoctorsDialog() {
     );
 }
 
-function DoctorView() {
+function DoctorView({ user }: { user: AppUser }) {
     const { t } = useLanguage();
     const [patients, setPatients] = useState<PatientSummary[]>([]);
     const [accessRequests, setAccessRequests] = useState<AccessRequestItem[]>([]);
@@ -824,7 +935,16 @@ function DoctorView() {
     const [searchPatientId, setSearchPatientId] = useState("");
     const [requesting, setRequesting] = useState(false);
 
+    // View Records state
+    const [selectedPatient, setSelectedPatient] = useState<PatientSummary | null>(null);
+    const [patientRecords, setPatientRecords] = useState<BPRecord[]>([]);
+    const [recordsLoading, setRecordsLoading] = useState(false);
+    const [showRecordsDialog, setShowRecordsDialog] = useState(false);
+
+    const isVerified = user.verification_status === "verified";
+
     const fetchData = async () => {
+        if (!isVerified) { setLoading(false); return; }
         setLoading(true);
         try {
             const [patientsRes, requestsRes] = await Promise.all([
@@ -867,10 +987,44 @@ function DoctorView() {
         }
     };
 
+    const handleViewRecords = async (patient: PatientSummary) => {
+        setSelectedPatient(patient);
+        setShowRecordsDialog(true);
+        setRecordsLoading(true);
+        try {
+            const res = await api.get<ApiResponse<{ records: BPRecord[] }>>(`/doctor/patients/${patient.patient_id}/bp-records`);
+            setPatientRecords(res.data.data?.records || []);
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
+            setPatientRecords([]);
+        } finally {
+            setRecordsLoading(false);
+        }
+    };
+
     const pendingRequests = accessRequests.filter((request) => request.status === "pending");
 
     return (
         <div className="space-y-6">
+            {/* Verification Banner */}
+            {user.verification_status === "pending" && (
+                <Card className="bg-yellow-50 border-yellow-200">
+                    <CardContent className="flex items-center gap-3 py-4">
+                        <Loader2 className="h-5 w-5 text-yellow-600" />
+                        <p className="text-sm text-yellow-800">{t('doctor.verification_pending')}</p>
+                    </CardContent>
+                </Card>
+            )}
+            {user.verification_status === "rejected" && (
+                <Card className="bg-red-50 border-red-200">
+                    <CardContent className="flex items-center gap-3 py-4">
+                        <X className="h-5 w-5 text-red-600" />
+                        <p className="text-sm text-red-800">{t('doctor.verification_rejected')}</p>
+                    </CardContent>
+                </Card>
+            )}
+
+            {!isVerified ? null : (<>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -946,7 +1100,7 @@ function DoctorView() {
                                                 <TableCell>{patient.gender || "-"}</TableCell>
                                                 <TableCell>{patient.age || "-"}</TableCell>
                                                 <TableCell>
-                                                    <Button size="sm" variant="outline" onClick={() => toast.info(`View records for patient ${patient.patient_id}`)}>
+                                                    <Button size="sm" variant="outline" onClick={() => handleViewRecords(patient)}>
                                                         {t('doctor.view_records', 'View Records')}
                                                     </Button>
                                                 </TableCell>
@@ -1008,6 +1162,480 @@ function DoctorView() {
                     </Card>
                 </TabsContent>
             </Tabs>
+            </>)}
+
+            {/* View Records Dialog */}
+            <Dialog open={showRecordsDialog} onOpenChange={setShowRecordsDialog}>
+                <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>{t('doctor.patient_records')} — {selectedPatient?.full_name}</DialogTitle>
+                        <DialogDescription>
+                            {t('doctor.view_records')}
+                        </DialogDescription>
+                    </DialogHeader>
+                    {recordsLoading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                    ) : patientRecords.length === 0 ? (
+                        <p className="text-sm text-slate-500 py-4">{t('common.no_data')}</p>
+                    ) : (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>{t('record.date')}</TableHead>
+                                    <TableHead>{t('record.systolic')}</TableHead>
+                                    <TableHead>{t('record.diastolic')}</TableHead>
+                                    <TableHead>{t('record.pulse')}</TableHead>
+                                    <TableHead>{t('record.notes')}</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {patientRecords.map((r, i) => (
+                                    <TableRow key={r.id || i}>
+                                        <TableCell>
+                                            <div className="flex flex-col">
+                                                <span>{new Date(r.measurement_date).toLocaleDateString()}</span>
+                                                <span className="text-xs text-slate-500">{r.measurement_time}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="font-medium">{r.systolic}</TableCell>
+                                        <TableCell>{r.diastolic}</TableCell>
+                                        <TableCell>{r.pulse}</TableCell>
+                                        <TableCell className="text-slate-500 text-xs">{r.notes || "-"}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    )}
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+function AdminView() {
+    const { t } = useLanguage();
+    const [users, setUsers] = useState<AdminUserItem[]>([]);
+    const [pendingDoctors, setPendingDoctors] = useState<AdminUserItem[]>([]);
+    const [pendingTotal, setPendingTotal] = useState(0);
+    const [auditLog, setAuditLog] = useState<AdminAuditEntry[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [pagination, setPagination] = useState<PaginationMeta>(defaultPagination);
+    const [auditPagination, setAuditPagination] = useState<PaginationMeta>(defaultPagination);
+    const [roleFilter, setRoleFilter] = useState("all");
+    const [statusFilter, setStatusFilter] = useState("all");
+
+    // Confirm dialog state
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [confirmMessage, setConfirmMessage] = useState("");
+    const [confirmAction, setConfirmAction] = useState<((reason: string) => Promise<void>) | null>(null);
+    const [confirmReason, setConfirmReason] = useState("");
+    const [confirmRequiresReason, setConfirmRequiresReason] = useState(false);
+
+    // User detail dialog
+    const [detailUser, setDetailUser] = useState<AdminUserItem | null>(null);
+    const [detailPayments, setDetailPayments] = useState<Array<{ id: number; plan_type: string; amount: number; status: string; created_at: string | null }>>([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+
+    const fetchUsers = async (page = 1) => {
+        setLoading(true);
+        try {
+            const params = new URLSearchParams({ page: String(page), per_page: "20" });
+            if (roleFilter !== "all") params.set("role", roleFilter);
+            if (statusFilter !== "all") params.set("verification_status", statusFilter);
+            const res = await api.get(`/admin/users?${params}`);
+            setUsers(res.data.data?.users || []);
+            setPagination(res.data.meta || defaultPagination);
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchPendingDoctors = async () => {
+        try {
+            const res = await api.get(`/admin/users?role=doctor&verification_status=pending&per_page=100`);
+            setPendingDoctors(res.data.data?.users || []);
+            setPendingTotal(res.data.meta?.total ?? res.data.data?.users?.length ?? 0);
+        } catch { /* ignore — pending tab is supplementary */ }
+    };
+
+    const fetchAuditLog = async (page = 1) => {
+        try {
+            const res = await api.get(`/admin/audit-log?page=${page}&per_page=50`);
+            setAuditLog(res.data.data?.entries || []);
+            setAuditPagination(res.data.meta || defaultPagination);
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('common.error')));
+        }
+    };
+
+    useEffect(() => { fetchUsers(); fetchPendingDoctors(); }, [roleFilter, statusFilter]);
+
+    const openConfirm = (message: string, action: (reason: string) => Promise<void>, requiresReason = false) => {
+        setConfirmMessage(message);
+        setConfirmAction(() => action);
+        setConfirmReason("");
+        setConfirmRequiresReason(requiresReason);
+        setConfirmOpen(true);
+    };
+
+    const handleConfirm = async () => {
+        if (confirmAction) await confirmAction(confirmReason);
+        setConfirmOpen(false);
+        setConfirmReason("");
+        fetchUsers(pagination.current_page);
+        fetchPendingDoctors();
+    };
+
+    const handleVerify = (userId: number) => {
+        openConfirm(t('admin.confirm_verify'), async (reason) => {
+            await api.post(`/admin/users/${userId}/verify`, { action: "verify", reason: reason || undefined });
+            toast.success(t('admin.action_success'));
+        }, true);
+    };
+
+    const handleReject = (userId: number) => {
+        openConfirm(t('admin.confirm_reject'), async (reason) => {
+            await api.post(`/admin/users/${userId}/verify`, { action: "reject", reason: reason || undefined });
+            toast.success(t('admin.action_success'));
+        }, true);
+    };
+
+    const handleDeactivate = (userId: number) => {
+        openConfirm(t('admin.confirm_deactivate'), async (reason) => {
+            await api.post(`/admin/users/${userId}/deactivate`, { reason: reason || undefined });
+            toast.success(t('admin.action_success'));
+        }, true);
+    };
+
+    const handleActivate = (userId: number) => {
+        openConfirm(t('admin.confirm_activate'), async (reason) => {
+            await api.post(`/admin/users/${userId}/activate`, { reason: reason || undefined });
+            toast.success(t('admin.action_success'));
+        }, true);
+    };
+
+    const openDetail = async (u: AdminUserItem) => {
+        setDetailUser(u);
+        setDetailLoading(true);
+        try {
+            const [userRes, payRes] = await Promise.all([
+                api.get(`/admin/users/${u.id}`),
+                api.get(`/admin/users/${u.id}/payments`)
+            ]);
+            setDetailUser(userRes.data.data?.user || u);
+            setDetailPayments(payRes.data.data?.payments || []);
+        } catch { /* ignore */ } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center gap-2">
+                <ShieldCheck className="h-6 w-6 text-blue-600" />
+                <h2 className="text-xl font-bold">{t('admin.title')}</h2>
+            </div>
+
+            <Tabs defaultValue="users" className="space-y-4" onValueChange={(v) => { if (v === "audit") fetchAuditLog(); }}>
+                <TabsList>
+                    <TabsTrigger value="users">{t('admin.users')}</TabsTrigger>
+                    <TabsTrigger value="pending">{t('admin.pending_doctors')} {pendingTotal > 0 && <Badge variant="destructive" className="ml-1">{pendingTotal}</Badge>}</TabsTrigger>
+                    <TabsTrigger value="audit">{t('admin.audit_log')}</TabsTrigger>
+                </TabsList>
+
+                {/* Users Tab */}
+                <TabsContent value="users" className="space-y-4">
+                    <div className="flex gap-2">
+                        <Select value={roleFilter} onValueChange={setRoleFilter}>
+                            <SelectTrigger className="w-[150px]"><SelectValue placeholder={t('admin.all_roles')} /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">{t('admin.all_roles')}</SelectItem>
+                                <SelectItem value="patient">Patient</SelectItem>
+                                <SelectItem value="doctor">Doctor</SelectItem>
+                                <SelectItem value="staff">Staff</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                            <SelectTrigger className="w-[150px]"><SelectValue placeholder={t('admin.all_statuses')} /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">{t('admin.all_statuses')}</SelectItem>
+                                <SelectItem value="pending">{t('admin.pending')}</SelectItem>
+                                <SelectItem value="verified">{t('admin.verified')}</SelectItem>
+                                <SelectItem value="rejected">{t('admin.rejected')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Card>
+                        <CardContent className="pt-4">
+                            {loading ? (
+                                <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                            ) : users.length === 0 ? (
+                                <p className="text-sm text-slate-500 py-4">{t('common.no_data')}</p>
+                            ) : (
+                                <>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>ID</TableHead>
+                                                <TableHead>{t('admin.name')}</TableHead>
+                                                <TableHead>{t('admin.role')}</TableHead>
+                                                <TableHead>{t('admin.status')}</TableHead>
+                                                <TableHead>{t('admin.subscription')}</TableHead>
+                                                <TableHead>{t('admin.actions')}</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {users.map((u) => (
+                                                <TableRow key={u.id}>
+                                                    <TableCell>{u.id}</TableCell>
+                                                    <TableCell>
+                                                        <button className="text-blue-600 hover:underline text-left" onClick={() => openDetail(u)}>
+                                                            {u.full_name_masked}
+                                                        </button>
+                                                    </TableCell>
+                                                    <TableCell><Badge variant="outline">{u.role}</Badge></TableCell>
+                                                    <TableCell>
+                                                        <Badge variant={u.is_active ? "default" : "destructive"}>
+                                                            {u.is_active ? t('admin.active') : t('admin.inactive')}
+                                                        </Badge>
+                                                        {u.role === "doctor" && (
+                                                            <Badge className="ml-1" variant={u.verification_status === "verified" ? "default" : u.verification_status === "rejected" ? "destructive" : "outline"}>
+                                                                {u.verification_status}
+                                                            </Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>{u.subscription_tier}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex gap-1">
+                                                            {u.role === "doctor" && u.verification_status === "pending" && (
+                                                                <>
+                                                                    <Button size="sm" variant="outline" onClick={() => handleVerify(u.id)} title={t('admin.verify')}>
+                                                                        <UserCheck className="h-3 w-3" />
+                                                                    </Button>
+                                                                    <Button size="sm" variant="outline" onClick={() => handleReject(u.id)} title={t('admin.reject')}>
+                                                                        <UserX className="h-3 w-3" />
+                                                                    </Button>
+                                                                </>
+                                                            )}
+                                                            {u.is_active ? (
+                                                                <Button size="sm" variant="ghost" onClick={() => handleDeactivate(u.id)} title={t('admin.deactivate')}>
+                                                                    <UserX className="h-3 w-3 text-red-500" />
+                                                                </Button>
+                                                            ) : (
+                                                                <Button size="sm" variant="ghost" onClick={() => handleActivate(u.id)} title={t('admin.activate')}>
+                                                                    <UserCheck className="h-3 w-3 text-green-500" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                    <div className="flex items-center justify-end space-x-2 py-4">
+                                        <span className="text-sm text-slate-500">{t('admin.page')} {pagination.current_page} / {pagination.total_pages}</span>
+                                        <Button variant="outline" size="sm" onClick={() => fetchUsers(pagination.current_page - 1)} disabled={pagination.current_page <= 1}>
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => fetchUsers(pagination.current_page + 1)} disabled={pagination.current_page >= pagination.total_pages}>
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Pending Doctors Tab */}
+                <TabsContent value="pending" className="space-y-4">
+                    <Card>
+                        <CardHeader><CardTitle>{t('admin.pending_doctors')}</CardTitle></CardHeader>
+                        <CardContent>
+                            {pendingTotal > 100 && (
+                                <p className="text-sm text-amber-600 mb-2">⚠️ {t('admin.pending_overflow').replace('{count}', String(pendingTotal))}</p>
+                            )}
+                            {pendingDoctors.length === 0 ? (
+                                <p className="text-sm text-slate-500">{t('common.no_data')}</p>
+                            ) : (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>ID</TableHead>
+                                            <TableHead>{t('admin.name')}</TableHead>
+                                            <TableHead>{t('admin.license')}</TableHead>
+                                            <TableHead>{t('admin.created')}</TableHead>
+                                            <TableHead>{t('admin.actions')}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {pendingDoctors.map((u) => (
+                                            <TableRow key={u.id}>
+                                                <TableCell>{u.id}</TableCell>
+                                                <TableCell>{u.full_name_masked}</TableCell>
+                                                <TableCell>{u.medical_license_masked || "-"}</TableCell>
+                                                <TableCell>{u.created_at ? new Date(u.created_at).toLocaleDateString() : "-"}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex gap-2">
+                                                        <Button size="sm" onClick={() => handleVerify(u.id)}>{t('admin.verify')}</Button>
+                                                        <Button size="sm" variant="destructive" onClick={() => handleReject(u.id)}>{t('admin.reject')}</Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Audit Log Tab */}
+                <TabsContent value="audit" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <div className="flex items-center gap-2">
+                                <ClipboardList className="h-5 w-5" />
+                                <CardTitle>{t('admin.audit_log')}</CardTitle>
+                            </div>
+                        </CardHeader>
+                        <CardContent>
+                            {auditLog.length === 0 ? (
+                                <p className="text-sm text-slate-500">{t('admin.no_audit_entries')}</p>
+                            ) : (
+                                <>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>{t('record.date')}</TableHead>
+                                                <TableHead>Admin</TableHead>
+                                                <TableHead>Action</TableHead>
+                                                <TableHead>Target</TableHead>
+                                                <TableHead>Details</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {auditLog.map((e) => (
+                                                <TableRow key={e.id}>
+                                                    <TableCell className="text-xs">{new Date(e.created_at).toLocaleString()}</TableCell>
+                                                    <TableCell>{e.admin_user_id}</TableCell>
+                                                    <TableCell><Badge variant="outline">{e.action}</Badge></TableCell>
+                                                    <TableCell>{e.target_user_id ?? "-"}</TableCell>
+                                                    <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">{e.details || "-"}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                    <div className="flex items-center justify-end space-x-2 py-4">
+                                        <span className="text-sm text-slate-500">{t('admin.page')} {auditPagination.current_page} / {auditPagination.total_pages}</span>
+                                        <Button variant="outline" size="sm" onClick={() => fetchAuditLog(auditPagination.current_page - 1)} disabled={auditPagination.current_page <= 1}>
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
+                                        <Button variant="outline" size="sm" onClick={() => fetchAuditLog(auditPagination.current_page + 1)} disabled={auditPagination.current_page >= auditPagination.total_pages}>
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
+
+            {/* Confirm Dialog */}
+            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>{t('common.confirm')}</DialogTitle>
+                        <DialogDescription>{confirmMessage}</DialogDescription>
+                    </DialogHeader>
+                    {confirmRequiresReason && (
+                        <div className="space-y-2">
+                            <Label htmlFor="confirm-reason">{t('admin.reason')}</Label>
+                            <Input
+                                id="confirm-reason"
+                                value={confirmReason}
+                                onChange={(e) => setConfirmReason(e.target.value)}
+                                placeholder={t('admin.reason')}
+                            />
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmOpen(false)}>{t('common.cancel')}</Button>
+                        <Button onClick={handleConfirm} disabled={confirmRequiresReason && !confirmReason.trim()}>{t('common.confirm')}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* User Detail Dialog */}
+            <Dialog open={!!detailUser} onOpenChange={(open) => { if (!open) setDetailUser(null); }}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle>{t('admin.user_detail')}</DialogTitle>
+                    </DialogHeader>
+                    {detailUser && (
+                        <div className="space-y-3 text-sm">
+                            <div className="grid grid-cols-2 gap-2">
+                                <span className="text-slate-500">ID</span><span>{detailUser.id}</span>
+                                <span className="text-slate-500">{t('admin.name')}</span><span>{detailUser.full_name_masked}</span>
+                                <span className="text-slate-500">{t('admin.email')}</span><span>{detailUser.email_masked || "-"}</span>
+                                <span className="text-slate-500">{t('admin.phone')}</span><span>{detailUser.phone_masked || "-"}</span>
+                                <span className="text-slate-500">{t('admin.role')}</span><span>{detailUser.role}</span>
+                                <span className="text-slate-500">{t('admin.status')}</span>
+                                <span>
+                                    <Badge variant={detailUser.is_active ? "default" : "destructive"}>
+                                        {detailUser.is_active ? t('admin.active') : t('admin.inactive')}
+                                    </Badge>
+                                </span>
+                                {detailUser.role === "doctor" && (
+                                    <>
+                                        <span className="text-slate-500">{t('admin.license')}</span><span>{detailUser.medical_license_masked || "-"}</span>
+                                        <span className="text-slate-500">Verification</span>
+                                        <span><Badge variant={detailUser.verification_status === "verified" ? "default" : "outline"}>{detailUser.verification_status}</Badge></span>
+                                    </>
+                                )}
+                                <span className="text-slate-500">{t('admin.subscription')}</span><span>{detailUser.subscription_tier} {detailUser.subscription_expires_at && `(exp: ${new Date(detailUser.subscription_expires_at).toLocaleDateString()})`}</span>
+                                <span className="text-slate-500">{t('admin.created')}</span><span>{detailUser.created_at ? new Date(detailUser.created_at).toLocaleDateString() : "-"}</span>
+                            </div>
+                            {detailUser.verification_logs && (
+                                <div>
+                                    <h4 className="font-medium text-slate-500 mb-1">Verification Logs</h4>
+                                    <pre className="text-xs bg-slate-100 p-2 rounded whitespace-pre-wrap">{detailUser.verification_logs}</pre>
+                                </div>
+                            )}
+                            {detailLoading ? (
+                                <div className="flex justify-center py-2"><Loader2 className="h-4 w-4 animate-spin" /></div>
+                            ) : detailPayments.length > 0 && (
+                                <div>
+                                    <h4 className="font-medium text-slate-500 mb-1">Payments</h4>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Plan</TableHead>
+                                                <TableHead>Amount</TableHead>
+                                                <TableHead>{t('admin.status')}</TableHead>
+                                                <TableHead>{t('record.date')}</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {detailPayments.map((p) => (
+                                                <TableRow key={p.id}>
+                                                    <TableCell>{p.plan_type}</TableCell>
+                                                    <TableCell>{p.amount}</TableCell>
+                                                    <TableCell><Badge variant={p.status === "verified" ? "default" : "outline"}>{p.status}</Badge></TableCell>
+                                                    <TableCell className="text-xs">{p.created_at ? new Date(p.created_at).toLocaleDateString() : "-"}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

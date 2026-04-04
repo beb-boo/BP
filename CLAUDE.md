@@ -66,17 +66,20 @@ docker-compose up --build  # Runs PostgreSQL + Redis + FastAPI + Bot + Frontend
 BP/
 ├── app/                    # Backend (FastAPI)
 │   ├── main.py            # App entry point, CORS, rate limiting
-│   ├── models.py          # SQLAlchemy models (User, BloodPressureRecord, DoctorPatient, Payment)
+│   ├── models.py          # SQLAlchemy models (User, BloodPressureRecord, DoctorPatient, Payment, AdminAuditLog)
 │   ├── schemas.py         # Pydantic validation schemas
 │   ├── database.py        # DB connection & session setup
 │   ├── routers/           # API endpoints
 │   │   ├── auth.py       # OTP, login, register, JWT
 │   │   ├── users.py      # Profile management
 │   │   ├── bp_records.py # CRUD for BP measurements, stats
-│   │   ├── doctor.py     # Doctor-patient relationships
+│   │   ├── doctor.py     # Doctor-patient relationships (verified doctor enforced)
+│   │   ├── admin.py      # Staff-only membership admin (masked PII, audit log)
 │   │   ├── ocr.py        # Image processing via Gemini
 │   │   ├── payment.py    # Subscription handling
 │   │   └── export.py     # CSV/PDF export
+│   ├── services/          # Shared business logic
+│   │   └── payment_service.py  # Unified payment verification (Web + Bot)
 │   ├── bot/              # Telegram bot (dual-mode: polling + webhook)
 │   │   ├── main.py       # Bot entry, build_application(), run_polling()
 │   │   ├── webhook.py    # FastAPI webhook handler for serverless
@@ -87,13 +90,18 @@ BP/
 │   │   └── package.json  # npm dependencies
 │   ├── otp_service.py    # OTP with dual backend (Memory / Redis)
 │   └── utils/            # Shared utilities
-│       ├── security.py   # JWT, hashing, API key verification
+│       ├── security.py   # JWT, hashing, API key, require_verified_doctor, require_staff
 │       ├── encryption.py # Fernet field-level encryption
+│       ├── subscription.py # Single source of truth for subscription state
 │       ├── rate_limiter.py # Centralized rate limiter (Memory / Redis)
 │       ├── chart_generator.py # BP chart generation (calls Node.js subprocess)
+│       ├── timezone.py   # Centralized timezone handling
 │       └── ocr_helper.py # Gemini integration
 │   ├── routers/
 │   │   └── telegram_auth.py # Telegram Mini App auth (HMAC verify → JWT)
+├── migrations/           # Manual schema migration scripts
+│   ├── migrate_schema.py # Main migration (language, admin_audit_logs)
+│   └── add_admin_audit_log.py # Standalone AdminAuditLog migration
 ├── frontend/             # Next.js web dashboard
 │   ├── app/              # App directory structure
 │   │   ├── auth/        # Login/register pages
@@ -161,6 +169,49 @@ Priority: OCR screen time → EXIF metadata → Current time
 - **SDK**: `telegram-web-app.js` loaded in `frontend/app/telegram/layout.tsx`
 - **No separate auth needed**: JWT from mini-app-auth works with all existing API endpoints
 
+### User Roles & Access Control
+
+Three roles: `patient`, `doctor`, `staff`. Role-specific behavior:
+
+| Role | Dashboard View | Special Guards |
+|------|---------------|----------------|
+| **patient** | BP records, stats, doctor access management | Standard `get_current_user` |
+| **doctor** | Patient list, BP record viewer | `require_verified_doctor` — must have `verification_status == "verified"` |
+| **staff** | Admin panel (users, pending doctors, audit log) | `require_staff` + optional `STAFF_ALLOWLIST` env |
+
+- Doctor-only endpoints (request access, view patients, view BP records, cancel request) enforce verified status
+- Patient cannot authorize a doctor whose license is not yet verified
+- Staff admin panel shows only masked PII — no health data (BP records, citizen_id, DOB, etc.)
+
+### Staff Admin Panel
+
+Staff-only membership admin at `/api/v1/admin/*`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/admin/users` | GET | List users with filters (role, verification_status, is_active), masked PII, pagination |
+| `/admin/users/{id}` | GET | User detail (masked) + sanitized verification_logs for doctors |
+| `/admin/users/{id}/payments` | GET | Payment history for a user |
+| `/admin/users/{id}/verify` | POST | Verify/reject doctor license (requires reason) |
+| `/admin/users/{id}/deactivate` | POST | Deactivate user (requires reason, cannot target self/staff) |
+| `/admin/users/{id}/activate` | POST | Reactivate user (requires reason, cannot target other staff) |
+| `/admin/audit-log` | GET | View admin action audit log, paginated |
+
+All admin endpoints require both `require_staff` and `verify_api_key` dependencies. All state-changing actions write to `AdminAuditLog` atomically with the state change.
+
+**`STAFF_ALLOWLIST`** env (optional): comma-separated user IDs. If set, only listed staff can access admin endpoints.
+
+### Database Migrations
+
+No Alembic — manual migration scripts in `migrations/`:
+
+```bash
+# Run all migrations (idempotent, safe to re-run)
+python3 -m migrations.run_all
+```
+
+Migrations handle both SQLite and PostgreSQL. The `.vscode/tasks.json` "Run DB Migrations" task uses the same unified runner as other task configs.
+
 ## Deployment Modes
 
 ### Local Development (SQLite + Memory)
@@ -209,7 +260,11 @@ WEBHOOK_SECRET=<random-secret>
 CHART_RENDERER=quickchart   # Node.js subprocess unavailable on Vercel
 AUTO_CREATE_TABLES=true      # Set false after first deploy
 ALLOWED_ORIGINS=https://your-frontend.vercel.app
+STAFF_SYNC_MODE=dry-run      # Recommended for first env-managed staff rollout
 ```
+
+For existing Vercel databases, run `python3 -m migrations.run_all` before turning `AUTO_CREATE_TABLES=false`. Do not rely on serverless request handling to perform schema upgrades.
+For env-managed staff rollout on Vercel, start with `STAFF_SYNC_MODE=dry-run`, inspect `[staff-sync] Would ...` logs, then switch to `apply` only after the migration for `staff_management_states` is present.
 
 **Vercel-specific files:**
 - `vercel.json` — routes all requests to `app/main.py` via `@vercel/python`
@@ -251,6 +306,8 @@ BACKEND_URL=            # Frontend rewrites target (server-side, Vercel only)
 TELEGRAM_WEBAPP_URL=    # Mini App URL (HTTPS required, e.g. https://frontend.vercel.app/telegram/bp)
 WEB_DASHBOARD_URL=      # Web dashboard URL shown in bot /stats
 PREMIUM_BYPASS_USERS=   # Comma-separated: user IDs, Telegram IDs, phone numbers
+STAFF_ALLOWLIST=        # Leave unset to skip sync; use NONE to demote env-managed staff; prefer user:/email:/phone:/telegram:
+STAFF_SYNC_MODE=apply   # dry-run | apply
 ```
 
 ## API Response Format

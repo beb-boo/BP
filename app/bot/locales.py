@@ -86,6 +86,8 @@ LOCALES = {
         "link_invalid": "❌ Connection link is invalid or expired.",
         "license_verified": "\n✅ License Verified.",
         "license_pending": "\n⚠️ License Verification Pending.",
+        "enter_license": "🏥 Please enter your **Medical License Number**:",
+        "license_invalid": "❌ License must be 4-20 characters. Please try again:",
         "invalid_image": "❌ Please send an image file (JPEG, PNG, etc.)",
         "no_image": "❌ No image found.",
         "analyzing_image": "🔍 Analyzing image...",
@@ -106,7 +108,7 @@ LOCALES = {
 
         # /profile
         "profile_title": "👤 **Your Profile**",
-        "profile_info": "Name: {name}\nPhone: {phone}\nEmail: {email}\nGender: {gender}\nDOB: {dob}\nRole: {role}\nTimezone: {tz}\nSubscription: {sub}",
+        "profile_info": "Name: {name}\nPhone: {phone}\nEmail: {email}\nGender: {gender}\nDOB: {dob}\nRole: {role}\nTimezone: {tz}\nSubscription: {sub}\nActive: {active}\nExpires: {expiry}\nDays Remaining: {days}",
         "profile_edit_name": "✏️ Enter your new **Full Name**:",
         "profile_edit_email": "📧 Enter your new **Email Address**:",
         "profile_updated": "✅ Profile updated successfully!",
@@ -261,6 +263,8 @@ LOCALES = {
         "link_invalid": "❌ ลิงก์เชื่อมต่อไม่ถูกต้องหรือหมดอายุ",
         "license_verified": "\n✅ ใบอนุญาตยืนยันแล้ว",
         "license_pending": "\n⚠️ รอตรวจสอบใบอนุญาต",
+        "enter_license": "🏥 กรุณากรอก **เลขใบอนุญาตประกอบวิชาชีพเวชกรรม**:",
+        "license_invalid": "❌ เลขใบอนุญาตต้องมี 4-20 ตัวอักษร กรุณาลองใหม่:",
         "invalid_image": "❌ กรุณาส่งไฟล์รูปภาพ (JPEG, PNG ฯลฯ)",
         "no_image": "❌ ไม่พบรูปภาพ",
         "analyzing_image": "🔍 กำลังวิเคราะห์รูปภาพ...",
@@ -281,7 +285,7 @@ LOCALES = {
 
         # /profile
         "profile_title": "👤 **โปรไฟล์ของคุณ**",
-        "profile_info": "ชื่อ: {name}\nเบอร์โทร: {phone}\nอีเมล: {email}\nเพศ: {gender}\nวันเกิด: {dob}\nบทบาท: {role}\nเขตเวลา: {tz}\nสมาชิก: {sub}",
+        "profile_info": "ชื่อ: {name}\nเบอร์โทร: {phone}\nอีเมล: {email}\nเพศ: {gender}\nวันเกิด: {dob}\nบทบาท: {role}\nเขตเวลา: {tz}\nสมาชิก: {sub}\nสถานะ: {active}\nหมดอายุ: {expiry}\nวันที่เหลือ: {days}",
         "profile_edit_name": "✏️ กรอก **ชื่อ-นามสกุล** ใหม่:",
         "profile_edit_email": "📧 กรอก **อีเมล** ใหม่:",
         "profile_updated": "✅ อัปเดตโปรไฟล์เรียบร้อยแล้ว!",

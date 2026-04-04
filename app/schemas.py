@@ -161,6 +161,9 @@ class UserProfileResponse(BaseModel):
     blood_type: Optional[str] = None
     height: Optional[float] = None
     weight: Optional[float] = None
+    verification_status: Optional[str] = "pending"
+    subscription_tier: str = "free"
+    subscription_expires_at: Optional[datetime] = None
     is_active: bool
     is_email_verified: bool
     is_phone_verified: bool
@@ -324,3 +327,49 @@ class AccessRequestInput(BaseModel):
     
 class DoctorAuthorizationInput(BaseModel):
     doctor_id: int
+
+
+class DoctorSearchResult(BaseModel):
+    """Public doctor info returned from search — no sensitive data."""
+    doctor_id: int
+    full_name: str
+    license_year: Optional[int] = None
+
+
+# ── Admin schemas ──────────────────────────────────────
+
+class AdminUserListItem(BaseModel):
+    """Masked user info for admin listing. No health data."""
+    id: int
+    role: str
+    verification_status: Optional[str] = None
+    is_active: bool
+    full_name_masked: str
+    email_masked: Optional[str] = None
+    phone_masked: Optional[str] = None
+    medical_license_masked: Optional[str] = None
+    subscription_tier: str = "free"
+    subscription_expires_at: Optional[datetime] = None
+    created_at: datetime
+    last_login: Optional[datetime] = None
+
+
+class AdminVerifyDoctorInput(BaseModel):
+    action: Literal["verify", "reject"]
+    reason: str = Field(..., min_length=1, description="Audit reason is required")
+
+
+class AdminActionReasonInput(BaseModel):
+    reason: str = Field(..., min_length=1, description="Audit reason is required")
+
+
+class AdminAuditLogResponse(BaseModel):
+    id: int
+    admin_user_id: int
+    action: str
+    target_user_id: Optional[int] = None
+    details: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

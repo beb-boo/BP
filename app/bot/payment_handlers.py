@@ -110,10 +110,10 @@ async def receive_slip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message.photo:
             file_obj = await update.message.photo[-1].get_file()
         elif update.message.document and update.message.document.mime_type.startswith("image/"):
-             file_obj = await update.message.document.get_file()
+            file_obj = await update.message.document.get_file()
         else:
-             await checking_msg.edit_text(get_text("pay_send_image", lang))
-             return WAITING_SLIP
+            await checking_msg.edit_text(get_text("pay_send_image", lang))
+            return WAITING_SLIP
 
         # Download
         image_bytes = await file_obj.download_as_bytearray()
@@ -160,8 +160,8 @@ async def subscription_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     status = BotService.get_subscription_status(user.id)
     if not status:
-         await update.message.reply_text(get_text("error", user.language or "th"))
-         return
+        await update.message.reply_text(get_text("error", user.language or "th"))
+        return
 
     lang = status.get("language", "th")
 

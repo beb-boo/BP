@@ -62,6 +62,8 @@ os.environ.setdefault("AUTO_CREATE_TABLES", "true")
 os.environ.setdefault("BOT_MODE", "disabled")
 os.environ.setdefault("GOOGLE_AI_API_KEY", "test-fake-key")
 os.environ.setdefault("RATELIMIT_ENABLED", "false")
+os.environ.setdefault("TESTING", "true")
+os.environ.setdefault("DISABLE_EMAIL_DELIVERY", "true")
 
 from app.database import Base
 

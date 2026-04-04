@@ -240,6 +240,16 @@ cd frontend && npm run build && npm start
 * **Patient List**: View authorized patients.
 * **Access Request**: Request access by patient ID.
 * **Monitoring**: View patient BP history and charts.
+* **Verification Gate**: Doctor features require license verification (`verification_status == "verified"`). Pending/rejected doctors see a status banner only.
+
+### For Staff (Admin)
+
+* **Membership Admin**: Staff-only panel in the dashboard with masked PII (no health data exposed).
+* **User Management**: List/search users, filter by role/status, view masked user details and payment history.
+* **Doctor Verification**: Verify or reject doctor licenses with required reason.
+* **Account Actions**: Deactivate/activate users with required reason and audit trail.
+* **Audit Log**: All admin actions logged with actor, target, reason, and timestamp.
+* **Access Control**: `STAFF_ALLOWLIST` env var for defense-in-depth and lazy env-managed staff sync. Leave it unset to skip sync, use `NONE` to explicitly demote env-managed staff, and prefer explicit prefixes such as `user:`, `email:`, `phone:`, `telegram:`.
 
 ### Subscription & Payments
 
@@ -323,10 +333,13 @@ BP/
 │   │   ├── auth.py            # OTP, login, register, JWT
 │   │   ├── users.py           # Profile management
 │   │   ├── bp_records.py      # CRUD + stats + chart
-│   │   ├── doctor.py          # Doctor-patient relationships
+│   │   ├── doctor.py          # Doctor-patient relationships (verified doctor enforced)
+│   │   ├── admin.py           # Staff-only membership admin + audit log
 │   │   ├── ocr.py             # Gemini OCR
 │   │   ├── payment.py         # Subscription handling
 │   │   └── export.py          # Data export
+│   ├── services/              # Shared business logic
+│   │   └── payment_service.py # Unified payment verification (Web + Bot)
 │   ├── bot/                   # Telegram bot (polling + webhook)
 │   │   ├── main.py            # build_application() + run_polling()
 │   │   ├── webhook.py         # FastAPI webhook handler
@@ -336,8 +349,9 @@ BP/
 │   │   └── locales.py         # i18n (EN, TH)
 │   ├── chart-renderer/        # Node.js chart renderer
 │   ├── utils/                 # Shared utilities
-│   │   ├── security.py        # JWT, hashing, API key
+│   │   ├── security.py        # JWT, hashing, API key, require_verified_doctor, require_staff
 │   │   ├── encryption.py      # Fernet encryption
+│   │   ├── subscription.py    # Single source of truth for subscription state
 │   │   ├── rate_limiter.py    # Centralized (Memory / Redis)
 │   │   ├── chart_generator.py # Chart generation wrapper
 │   │   ├── ocr_helper.py      # Gemini integration
@@ -350,6 +364,7 @@ BP/
 │   ├── next.config.ts         # API rewrites + standalone
 │   ├── lib/api.ts             # Axios client
 │   └── Dockerfile             # Standalone build
+├── migrations/                 # Manual schema migration scripts
 ├── tests/                      # Test suite (pytest)
 ├── vercel.json                 # Vercel deployment config
 ├── requirements.txt            # Root deps (for Vercel)
@@ -358,6 +373,27 @@ BP/
 ```
 
 ---
+
+## Database Migrations
+
+Manual migration scripts (no Alembic). Safe to re-run (idempotent):
+
+```bash
+# Run all migrations
+python3 -m migrations.run_all
+```
+
+Supports both SQLite and PostgreSQL.
+For existing Vercel/PostgreSQL deployments, run migrations before switching `AUTO_CREATE_TABLES` to `false` and do not rely on serverless requests to apply schema changes.
+For the first Vercel rollout of env-managed staff sync, start with `STAFF_SYNC_MODE=dry-run`, review the `[staff-sync] Would ...` logs, then switch to `apply` after the database migration is in place.
+
+## User Roles
+
+| Role | Access |
+|------|--------|
+| **patient** | BP recording, stats, doctor access management, subscription |
+| **doctor** | Patient list, BP record viewer (requires verified license) |
+| **staff** | Admin panel: user management, doctor verification, audit log |
 
 ## Testing
 

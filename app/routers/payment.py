@@ -1,19 +1,15 @@
 """Payment API Router"""
 import logging
-import uuid
-import json
-from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User, Payment
 from ..schemas import StandardResponse
 from ..utils.security import verify_api_key, get_current_user
-from ..utils.timezone import now_th, now_tz
-from ..utils.encryption import encrypt_value, hash_value
+from ..utils.subscription import get_subscription_info
 from ..utils.rate_limiter import limiter
-from ..services.slipok import slipok_service
-from ..config.pricing import SUBSCRIPTION_PLANS, PAYMENT_ACCOUNT, get_plan, is_valid_amount
+from ..services.payment_service import verify_and_upgrade, PaymentError
+from ..config.pricing import SUBSCRIPTION_PLANS, PAYMENT_ACCOUNT
 
 router = APIRouter(prefix="/api/v1/payment", tags=["payment"])
 logger = logging.getLogger(__name__)
@@ -25,14 +21,12 @@ async def get_subscription_plans(
     api_key: str = Depends(verify_api_key)
 ):
     """ดูแพลน subscription และสถานะปัจจุบัน / Get subscription plans"""
-    
-    # Filter features based on user language
+
     lang = current_user.language or "th"
-    
+
     plans_response = []
     for k, v in SUBSCRIPTION_PLANS.items():
         plan_data = v.copy()
-        # Select localized features
         feat_list = v["features"].get(lang, v["features"]["th"])
         plan_data["features"] = feat_list
         plans_response.append({"plan_type": k, **plan_data})
@@ -42,14 +36,19 @@ async def get_subscription_plans(
     if lang == "en" and "bank_en" in account_data:
         account_data["bank"] = account_data["bank_en"]
 
+    # Normalized subscription state
+    sub_info = get_subscription_info(current_user)
+
     return StandardResponse(
         status="success",
         message="Subscription plans retrieved",
         data={
             "plans": plans_response,
             "payment_account": account_data,
-            "current_tier": current_user.subscription_tier,
-            "expires_at": str(current_user.subscription_expires_at) if current_user.subscription_expires_at else None,
+            "current_tier": sub_info["subscription_tier"],
+            "is_active": sub_info["is_premium_active"],
+            "expires_at": sub_info["subscription_expires_at"],
+            "days_remaining": sub_info["days_remaining"],
             "language": lang
         }
     )
@@ -69,18 +68,7 @@ async def verify_payment_slip(
 
     lang = current_user.language or "th"
 
-    # Validate plan
-    plan = get_plan(plan_type)
-    if not plan:
-        msg = "Invalid plan" if lang == "en" else "แพลนไม่ถูกต้อง"
-        raise HTTPException(status_code=400, detail=msg)
-
-    # Check SlipOK service
-    if not slipok_service.api_key:
-         msg = "Payment system unavailable" if lang == "en" else "ระบบตรวจสอบไม่พร้อมใช้งาน"
-         raise HTTPException(status_code=503, detail=msg)
-
-    # Validate file
+    # HTTP-layer validation: file type & size
     if not file.content_type or not file.content_type.startswith("image/"):
         msg = "Please upload an image file" if lang == "en" else "กรุณาอัพโหลดไฟล์รูปภาพ"
         raise HTTPException(status_code=400, detail=msg)
@@ -90,95 +78,22 @@ async def verify_payment_slip(
         msg = "File too large (>10MB)" if lang == "en" else "ไฟล์ใหญ่เกินไป (สูงสุด 10MB)"
         raise HTTPException(status_code=413, detail=msg)
 
-    # Verify with SlipOK
-    expected_amount = plan["price"]
-    result = slipok_service.verify_slip_image(content, expected_amount, language=lang)
+    # Delegate to shared payment service
+    try:
+        result = verify_and_upgrade(db, current_user, content, plan_type, lang)
+    except PaymentError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
 
-    if not result.success:
-        # Log failed attempt
-        payment = Payment(
-            user_id=current_user.id,
-            trans_ref=f"FAILED-{uuid.uuid4()}",
-            trans_ref_hash=hash_value(f"FAILED-{uuid.uuid4()}-{now_th()}"),
-            amount=0,
-            plan_type=plan_type,
-            plan_amount=expected_amount,
-            status="failed",
-            error_code=result.error_code,
-            error_message=result.error_message,
-            verification_response=json.dumps(result.raw_response) if result.raw_response else None
-        )
-        db.add(payment)
-        db.commit()
-
-        raise HTTPException(status_code=400, detail=result.error_message)
-
-    # Check duplicate trans_ref in our DB
-    trans_ref_hash = hash_value(result.trans_ref)
-    existing = db.query(Payment).filter(
-        Payment.trans_ref_hash == trans_ref_hash,
-        Payment.status == "verified"
-    ).first()
-
-    if existing:
-        msg = "Slip already used" if lang == "en" else "สลิปนี้เคยใช้ชำระเงินแล้ว"
-        raise HTTPException(status_code=409, detail=msg)
-
-    # Verify amount
-    if not is_valid_amount(expected_amount, result.amount):
-        msg = f"Amount mismatch ({result.amount} vs {expected_amount})" if lang == "en" \
-              else f"ยอดเงิน ({result.amount} บาท) ไม่ตรงกับราคาแพลน ({expected_amount} บาท)"
-        raise HTTPException(status_code=400, detail=msg)
-
-    # Create payment record
-    payment = Payment(
-        user_id=current_user.id,
-        trans_ref=result.trans_ref,
-        trans_ref_hash=trans_ref_hash,
-        amount=result.amount,
-        sending_bank=result.sending_bank,
-        sender_name_encrypted=encrypt_value(result.sender_name) if result.sender_name else None,
-        receiver_name=result.receiver_name,
-        trans_date=result.trans_date,
-        trans_time=result.trans_time,
-        plan_type=plan_type,
-        plan_amount=expected_amount,
-        status="verified",
-        verification_response=json.dumps(result.raw_response),
-        verified_at=now_th()
+    msg_success = (
+        "Payment Successful! Upgraded to Premium."
+        if lang == "en"
+        else "ชำระเงินสำเร็จ! อัพเกรดเป็น Premium แล้ว"
     )
-    db.add(payment)
-
-    # Upgrade subscription
-    duration_days = plan["duration_days"]
-    if (current_user.subscription_tier == "premium" and
-        current_user.subscription_expires_at and
-        current_user.subscription_expires_at > now_th()):
-        new_expiry = current_user.subscription_expires_at + timedelta(days=duration_days)
-    else:
-        new_expiry = now_th() + timedelta(days=duration_days)
-
-    current_user.subscription_tier = "premium"
-    current_user.subscription_expires_at = new_expiry
-    current_user.updated_at = now_th()
-
-    db.commit()
-
-    logger.info(f"Payment verified: user={current_user.id}, trans_ref={result.trans_ref}, plan={plan_type}")
-    
-    msg_success = "Payment Successful! Upgraded to Premium." if lang == "en" else "ชำระเงินสำเร็จ! อัพเกรดเป็น Premium แล้ว"
 
     return StandardResponse(
         status="success",
         message=msg_success,
-        data={
-            "payment_id": payment.id,
-            "plan": plan_type,
-            "amount": result.amount,
-            "subscription_tier": "premium",
-            "subscription_expires_at": str(new_expiry),
-            "trans_ref": result.trans_ref
-        }
+        data=result
     )
 
 
@@ -216,25 +131,20 @@ async def get_subscription_status(
     api_key: str = Depends(verify_api_key)
 ):
     """ดูสถานะ subscription ปัจจุบัน / Status"""
-    is_active = False
-    days_remaining = 0
 
-    if current_user.subscription_tier == "premium" and current_user.subscription_expires_at:
-        if current_user.subscription_expires_at > now_th():
-            is_active = True
-            days_remaining = (current_user.subscription_expires_at - now_th()).days
+    sub_info = get_subscription_info(current_user)
 
     return StandardResponse(
         status="success",
         message="Subscription status retrieved",
         data={
-            "tier": current_user.subscription_tier,
-            "is_active": is_active,
-            "expires_at": str(current_user.subscription_expires_at) if current_user.subscription_expires_at else None,
-            "days_remaining": days_remaining,
+            "tier": sub_info["subscription_tier"],
+            "is_active": sub_info["is_premium_active"],
+            "expires_at": sub_info["subscription_expires_at"],
+            "days_remaining": sub_info["days_remaining"],
             "features": {
-                "max_records": "unlimited" if is_active else 30,
-                "history_days": "unlimited" if is_active else 30
+                "max_records": "unlimited" if sub_info["is_premium_active"] else 30,
+                "history_days": "unlimited" if sub_info["is_premium_active"] else 30
             }
         }
     )

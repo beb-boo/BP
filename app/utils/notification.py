@@ -24,9 +24,37 @@ SMS_API_URL = os.getenv("SMS_API_URL", "")
 SMS_API_KEY = os.getenv("SMS_API_KEY", "")
 SMS_FROM = os.getenv("SMS_FROM", "BPMonitor")
 
+TEST_EMAIL_DOMAINS = {
+    "example.com",
+    "example.org",
+    "example.net",
+    "test.com",
+    "test",
+    "invalid",
+    "localhost",
+}
+
+
+def _is_truthy_env(var_name: str) -> bool:
+    return os.getenv(var_name, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _should_mock_email_delivery(recipient_email: str) -> bool:
+    if _is_truthy_env("DISABLE_EMAIL_DELIVERY") or _is_truthy_env("TESTING"):
+        return True
+
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return True
+
+    if not EMAIL_USER or not EMAIL_PASSWORD:
+        return True
+
+    domain = recipient_email.strip().lower().rsplit("@", 1)[-1]
+    return domain in TEST_EMAIL_DOMAINS or domain.endswith(".test") or domain.endswith(".invalid")
+
 def send_email_otp(recipient_email: str, otp: str, purpose: str):
     """Send OTP via email"""
-    if not EMAIL_USER or not EMAIL_PASSWORD:
+    if _should_mock_email_delivery(recipient_email):
         _print_mock_otp("EMAIL", recipient_email, otp, purpose)
         return True
 

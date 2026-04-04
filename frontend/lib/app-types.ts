@@ -2,6 +2,7 @@ export interface AppUser {
   id?: number;
   full_name: string;
   role: string;
+  verification_status?: "pending" | "verified" | "rejected";
   language?: string;
   email?: string | null;
   phone_number?: string | null;
@@ -15,6 +16,11 @@ export interface AppUser {
   timezone?: string | null;
   is_email_verified?: boolean;
   telegram_id?: number | null;
+  // Subscription fields (present on login, /users/me, /payment/* responses)
+  subscription_tier?: "free" | "premium";
+  is_premium_active?: boolean;
+  subscription_expires_at?: string | null;
+  days_remaining?: number;
 }
 
 export interface PaginationMeta {
@@ -76,6 +82,12 @@ export interface AuthorizedDoctor {
   hospital?: string | null;
 }
 
+export interface DoctorSearchResult {
+  doctor_id: number;
+  full_name: string;
+  license_year?: number | null;
+}
+
 export interface AccessRequestItem {
   request_id: number;
   doctor_name?: string;
@@ -104,4 +116,38 @@ export interface Plan {
   price: number;
   duration_days: number;
   features: string[];
+}
+
+// Subscription state returned from login, /users/me, and /payment/* endpoints
+export interface SubscriptionInfo {
+  subscription_tier: "free" | "premium";
+  is_premium_active: boolean;
+  subscription_expires_at: string | null;
+  days_remaining: number;
+}
+
+// Admin types
+export interface AdminUserItem {
+  id: number;
+  role: string;
+  verification_status?: string;
+  is_active: boolean;
+  full_name_masked: string;
+  email_masked?: string | null;
+  phone_masked?: string | null;
+  medical_license_masked?: string | null;
+  subscription_tier: string;
+  subscription_expires_at?: string | null;
+  created_at: string;
+  last_login?: string | null;
+  verification_logs?: string | null;
+}
+
+export interface AdminAuditEntry {
+  id: number;
+  admin_user_id: number;
+  action: string;
+  target_user_id?: number | null;
+  details?: string | null;
+  created_at: string;
 }

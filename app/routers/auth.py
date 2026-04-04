@@ -14,7 +14,8 @@ from ..utils.security import (
 )
 from ..utils.timezone import now_tz
 from ..utils.encryption import encrypt_value, hash_value
-from ..utils.tmc_checker import verify_doctor_with_tmc
+from ..utils.subscription import get_subscription_info, normalize_subscription_state
+
 import hashlib
 
 from ..utils.notification import send_email_otp, send_sms_otp, send_telegram_otp, OTP_EXPIRE_MINUTES
@@ -224,7 +225,10 @@ async def register_user(
              if full_name_clean:
                  fname = full_name_clean.split()[0]
                  lname = full_name_clean.split()[-1] if len(full_name_clean.split()) > 1 else ""
-                 background_tasks.add_task(verify_doctor_background, new_user.id, fname, lname, db)
+                 background_tasks.add_task(
+                     verify_doctor_background, new_user.id, fname, lname, db,
+                     medical_license=new_user.medical_license or ""
+                 )
 
         # Generate and Send OTP for Email Verification
         if new_user.email:
@@ -349,6 +353,11 @@ async def login(
     logger.info(
         f"Successful login (ID: {user.id}) - Request ID: {request_id}")
 
+    # Self-heal: persist downgrade if expired premium
+    normalize_subscription_state(user, db=db)
+
+    sub_info = get_subscription_info(user)
+
     return create_standard_response(
         status="success",
         message="Login successful",
@@ -365,9 +374,12 @@ async def login(
                 "full_name": user.full_name,
                 "is_email_verified": user.is_email_verified,
                 "is_phone_verified": user.is_phone_verified,
-                "subscription_tier": user.subscription_tier,
+                "subscription_tier": sub_info["subscription_tier"],
+                "is_premium_active": sub_info["is_premium_active"],
+                "subscription_expires_at": sub_info["subscription_expires_at"],
                 "language": user.language,
-                "timezone": user.timezone
+                "timezone": user.timezone,
+                "verification_status": user.verification_status
             }
         },
         request_id=request_id

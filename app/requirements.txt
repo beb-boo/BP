@@ -23,6 +23,7 @@ pillow
 pillow-heif  # HEIC/HEIF image support (iPhone photos)
 httpx
 requests
+beautifulsoup4
 
 # OTP & Timezone
 pyotp

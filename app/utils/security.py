@@ -2,15 +2,16 @@
 import os
 import bcrypt
 import jwt
-from datetime import datetime, timedelta
-from typing import Optional, List
+from datetime import timedelta
+from typing import Optional
 from pytz import UTC
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User
 from .timezone import now_tz
+from .staff_sync import ensure_staff_sync_for_request, is_staff_access_allowed
 import logging
 
 load_from_dotenv = True # Assumed loaded in main
@@ -72,8 +73,14 @@ def check_premium(user) -> bool:
         except Exception:
             pass
     if user.subscription_tier == "premium":
-        if user.subscription_expires_at and user.subscription_expires_at > now_tz():
-            return True
+        expires = user.subscription_expires_at
+        if expires:
+            # Handle naive datetimes from SQLite (PostgreSQL returns tz-aware)
+            if expires.tzinfo is None:
+                import pytz
+                expires = expires.replace(tzinfo=pytz.UTC)
+            if expires > now_tz():
+                return True
     return False
 
 # ── Startup warnings for default/fallback values ────────────────
@@ -122,14 +129,10 @@ def create_refresh_token(data: dict):
 async def verify_api_key(api_key: str = Depends(api_key_header)):
     """Verify API key for client applications"""
     if not api_key:
-         # Log warning but maybe frontend forgot it? 
-         # If auto_error=False, api_key is None.
-         # But code below checks 'if api_key not in VALID_API_KEYS'. None is not in list.
-         logger.warning("Missing API Key in request")
-         pass # Let it fail below
+        logger.warning("Missing API Key in request")
 
     if api_key not in VALID_API_KEYS:
-        logger.warning(f"Invalid API Key: {api_key}")
+        logger.warning("Invalid API Key: %s", api_key)
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing API key"
@@ -138,6 +141,7 @@ async def verify_api_key(api_key: str = Depends(api_key_header)):
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ):
@@ -163,6 +167,11 @@ def get_current_user(
         logger.warning(f"JWT Error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
+    try:
+        ensure_staff_sync_for_request(db)
+    except Exception as exc:
+        logger.warning("[staff-sync] Unexpected sync failure on %s: %s", request.url.path, exc)
+
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         logger.warning(f"User not found: {user_id}")
@@ -178,13 +187,46 @@ def get_current_user(
         locked_until = user.account_locked_until
         if locked_until.tzinfo is None:
             locked_until = UTC.localize(locked_until)
-            
+
         if locked_until > now_tz():
             logger.warning(f"Account locked: {user_id}")
             raise HTTPException(
                 status_code=423, detail="Account temporarily locked")
 
+    # Self-heal: downgrade expired premium in DB so stale state doesn't persist
+    from .subscription import normalize_subscription_state
+    normalize_subscription_state(user, db=db)
+
     return user
+
+
+def require_verified_doctor(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Dependency: requires user to be a doctor with verification_status == 'verified'."""
+    if current_user.role != "doctor":
+        raise HTTPException(status_code=403, detail="Only doctors can access this resource")
+    if current_user.verification_status != "verified":
+        raise HTTPException(
+            status_code=403,
+            detail="Doctor license verification is pending or rejected"
+        )
+    return current_user
+
+
+def require_staff(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Dependency: requires user to have role == 'staff'.
+
+    Optionally checks STAFF_ALLOWLIST env var using the shared identifier parser.
+    """
+    if current_user.role != "staff":
+        raise HTTPException(status_code=403, detail="Staff access required")
+    if not is_staff_access_allowed(current_user):
+        raise HTTPException(status_code=403, detail="Staff access denied")
+    return current_user
+
 
 def is_account_locked(user: User) -> bool:
     """Check if user account is locked due to failed login attempts"""

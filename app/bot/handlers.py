@@ -138,6 +138,7 @@ REG_DOB = 3
 REG_GENDER = 4
 REG_ROLE = 5
 REG_PASSWORD = 6
+REG_LICENSE = 8
 
 # --- OCR States ---
 OCR_CONFIRM = 10
@@ -409,14 +410,44 @@ async def reg_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data['role'] = role
 
-    msg = get_text("set_password", lang)
+    if role == "doctor":
+        # Ask for medical license before password
+        msg = get_text("enter_license", lang)
+        await update.message.reply_text(
+            msg,
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="Markdown"
+        )
+        context.user_data['_auth_state'] = 'reg_license'
+        return REG_LICENSE
+    else:
+        msg = get_text("set_password", lang)
+        await update.message.reply_text(
+            msg,
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="Markdown"
+        )
+        context.user_data['_auth_state'] = 'reg_password'
+        return REG_PASSWORD
 
+
+async def reg_license(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    license_text = update.message.text.strip()
+    lang = context.user_data.get('register_lang', 'en')
+
+    if len(license_text) < 4 or len(license_text) > 20:
+        await update.message.reply_text(get_text("license_invalid", lang))
+        return REG_LICENSE
+
+    context.user_data['medical_license'] = license_text
+
+    msg = get_text("set_password", lang)
     await update.message.reply_text(
         msg,
         reply_markup=ReplyKeyboardRemove(),
         parse_mode="Markdown"
     )
-    context.user_data['_auth_state'] = 'reg_password'  # Next input: password
+    context.user_data['_auth_state'] = 'reg_password'
     return REG_PASSWORD
 
 async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -453,10 +484,10 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = get_text("reg_success", lang)
         # Add License info if Doctor - keeping basic for now or simple append
         if new_user.role == 'doctor':
-             if new_user.verification_status == 'verified':
-                 msg += get_text("license_verified", lang)
-             else:
-                 msg += get_text("license_pending", lang)
+            if new_user.verification_status == 'verified':
+                msg += get_text("license_verified", lang)
+            else:
+                msg += get_text("license_pending", lang)
                  
         await update.message.reply_text(msg, parse_mode="Markdown")
         BotLogService.log(update.effective_chat.id, "OUT", "registration", "User Registered successfully", new_user.id)
@@ -484,6 +515,7 @@ def get_auth_handler():
             REG_DOB: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_dob)],
             REG_GENDER: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_gender)],
             REG_ROLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_role)],
+            REG_LICENSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_license)],
             REG_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_password)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -1118,11 +1150,15 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_text("error", lang))
         return ConversationHandler.END
 
+    active_str = "✅" if profile.get("is_premium_active") else "❌"
     msg = get_text("profile_title", lang) + "\n\n"
     msg += get_text("profile_info", lang,
         name=profile["name"], phone=profile["phone"], email=profile["email"],
         gender=profile["gender"], dob=profile["dob"], role=profile["role"],
-        tz=profile["timezone"], sub=profile["subscription"]
+        tz=profile["timezone"], sub=profile["subscription"],
+        active=active_str,
+        expiry=profile.get("subscription_expires_at", "-"),
+        days=profile.get("days_remaining", "-"),
     )
 
     keyboard = [
