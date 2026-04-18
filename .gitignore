@@ -66,3 +66,4 @@ venv/
 logs/
 .mcp.json
 AUDIT.md
+/.zed
