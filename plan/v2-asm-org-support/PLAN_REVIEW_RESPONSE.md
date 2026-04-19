@@ -9,8 +9,8 @@ tags:
   - v2-asm-org
 order: 0.5
 status: draft
-version: 1.0
-updated: 2026-04-18
+version: 1.1
+updated: 2026-04-19
 summary: "Consolidated response to plan reviews (Gemini + internal code verification). Single source of truth for architectural decisions."
 ---
 
@@ -21,6 +21,14 @@ summary: "Consolidated response to plan reviews (Gemini + internal code verifica
 > **Authority:** เวลา plan docs อื่น ขัดแย้งกัน ให้ยึดเอกสารนี้เป็น source of truth
 >
 > **อ่านก่อน:** [[MVP_PILOT_SCOPE]], [[ORG_FOUNDATION]]
+
+> [!INFO] **v1.1 update** (2026-04-19, GENERALIZE_ORG_PLAN)
+> Decisions ในเอกสารนี้ยัง valid — แต่ identifiers ถูก rename ตาม [[GENERALIZE_ORG_PLAN]]:
+> - Roles: `rpsst_admin`→`org_admin`, `rpsst_staff`→`org_staff`, `asm`→`caregiver`
+> - Consent scopes: `asm_collect`→`caregiver_collect`, `rpsst_view`→`org_view`
+> - URL namespaces: `/api/v1/asm/`→`/api/v1/caregiver/`, `/api/v1/rpsst/`→`/api/v1/org/`
+> - File: `ASM_PWA_SPEC.md`→`CAREGIVER_PWA_SPEC.md`
+> - Decisions Q2 (Role refactor), Q3 (DoctorPatient parallel), G5 (Role migration map) อ่านแทนชื่อใหม่ได้ทันที
 
 ---
 

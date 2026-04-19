@@ -10,8 +10,8 @@ tags:
   - v2-asm-org
 order: 0
 status: draft
-version: 1.2
-updated: 2026-04-18
+version: 1.3
+updated: 2026-04-19
 summary: "Map of Content for all v2 ASM/รพ.สต. org support planning documents"
 ---
 # v2 ASM Organization Support — Planning Index
@@ -30,7 +30,7 @@ summary: "Map of Content for all v2 ASM/รพ.สต. org support planning docu
 2. **[[PLAN_REVIEW_RESPONSE]]** — อ่านก่อน plan อื่น เพื่อเข้าใจ architectural decisions + why
 3. **[[BACKUP_AND_MIGRATION_SPEC]]** — **สร้างก่อน v2 migration** — Neon branch backup tool ใน admin web
 4. **[[SCALABILITY_PLAN]]** — รู้ว่าเราวางอะไรในระยะยาว เพื่อไม่ตัดสินใจผิดใน Phase 1
-5. **[[ORG_FOUNDATION]]** — foundation ของทั้งหมด (DB schema, RBAC) — v1.1 (reflects decisions)
+5. **[[ORG_FOUNDATION]]** — foundation ของทั้งหมด (DB schema, RBAC, self-measure policy, hybrid onboarding, role labels) — v1.2
 6. **[[INFRASTRUCTURE_SETUP]]** — Tier 0 prerequisites ก่อนเริ่ม code (schema_migrations, feature flags, staging, backup drill)
 7. **[[MIGRATION_STRATEGY]]** — วิธี apply migration บน prod อย่างปลอดภัย
 8. **[[CONSENT_FLOW_SPEC]]** — PDPA workflow (สำคัญมาก ต้องอ่านก่อน code)
@@ -58,7 +58,7 @@ Group C (PDPA/Legal):
         |                       |
    +----+----+                  |
    |         |                  |
-[ADMIN_WEB] [ASM_PWA]          |
+[ADMIN_WEB] [CAREGIVER_PWA]    |
    |         |                  |
    +---------+                  |
         |                       |
@@ -86,19 +86,19 @@ Group C (PDPA/Legal):
 | 0.8 | [[INFRASTRUCTURE_SETUP]] | ✅ Draft v1.0 | ~15KB | **Tier 0 prerequisites** — schema_migrations, flags, staging, backup |
 | 0.9 | [[MIGRATION_STRATEGY]] | ✅ Draft v1.0 | ~15KB | **How to migrate safely** — staged procedure, FK graph, rollback |
 | 1 | [[MVP_PILOT_SCOPE]] | ✅ Draft v1 | 24KB | Scope, personas, metrics, acceptance criteria |
-| 2 | [[ORG_FOUNDATION]] | ✅ **Draft v1.1** | ~54KB | DB schema, RBAC, migration, audit log (decisions applied) |
-| 3 | [[ADMIN_WEB_SPEC]] | ✅ **Draft v1.1** | ~34KB | Admin web dashboard spec (synced w/ decisions) |
-| 4 | [[CAREGIVER_PWA_SPEC]] | ✅ **Draft v1.1** | ~54KB | Caregiver PWA + batch OCR spec (v1.1 alignment verified) |
-| 5 | [[CONSENT_FLOW_SPEC]] | ✅ **Draft v1.1** | ~29KB | Consent workflow end-to-end (synced w/ decisions) |
+| 2 | [[ORG_FOUNDATION]] | ✅ **Draft v1.2** | ~60KB | DB schema, RBAC, migration, audit log, self-measure policy (§8.3), hybrid onboarding (§8.4), role labels (§6.5) |
+| 3 | [[ADMIN_WEB_SPEC]] | ✅ **Draft v1.2** | ~36KB | Admin web dashboard spec — account_type radio, link/unlink actions, source icons |
+| 4 | [[CAREGIVER_PWA_SPEC]] | ✅ **Draft v1.2** | ~55KB | Caregiver PWA + batch OCR spec — 🏠/👤 source icons, create-hybrid endpoint |
+| 5 | [[CONSENT_FLOW_SPEC]] | ✅ **Draft v1.2** | ~32KB | Consent workflow end-to-end — self-measure withdrawal effect (§5.3.3), templated consent text (§4.3) |
 | 6 | [[SCALABILITY_PLAN]] | ✅ Draft v1 | 27KB | Scale to 1M, Vercel migration, costs |
 | 7 | [[LEGACY_DOCS_MIGRATION]] | ✅ **Draft v1.1** | 28KB | Patch plan for existing 3 docs in docs/ (aligned w/ decisions) |
 | 8 | [[PDPA_COMPLIANCE]] | ✅ Draft v1 | 27KB | Master compliance reference |
 | 9 | [[DATA_RETENTION_POLICY]] | ✅ Draft v1 | 19KB | Retention rules per data type |
 | 10 | [[BREACH_RESPONSE_RUNBOOK]] | ✅ Draft v1 | 29KB | Incident playbook, 72h notification, templates |
-| 11 | [[CONSENT_FORMS]] | ✅ Draft v1 | 38KB | Ready-to-use paper + digital Thai forms |
+| 11 | [[CONSENT_FORMS]] | ✅ Draft v1.1 | 40KB | Ready-to-use paper + digital Thai forms — org-type templating hooks (§10) |
 | 12 | [[ORG_TERMS_OF_SERVICE]] | ✅ Draft v1 | 38KB | ToS for รพ.สต./admin (new, v1) |
 
-**Total: 18 files, ~490 KB**
+**Total: 18 files, ~520 KB**
 
 Legend: ✅ Complete · 🚧 In progress · 📝 Planned · 🔴 Blocked
 
@@ -166,4 +166,4 @@ Legacy docs that need updating per [[LEGACY_DOCS_MIGRATION]]:
 
 ---
 
-**End of INDEX.md** — Last updated 2026-04-18 (v1.2: added BACKUP_AND_MIGRATION_SPEC สำหรับ Neon branch backup tool ใน admin web; v1.1: added PLAN_REVIEW_RESPONSE, INFRASTRUCTURE_SETUP, MIGRATION_STRATEGY)
+**End of INDEX.md** — Last updated 2026-04-19 (v1.3: GENERALIZE_ORG_PLAN applied — rename rpsst/asm → org/caregiver across all docs, v1.2 bumps on ORG_FOUNDATION/ADMIN_WEB_SPEC/CAREGIVER_PWA_SPEC/CONSENT_FLOW_SPEC, v1.1 on CONSENT_FORMS; v1.2: added BACKUP_AND_MIGRATION_SPEC สำหรับ Neon branch backup tool ใน admin web; v1.1: added PLAN_REVIEW_RESPONSE, INFRASTRUCTURE_SETUP, MIGRATION_STRATEGY)
