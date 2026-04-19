@@ -136,6 +136,7 @@ Expected: `200 OK` with masked user list. If `403 "Staff access denied"` → all
 | `[staff-sync] Metadata table 'staff_management_states' is missing` | Run `python3 -m migrations.run_all` |
 | Allowlist change doesn't take effect | Sync only re-runs when `STAFF_ALLOWLIST`+`STAFF_SYNC_MODE` signature changes, or after a cold start; restart the API process |
 | Vercel: sync never runs | Each serverless invocation has a fresh process, so sync runs on first authenticated request per instance — that's expected |
+| Logs spam `[staff-sync] Timed out before loading sync candidates` on Vercel | Default `STAFF_SYNC_TIMEOUT_MS=800` is too tight for Vercel + Neon cold start. Set `STAFF_SYNC_TIMEOUT_MS=5000` in Vercel env and redeploy |
 
 ---
 

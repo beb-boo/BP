@@ -312,6 +312,7 @@ WEB_DASHBOARD_URL=      # Web dashboard URL shown in bot /stats
 PREMIUM_BYPASS_USERS=   # Comma-separated: user IDs, Telegram IDs, phone numbers
 STAFF_ALLOWLIST=        # Leave unset to skip sync; use NONE to demote env-managed staff; prefer user:/email:/phone:/telegram:
 STAFF_SYNC_MODE=apply   # dry-run | apply
+STAFF_SYNC_TIMEOUT_MS=800  # default 800; raise to 5000 on Vercel+Neon to avoid cold-start timeouts
 ```
 
 ## API Response Format
