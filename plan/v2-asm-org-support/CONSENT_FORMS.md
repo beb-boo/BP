@@ -13,8 +13,8 @@ tags:
   - v2-asm-org
 order: 11
 status: draft
-version: 1.0
-updated: 2026-04-18
+version: 1.1
+updated: 2026-04-19
 summary: "Ready-to-use consent forms in Thai: paper form (A4), digital signature flow text, withdrawal form. Designed for use by อสม. with elderly villagers."
 related:
   - "[[CONSENT_FLOW_SPEC]]"
@@ -24,10 +24,14 @@ related:
 ---
 # Consent Forms (Ready-to-Use Thai)
 
-> **Status:** Draft v1 — สำหรับ legal review + language review ก่อนใช้
+> **Status:** Draft v1.1 — สำหรับ legal review + language review ก่อนใช้
 > **Language:** ภาษาไทย (primary) + English note
 > **Target audience:** ชาวบ้าน อายุ 35-80 ปี ที่อ่านภาษาไทยได้
-> **Version:** 1.0 (ของ form เอง — ใช้ใน `consent_records.version` field)
+> **Version:** 1.1 (ของ form เอง — ใช้ใน `consent_records.version` field)
+
+> [!INFO] **v1.1 changes** (2026-04-19, GENERALIZE_ORG_PLAN)
+> - NEW §10: Org-type templating hooks — placeholders (`{org_name}`, `{caregiver_label}`, ...) + generation workflow + snapshot rule; Form A/B/C ในเอกสารนี้ถือเป็น reference rendering ของ template เมื่อ org_type=`rpsst`
+> - §10 Related Documents renumbered to §11
 
 ---
 
@@ -681,14 +685,53 @@ Before using in pilot:
 
 ---
 
-## 10. Related Documents
+## 10. Org-type templating hooks (v1.2 new)
 
-- [[CONSENT_FLOW_SPEC]] — workflow detailed spec
+> **Decision (GENERALIZE_ORG_PLAN §6):** ฟอร์ม A (Paper) และ B (Digital) ทั้ง hardcode "อสม." / "รพ.สต." ไว้ — ต้อง parameterize เป็น template เพื่อรองรับ clinic/hospital
+
+### 10.1 Template placeholders
+
+ใน Form A/B/C ให้แทน literal text ด้วย placeholders ดังนี้:
+
+| Placeholder | ความหมาย | Source |
+|-------------|----------|--------|
+| `{org_name}` | ชื่อ org เต็ม เช่น "รพ.สต.เมืองเก่า" / "คลินิก ABC" | `organizations.name` |
+| `{org_type_label}` | ประเภท org ภาษาไทย เช่น "รพ.สต." / "คลินิก" / "โรงพยาบาล" | derived from `organizations.type` |
+| `{caregiver_label}` | คำเรียก role caregiver ตาม org เช่น "อสม." / "พยาบาล" / "ผู้ช่วยแพทย์" | `get_role_label(org.type, "caregiver", "th")` — see `ORG_FOUNDATION.md §6.5` |
+| `{org_address}` | ที่อยู่องค์กร | `organizations.address` |
+| `{data_controller}` | เจ้าของข้อมูล (app + org) | คงที่ / derived |
+
+### 10.2 Generation workflow
+
+```
+Admin web: /admin/system/consent-forms/generate?org_id={id}
+  → load organization (name, type, address)
+  → load consent form template (Form A paper / Form B digital)
+  → call consent_template.render_consent_text(scope, org.type, org.name, lang)
+  → call get_role_label(org.type, "caregiver", lang) for body substitutions
+  → render PDF (Form A) or return JSON (Form B for PWA)
+  → cache per (org_id, form_version) — invalidate on org.name change
+```
+
+### 10.3 Snapshot rule
+
+- ตอน patient grant consent → save **rendered text** (post-substitution) ลง `consent_records.content_snapshot` — ไม่ขึ้นกับ template version หลังจากนั้น
+- ป้องกันกรณี org เปลี่ยนชื่อ → consent เก่ายังคงถูกต้อง legally
+
+### 10.4 Legacy forms in this document
+
+ตัวอย่าง Form A (§2) และ Form B (§3) ในเอกสารนี้เขียน hardcoded สำหรับ รพ.สต. pilot (org_type=`rpsst`) — ถือเป็น **reference rendering** ของ template เมื่อใช้กับ `rpsst`. สำหรับ clinic/hospital ในอนาคต ให้ใช้ template mechanism ข้างบน
+
+---
+
+## 11. Related Documents
+
+- [[CONSENT_FLOW_SPEC]] — workflow detailed spec (ดู §4.3 สำหรับ template code)
 - [[PDPA_COMPLIANCE]] — PDPA master reference
 - [[CAREGIVER_PWA_SPEC]] — PWA implementation
 - [[ORG_TERMS_OF_SERVICE]] — Org ToS (coming)
 - [[LEGACY_DOCS_MIGRATION]] — updating existing privacy policy
-- [[ORG_FOUNDATION]] — database schema for consent_records
+- [[ORG_FOUNDATION]] — database schema for consent_records (ดู §6.5 สำหรับ role label resolver)
 
 ---
 

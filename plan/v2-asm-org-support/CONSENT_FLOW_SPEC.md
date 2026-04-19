@@ -14,6 +14,7 @@
 > - Scope rename: `asm_collect` → `caregiver_collect`, `rpsst_view` → `org_view`; API `/api/v1/asm/` → `/api/v1/caregiver/`; handler `get_current_asm` → `get_current_caregiver`
 > - NEW §5.3.3: Effect of consent withdrawal on self-measured data (hybrid patients) — withdrawal does not block patient's self write path, only affects org/caregiver visibility (see `ORG_FOUNDATION.md §8.3`)
 > - Old §5.3.3 Data deletion request renumbered to §5.3.4
+> - NEW §4.3: Templated consent text per org type — `consent_template.py` + `render_consent_text()` with `{caregiver_label}`/`{org_name}` placeholders; `consent_records.content_snapshot` stores post-substitution text for legal audit
 
 ---
 
@@ -150,6 +151,63 @@
 ☐ ข้าพเจ้ายินยอมให้ส่งข้อมูลออกไปยังระบบของกรมสนับสนุนบริการสุขภาพ
    (Smart อสม.) เพื่อการรายงาน                               [data_export_to_smart_osm - OPTIONAL]
 ```
+
+### 4.3 Templated consent text per org type (v1.2 new)
+
+> **Decision (GENERALIZE_ORG_PLAN §6):** Consent form text ต้องปรับตาม org — รพ.สต. ใช้ "อสม./รพ.สต.", clinic ใช้ "พยาบาล/คลินิก", hospital ใช้ "พยาบาล/รพ.". ใช้ template + ดึง label จาก `ORG_FOUNDATION.md §6.5`.
+
+#### 4.3.1 Template definitions
+
+```python
+# app/utils/consent_template.py
+# Parameterized consent text — use with get_role_label()
+
+CONSENT_TEMPLATE = {
+    "th": {
+        "caregiver_collect": (
+            "ข้าพเจ้ายินยอมให้ {caregiver_label} และ {org_name} "
+            "เก็บ ใช้ และรักษาข้อมูลสุขภาพของข้าพเจ้า "
+            "เพื่อการดูแลสุขภาพตามวัตถุประสงค์ข้างต้น"
+        ),
+        "org_view": (
+            "ข้าพเจ้ายินยอมให้เจ้าหน้าที่ {org_name} "
+            "เข้าถึงข้อมูลสุขภาพของข้าพเจ้า"
+        ),
+    },
+    "en": {
+        "caregiver_collect": (
+            "I consent for {caregiver_label} and {org_name} to collect, use, "
+            "and store my health data for the purposes described above."
+        ),
+        "org_view": (
+            "I consent for staff of {org_name} to access my health data."
+        ),
+    },
+}
+
+
+def render_consent_text(scope: str, org_type: str, org_name: str, lang: str = "th") -> str:
+    from app.utils.org_display import get_role_label
+    template = CONSENT_TEMPLATE[lang][scope]
+    return template.format(
+        caregiver_label=get_role_label(org_type, "caregiver", lang),
+        org_name=org_name,
+    )
+```
+
+#### 4.3.2 Example renderings
+
+| Org | `scope=caregiver_collect` rendered (Thai) |
+|-----|-------------------------------------------|
+| `rpsst`, นาม "รพ.สต.เมืองเก่า" | ...ให้ **อาสาสมัครสาธารณสุข (อสม.)** และ **รพ.สต.เมืองเก่า** เก็บ... |
+| `clinic`, นาม "คลินิก ABC" | ...ให้ **พยาบาล** และ **คลินิก ABC** เก็บ... |
+| `hospital`, นาม "รพ.ชุมพร" | ...ให้ **พยาบาล/ผู้ช่วยแพทย์** และ **รพ.ชุมพร** เก็บ... |
+
+#### 4.3.3 Usage points
+
+- **Digital consent flow (PWA)** — render แต่ละ scope ก่อนแสดง checkbox จาก user's active org
+- **Paper form generation** (admin web → PDF) — populate header/body จาก org record + `render_consent_text()` ดู `CONSENT_FORMS.md §8` สำหรับ template hooks
+- **`consent_records.content_snapshot`** — เก็บ rendered text ตอนที่ grant เพื่อ legal audit (ไม่ขึ้นกับ org rename ภายหลัง)
 
 ---
 

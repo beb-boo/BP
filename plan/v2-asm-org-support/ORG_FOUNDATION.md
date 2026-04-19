@@ -21,6 +21,7 @@
 > - Rename: `rpsst_admin`→`org_admin`, `rpsst_staff`→`org_staff`, `asm`→`caregiver`; `asm_collect`→`caregiver_collect`, `rpsst_view`→`org_view`; `asm_field_visit`/`asm_community`→`caregiver_*`; permissions `CREATE_RPSST`→`CREATE_ORG`, `CREATE_ASM_IN_ORG`→`CREATE_CAREGIVER_IN_ORG`; URL namespaces `/api/v1/asm/`→`/api/v1/caregiver/`, `/api/v1/rpsst/`→`/api/v1/org/`
 > - NEW §8.3: Self-measure auto-visible policy for hybrid patients (data flow, visibility rules, withdrawal effects, implementation notes)
 > - NEW §8.4: Hybrid user onboarding — 3 paths (Admin creates / Patient self-registers + admin links / Caregiver creates on field visit) + 4 new API endpoints (link-to-org, unlink-from-org, create-hybrid, activate) + account type state transitions
+> - NEW §6.5: Role display labels per org type — role mapping table (rpsst/clinic/hospital/other) + `org_display.py` resolver (`get_role_label`) with Thai+English labels
 
 ---
 
@@ -1118,6 +1119,67 @@ def get_active_org_context(credentials) -> tuple[int | None, str | None]:
 - Phase 1a (MVP): สร้าง `POST /api/v1/auth/select-org` endpoint + JWT claim
 - Phase 1b: Frontend org selector UI (ADMIN_WEB_SPEC, CAREGIVER_PWA_SPEC)
 - Legacy users (ไม่มี org membership): JWT ไม่มี `active_org_id` → v2 endpoints ที่ต้องการ org context → 403
+
+### 6.5 Role display labels per org type (v1.2 new)
+
+> **Decision (GENERALIZE_ORG_PLAN §5):** ทุก org type ใช้ roles ชุดเดียวกัน — แต่ **display label** ต่างกัน (รพ.สต. → "อสม.", clinic → "พยาบาล", hospital → "พยาบาล/ผู้ช่วยแพทย์"). ไม่แยก role enum — แยก label resolution.
+
+#### 6.5.1 Role mapping per org type
+
+| Org type | `org_admin` | `org_staff` | `caregiver` | `doctor` | Notes |
+|----------|:-----------:|:-----------:|:-----------:|:--------:|-------|
+| `rpsst` (รพ.สต.) | ผอ.รพ.สต. | เจ้าหน้าที่ | อสม. | แพทย์ที่ปรึกษา | MVP pilot |
+| `clinic` | เจ้าของคลินิก | receptionist | พยาบาล | แพทย์ | Phase 2 |
+| `hospital` | admin ฝ่าย | เจ้าหน้าที่ | พยาบาล/ผู้ช่วย | แพทย์ | Phase 2+ |
+| `other` (corporate) | HR admin | — | wellness coordinator | — | Phase 3 |
+
+ทุก org type ใช้ **permissions เดียวกัน** (ดู §6.1) — ต่างแค่ display label
+
+#### 6.5.2 Display label resolver (`app/utils/org_display.py`)
+
+```python
+# app/utils/org_display.py
+
+ORG_ROLE_LABELS = {
+    # org_type → role → {th, en}
+    "rpsst": {
+        "org_admin": {"th": "ผู้อำนวยการ รพ.สต.", "en": "RPSST Director"},
+        "org_staff": {"th": "เจ้าหน้าที่ รพ.สต.", "en": "RPSST Staff"},
+        "caregiver": {"th": "อาสาสมัครสาธารณสุข (อสม.)", "en": "Health Volunteer (ASM)"},
+        "doctor": {"th": "แพทย์ที่ปรึกษา", "en": "Consulting Doctor"},
+    },
+    "clinic": {
+        "org_admin": {"th": "ผู้ดูแลคลินิก", "en": "Clinic Administrator"},
+        "org_staff": {"th": "เจ้าหน้าที่", "en": "Staff"},
+        "caregiver": {"th": "พยาบาล", "en": "Nurse"},
+        "doctor": {"th": "แพทย์", "en": "Doctor"},
+    },
+    "hospital": {
+        "org_admin": {"th": "ผู้ดูแลระบบ", "en": "System Administrator"},
+        "org_staff": {"th": "เจ้าหน้าที่", "en": "Staff"},
+        "caregiver": {"th": "พยาบาล/ผู้ช่วยแพทย์", "en": "Nurse/Medical Assistant"},
+        "doctor": {"th": "แพทย์", "en": "Doctor"},
+    },
+    "_default": {
+        "org_admin": {"th": "ผู้ดูแลระบบ", "en": "Administrator"},
+        "org_staff": {"th": "เจ้าหน้าที่", "en": "Staff"},
+        "caregiver": {"th": "ผู้ดูแล", "en": "Caregiver"},
+        "doctor": {"th": "แพทย์", "en": "Doctor"},
+    },
+}
+
+
+def get_role_label(org_type: str, role: str, lang: str = "th") -> str:
+    """Get display label for a role within an org type."""
+    labels = ORG_ROLE_LABELS.get(org_type, ORG_ROLE_LABELS["_default"])
+    role_labels = labels.get(role, ORG_ROLE_LABELS["_default"].get(role, {}))
+    return role_labels.get(lang, role)
+```
+
+**Usage:**
+- UI layer: เรียก `get_role_label(org.type, user.primary_role, user.language)` เพื่อแสดง label ใน badge/table
+- i18n keys: `caregiver.title` (generic), `caregiver.title_asm`, `caregiver.title_nurse`, `caregiver.title_assistant` (specific) — UI เลือกดูจาก `organization.type`
+- Consent forms ใช้ label นี้ populate templated text (ดู `CONSENT_FLOW_SPEC.md §4.3`)
 
 ---
 
