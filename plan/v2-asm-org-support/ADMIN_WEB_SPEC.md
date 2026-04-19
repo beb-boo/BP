@@ -1,7 +1,7 @@
 # Admin Web Specification — รพ.สต. / Organization Dashboard
 
-> **Status:** Draft v1.1 — aligned with [[PLAN_REVIEW_RESPONSE]] decisions (2026-04-18)
-> **Last updated:** 2026-04-18
+> **Status:** Draft v1.2 — GENERALIZE_ORG_PLAN rename + self/caregiver readings distinction applied
+> **Last updated:** 2026-04-19
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `ORG_FOUNDATION.md`, `PLAN_REVIEW_RESPONSE.md`
 > **Related:** `CAREGIVER_PWA_SPEC.md`, `CONSENT_FLOW_SPEC.md`
@@ -12,6 +12,11 @@
 > - §3.16 audit log: Dual-source from `admin_audit_logs` (legacy) + `audit_logs` (new) — decision 4.4
 > - §5.1: Added `POST /api/v1/auth/select-org` endpoint
 > - §2 routes: Added `/admin/system/backups` (superadmin-only — Neon branch backup tool, see [[BACKUP_AND_MIGRATION_SPEC]])
+
+> [!INFO] **v1.2 changes** (2026-04-19, GENERALIZE_ORG_PLAN)
+> - Routes renamed: `/admin/asm` → `/admin/caregivers` (+ `/new`, `/[id]`); APIs `/api/v1/admin/asm` → `/api/v1/admin/caregivers`; role `rpsst_admin`/`rpsst_staff` → `org_admin`/`org_staff`; scope `asm_collect`/`rpsst_view` → `caregiver_collect`/`org_view`
+> - §3.9.3 Patient detail: added 🏠/👤 source icons + separate "last self-measured" / "last caregiver-measured" counters (see `ORG_FOUNDATION.md §8.3`)
+> - §3.12 Readings list: added source icon column + measurement source filter (any / self-only / caregiver-only)
 
 ---
 
@@ -418,7 +423,10 @@ Web application สำหรับ **รพ.สต. admin** (role = `org_admin`)
 
 #### 3.9.3 BP History
 - Chart (30/90/365 days selectable)
-- Recent readings table (10 most recent)
+- Recent readings table (10 most recent) — source icon per row: 🏠 self-measured | 👤 caregiver-measured (see `ORG_FOUNDATION.md §8.3`)
+- Separate summary counters (v1.2 new):
+  - "Last self-measured": `{datetime}` (`measured_by_user_id IS NULL`)
+  - "Last caregiver-measured": `{datetime}` by `{caregiver_name}` (`measured_by_user_id IS NOT NULL`)
 - "View all" → `/admin/readings?patient={id}`
 
 #### 3.9.4 Consent Status
@@ -528,19 +536,21 @@ Web application สำหรับ **รพ.สต. admin** (role = `org_admin`)
 - Patient name
 - Measured at (TH datetime)
 - Systolic / Diastolic / Pulse
-- Measured by (อสม. name)
-- Context (self / caregiver_field_visit / ...)
-- Source (manual / ocr_single / ocr_batch)
+- **Source icon** (v1.2 new): 🏠 self-measured (`measured_by_user_id IS NULL`) | 👤 caregiver-measured
+- Measured by — caregiver name, or "ผู้ป่วยเอง" (self) when `measured_by_user_id` is null
+- Context (self_home / caregiver_field_visit / ...)
+- Entry source (manual / ocr_single / ocr_batch)
 - OCR confidence (if OCR)
 - Status flags: flagged_high / edited / ocr_reviewed
 - Actions: View / Edit / Delete
 
 **Filters**:
 - Patient
-- อสม.
+- Caregiver (อสม./พยาบาล)
+- **Measurement source** (v1.2 new): any / self-measured only / caregiver-measured only
 - Date range
 - Value range (systolic >= X, diastolic >= Y)
-- Source type
+- Entry source type
 - OCR confidence < threshold
 - Needs review queue
 

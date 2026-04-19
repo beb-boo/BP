@@ -1,7 +1,7 @@
 # Consent Flow Specification — PDPA-Compliant Consent Workflow
 
-> **Status:** Draft v1.1 — aligned with [[PLAN_REVIEW_RESPONSE]] decisions (2026-04-18)
-> **Last updated:** 2026-04-18
+> **Status:** Draft v1.2 — GENERALIZE_ORG_PLAN rename + self-measure withdrawal effect applied
+> **Last updated:** 2026-04-19
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `ORG_FOUNDATION.md`, `PLAN_REVIEW_RESPONSE.md`
 > **Related:** `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, `docs/pdpa/CONSENT_FORMS.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
@@ -9,6 +9,11 @@
 > [!INFO] **v1.1 changes**
 > - §4.1.5: Data categories clarified — single-OCR images NOT stored; only low-confidence batch OCR images stored temporarily (7 days max)
 > - §12: Acceptance criteria updated — **no paper scan upload** (per decision 4.5); replaced with "record paper filing metadata"
+
+> [!INFO] **v1.2 changes** (2026-04-19, GENERALIZE_ORG_PLAN)
+> - Scope rename: `asm_collect` → `caregiver_collect`, `rpsst_view` → `org_view`; API `/api/v1/asm/` → `/api/v1/caregiver/`; handler `get_current_asm` → `get_current_caregiver`
+> - NEW §5.3.3: Effect of consent withdrawal on self-measured data (hybrid patients) — withdrawal does not block patient's self write path, only affects org/caregiver visibility (see `ORG_FOUNDATION.md §8.3`)
+> - Old §5.3.3 Data deletion request renumbered to §5.3.4
 
 ---
 
@@ -267,7 +272,22 @@ Step 5 — Notification
   ระบบ suggest: "ชาวบ้าน X ถอน consent, พิจารณา delete data?"
 ```
 
-#### 5.3.3 Data deletion request (follow-up after withdrawal)
+#### 5.3.3 Effect on self-measured data (hybrid patients) (v1.2 new)
+
+สำหรับ patient ที่เป็น `account_type=hybrid` และมี readings ที่วัดเอง (`measured_by_user_id IS NULL`, `measurement_context=self_home`) — การถอน consent ส่งผลดังนี้:
+
+| Scope withdrawn | Effect on self-measured data |
+|----------------|----------------------------|
+| `caregiver_collect` | Caregiver ไม่เห็น self-measured อีก (รวมถึง caregiver-measured ด้วย). Patient ยังเห็นข้อมูลตัวเอง |
+| `org_view` | Org admin ไม่เห็น self-measured อีก. Patient ยังเห็นข้อมูลตัวเอง |
+| Both withdrawn | Patient เห็นข้อมูลตัวเอง only. Org/caregiver ไม่เห็น. Data ยังอยู่ — ไม่ลบจนกว่าจะมี erasure request แยก (ดู §5.3.4) |
+
+**หมายเหตุ:**
+- Patient ยังใช้แอปวัดเองได้เหมือนเดิม (withdrawal ไม่ block write path ของ self endpoint)
+- Readings ใหม่ที่วัดหลังถอน → `organization_id` ยังถูก populate (จาก `user.managed_by_organization_id`) แต่ org/caregiver query จะ filter ด้วย consent check — ไม่เห็นจนกว่า patient regrants consent
+- ดูรายละเอียด visibility rules ใน `ORG_FOUNDATION.md §8.3.2`
+
+#### 5.3.4 Data deletion request (follow-up after withdrawal)
 
 หากชาวบ้านขอ **ลบข้อมูล** ด้วย (right to be forgotten — มาตรา 33):
 1. Admin เริ่ม deletion flow ใน system

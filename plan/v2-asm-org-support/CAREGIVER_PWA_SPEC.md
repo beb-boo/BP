@@ -1,7 +1,7 @@
 # Caregiver PWA Specification — Progressive Web App for อาสาสมัครสาธารณสุข
 
-> **Status:** Draft v1.1 — aligned with [[PLAN_REVIEW_RESPONSE]] decisions (2026-04-18)
-> **Last updated:** 2026-04-18
+> **Status:** Draft v1.2 — GENERALIZE_ORG_PLAN rename + 🏠/👤 source icons applied
+> **Last updated:** 2026-04-19
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `ORG_FOUNDATION.md`, `CONSENT_FLOW_SPEC.md`, `PLAN_REVIEW_RESPONSE.md`
 > **Related:** `ADMIN_WEB_SPEC.md`
@@ -11,6 +11,11 @@
 > - Consent flow (§7) — ✅ already excludes paper scan upload (§7.3)
 > - JWT payload (§3.3) — ✅ includes `organization_id` (= `active_org_id` for caregiver = default single org)
 > - **Multi-org สำหรับ อสม.:** MVP = 1 อสม. : 1 รพ.สต. (no org selector). Phase 2 ถ้า อสม. เป็น member หลาย รพ.สต. = reuse `/admin/select-org` pattern จาก ADMIN_WEB_SPEC §3.1.5
+
+> [!INFO] **v1.2 changes** (2026-04-19, GENERALIZE_ORG_PLAN)
+> - File renamed from `ASM_PWA_SPEC.md` → `CAREGIVER_PWA_SPEC.md` (git mv)
+> - Routes renamed: `/asm/*` → `/caregiver/*`; APIs `/api/v1/asm/` → `/api/v1/caregiver/`; enum `asm_collect` → `caregiver_collect`, `asm_field_visit` → `caregiver_field_visit`
+> - §4.5: Patient detail now shows 👤/🏠 source icons + edit/delete only on caregiver-measured rows (see `ORG_FOUNDATION.md §8.3`)
 
 ---
 
@@ -435,9 +440,11 @@ Screen 3: Quick Tour (3 tiles)
 │  [chart]                │
 │                         │
 │  📝 บันทึกล่าสุด          │
-│  17/4/2026 08:30         │
+│  17/4/2026 08:30 👤     │
 │    135/88 (72) ✓         │
-│  10/4/2026 08:15         │
+│  15/4/2026 07:45 🏠     │
+│    132/84 (70)           │
+│  10/4/2026 08:15 👤     │
 │    140/92 (75)           │
 │  [ดูทั้งหมด]              │
 │                         │
@@ -451,14 +458,20 @@ Screen 3: Quick Tour (3 tiles)
 └─────────────────────────┘
 ```
 
+**Reading source icons (v1.2 new):**
+- 👤 caregiver-measured (`measured_by_user_id` not null) — บันทึกโดย อสม./พยาบาล/ผู้ดูแล
+- 🏠 self-measured (`measured_by_user_id` is null) — ผู้ป่วย hybrid account วัดเองที่บ้าน (เห็นได้ถ้า patient มี consent `caregiver_collect` และ active `care_assignment`)
+- Patient history แสดง readings ทั้งสอง source merged — ดู `ORG_FOUNDATION.md §8.3` สำหรับ visibility rules
+
 **Actions**:
 - "+ บันทึกผลวัดใหม่" → chooser: พิมพ์เอง / ถ่ายรูป → `/caregiver/patients/{id}/reading/new`
 - Unmask phone/citizen: confirm modal + audit log
 - If no active consent: block record button + message "ต้องเก็บ consent ก่อน" → link to `/caregiver/patients/{id}/consent`
+- Edit/delete — allowed only on caregiver-measured (👤) rows และภายใน 24h; self-measured (🏠) rows ไม่ให้แก้ไขจาก caregiver PWA
 
 **API**:
 - `GET /api/v1/caregiver/patients/{id}` — detail + consent + readings summary
-- `GET /api/v1/caregiver/patients/{id}/readings?days=30` — history for chart
+- `GET /api/v1/caregiver/patients/{id}/readings?days=30` — history for chart (response includes `measured_by_user_id`, `measurement_context`)
 
 ### 4.6 `/caregiver/patients/[id]/reading/new` — Quick Entry
 

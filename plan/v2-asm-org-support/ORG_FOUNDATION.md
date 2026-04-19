@@ -1,7 +1,7 @@
 # Organization Foundation Plan — BP Monitor
 
-> **Status:** Draft v1.1 — decisions from [[PLAN_REVIEW_RESPONSE]] applied
-> **Last updated:** 2026-04-18
+> **Status:** Draft v1.2 — GENERALIZE_ORG_PLAN rename + self-measure policy applied
+> **Last updated:** 2026-04-19
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `PLAN_REVIEW_RESPONSE.md`
 > **Blocks:** `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, all PDPA implementation
@@ -16,6 +16,10 @@
 > - §5.2: `LEGACY_ROLE_MAP` for backfill (staff → superadmin, not org_staff)
 > - §7: AdminAuditLog → AuditLog via dual-write (no data migration)
 > - §6: Multi-org support via JWT claim `active_org_id`
+
+> [!IMPORTANT] **v1.2 CHANGELOG** (2026-04-19, GENERALIZE_ORG_PLAN)
+> - Rename: `rpsst_admin`→`org_admin`, `rpsst_staff`→`org_staff`, `asm`→`caregiver`; `asm_collect`→`caregiver_collect`, `rpsst_view`→`org_view`; `asm_field_visit`/`asm_community`→`caregiver_*`; permissions `CREATE_RPSST`→`CREATE_ORG`, `CREATE_ASM_IN_ORG`→`CREATE_CAREGIVER_IN_ORG`; URL namespaces `/api/v1/asm/`→`/api/v1/caregiver/`, `/api/v1/rpsst/`→`/api/v1/org/`
+> - NEW §8.3: Self-measure auto-visible policy for hybrid patients (data flow, visibility rules, withdrawal effects, implementation notes)
 
 ---
 
@@ -1270,6 +1274,75 @@ async def get_audit_history(actor_id: int, ...):
   → log: consent_withdraw
   → trigger: stop allowing BP writes for Z (scope=caregiver_collect)
   → optional: notify อสม. assigned to Z
+```
+
+### 8.3 Self-measure auto-visible policy (hybrid patients) (v1.2 new)
+
+> **Decision (GENERALIZE_ORG_PLAN §3):** เมื่อ hybrid patient (มี login + สังกัด org) วัดเองที่บ้าน ข้อมูล BP ปรากฏใน org dashboard ทันที — ไม่ต้อง opt-in per reading. Consent = blanket per scope ไม่ใช่ per-entry.
+
+#### 8.3.1 Data flow
+
+```
+Hybrid patient (account_type=hybrid, managed_by_organization_id=X)
+  │
+  ├─ วัดเอง (self_home)
+  │   └─ POST /api/v1/bp-records (existing v1 endpoint)
+  │       └─ BloodPressureRecord created with:
+  │           user_id = patient.id
+  │           measured_by_user_id = NULL            ← ตัวเอง
+  │           measurement_context = self_home
+  │           organization_id = patient.managed_by_organization_id   ← auto-populated
+  │
+  ├─ Caregiver วัดให้ (caregiver_field_visit)
+  │   └─ POST /api/v1/caregiver/readings
+  │       └─ BloodPressureRecord created with:
+  │           user_id = patient.id
+  │           measured_by_user_id = caregiver.id
+  │           measurement_context = caregiver_field_visit
+  │           organization_id = caregiver's active org
+  │
+  └─ ทั้ง 2 flow → same `blood_pressure_records` table
+      → same patient history (merged by patient_id + measured_at)
+      → org dashboard sees ALL (ถ้า consent active)
+      → UI แยกด้วย icon: 🏠 self-measured vs 👤 caregiver-measured
+```
+
+#### 8.3.2 Visibility rules
+
+| Who views | Sees self-measured? | Sees caregiver-measured? | Condition |
+|-----------|:-------------------:|:------------------------:|-----------|
+| Patient (self) | ✅ Always | ✅ Always | Owner of data |
+| Caregiver (assigned) | ✅ | ✅ | Active `caregiver_collect` consent + active `care_assignment` |
+| Org admin | ✅ | ✅ | Active `org_view` consent + patient in same org |
+| Doctor (B2C legacy) | ✅ | ✅ | Active `DoctorPatient` relationship |
+| Other patients | ❌ | ❌ | Never |
+
+#### 8.3.3 Consent withdrawal effect on self-measure
+
+| Scope withdrawn | Effect on self-measured data |
+|----------------|----------------------------|
+| `caregiver_collect` | Caregiver ไม่เห็นอีก (ทั้ง self + caregiver measured). Patient ยังเห็นเอง |
+| `org_view` | Org admin ไม่เห็นอีก. Patient ยังเห็นเอง |
+| Both withdrawn | Patient เห็นข้อมูลตัวเอง only. Org/caregiver ไม่เห็น. Data ยังอยู่ (ไม่ลบ) |
+
+#### 8.3.4 Implementation notes
+
+**Existing v1 endpoint `/api/v1/bp-records`:**
+- ปัจจุบัน: สร้าง record with `user_id = current_user.id`, ไม่มี `organization_id`
+- **v2 change:** ถ้า `current_user.managed_by_organization_id` is not null → auto-set `organization_id` ใน record
+- **ไม่ break** existing flow: user ไม่มี org → `organization_id = null` → เหมือนเดิม
+
+**Query for org dashboard:**
+```python
+# Admin/caregiver ดู readings ของ patient ที่มี consent
+readings = db.query(BloodPressureRecord).filter(
+    BloodPressureRecord.user_id == patient_id,
+    # No filter on measured_by — show ALL sources
+).order_by(desc(BloodPressureRecord.measured_at))
+
+# Frontend: distinguish by measured_by_user_id
+# null = self-measured (show 🏠 icon)
+# not null = caregiver-measured (show 👤 icon + caregiver name)
 ```
 
 ---
