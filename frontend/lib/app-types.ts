@@ -151,3 +151,17 @@ export interface AdminAuditEntry {
   details?: string | null;
   created_at: string;
 }
+
+// System backup types (Neon branches)
+export interface NeonBranchItem {
+  id: string;
+  name: string;
+  is_default: boolean;
+  protected: boolean;
+  parent_id?: string | null;
+  parent_lsn?: string | null;
+  current_state?: string | null;
+  logical_size_bytes?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}

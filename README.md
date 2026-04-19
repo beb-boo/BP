@@ -250,6 +250,8 @@ cd frontend && npm run build && npm start
 * **Account Actions**: Deactivate/activate users with required reason and audit trail.
 * **Audit Log**: All admin actions logged with actor, target, reason, and timestamp.
 * **Access Control**: `STAFF_ALLOWLIST` env var for defense-in-depth and lazy env-managed staff sync. Leave it unset to skip sync, use `NONE` to explicitly demote env-managed staff, and prefer explicit prefixes such as `user:`, `email:`, `phone:`, `telegram:`.
+* **Bootstrap first staff user**: staff cannot self-register. See [docs/operations/bootstrap-staff.md](docs/operations/bootstrap-staff.md) for the env-managed promotion (recommended) and direct-DB fallback.
+* **Backup & restore**: superadmin-only page at `/admin/system/backups` creates Neon branch snapshots (instant backup, swap `DATABASE_URL` to rollback). See [docs/operations/backup-runbook.md](docs/operations/backup-runbook.md) for full procedures including local `pg_dump` and restore workflows.
 
 ### Subscription & Payments
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock } from "lucide-react";
 import api from "@/lib/api";
@@ -58,7 +59,8 @@ import type {
 } from "@/lib/app-types";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShieldCheck, UserX, UserCheck, ClipboardList } from "lucide-react";
+import { ShieldCheck, UserX, UserCheck, ClipboardList, ArrowLeftRight } from "lucide-react";
+import { useActiveView, type ActiveView } from "@/lib/active-view";
 
 const defaultPagination: PaginationMeta = { current_page: 1, total_pages: 1 };
 
@@ -185,7 +187,44 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {user.role === "staff" ? <AdminView /> : user.role === "patient" ? <PatientView user={user} /> : <DoctorView user={user} />}
+            <StaffAwareView user={user} />
+        </div>
+    );
+}
+
+function StaffAwareView({ user }: { user: AppUser }) {
+    const { t } = useLanguage();
+    const defaultView: ActiveView =
+        user.role === "staff" ? "admin" : user.role === "patient" ? "patient" : "doctor";
+    const [activeView, setActiveView] = useActiveView(defaultView);
+
+    // Only staff can switch. Non-staff accounts always use their single view.
+    if (user.role !== "staff") {
+        if (user.role === "patient") return <PatientView user={user} />;
+        return <DoctorView user={user} />;
+    }
+
+    if (activeView === "patient") {
+        return (
+            <div className="space-y-4">
+                <Button variant="outline" size="sm" onClick={() => setActiveView("admin")}>
+                    <ArrowLeftRight className="mr-2 h-4 w-4" />
+                    {t("admin.back_to_admin")}
+                </Button>
+                <PatientView user={user} />
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => setActiveView("patient")}>
+                    <ArrowLeftRight className="mr-2 h-4 w-4" />
+                    {t("admin.view_as_patient")}
+                </Button>
+            </div>
+            <AdminView />
         </div>
     );
 }
@@ -1333,9 +1372,17 @@ function AdminView() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-2">
-                <ShieldCheck className="h-6 w-6 text-blue-600" />
-                <h2 className="text-xl font-bold">{t('admin.title')}</h2>
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <ShieldCheck className="h-6 w-6 text-blue-600" />
+                    <h2 className="text-xl font-bold">{t('admin.title')}</h2>
+                </div>
+                <Link href="/admin/system/backups">
+                    <Button variant="outline" size="sm">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        {t('admin.system')}: {t('admin.backups')}
+                    </Button>
+                </Link>
             </div>
 
             <Tabs defaultValue="users" className="space-y-4" onValueChange={(v) => { if (v === "audit") fetchAuditLog(); }}>

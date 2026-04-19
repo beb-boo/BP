@@ -201,6 +201,10 @@ All admin endpoints require both `require_staff` and `verify_api_key` dependenci
 
 **`STAFF_ALLOWLIST`** env (optional): comma-separated user IDs. If set, only listed staff can access admin endpoints.
 
+**Bootstrapping the first staff user:** staff cannot self-register (register endpoint only accepts `patient`/`doctor`). See [docs/operations/bootstrap-staff.md](docs/operations/bootstrap-staff.md) for the env-managed promotion flow (dry-run → apply) and direct-DB fallback.
+
+**Backup & restore:** superadmin-only page at `/admin/system/backups` creates Neon branch snapshots. See [docs/operations/backup-runbook.md](docs/operations/backup-runbook.md) for creation, local `pg_dump`, rollback via `DATABASE_URL` swap, and disaster-recovery restore from `.dump`.
+
 ### Database Migrations
 
 No Alembic — manual migration scripts in `migrations/`:

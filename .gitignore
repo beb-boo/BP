@@ -69,3 +69,4 @@ AUDIT.md
 /.zed
 .vercel
 plan/REFINEMENT_RECOMMENDATIONS.md
+*.dump
