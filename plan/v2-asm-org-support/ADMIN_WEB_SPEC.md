@@ -17,6 +17,9 @@
 > - Routes renamed: `/admin/asm` → `/admin/caregivers` (+ `/new`, `/[id]`); APIs `/api/v1/admin/asm` → `/api/v1/admin/caregivers`; role `rpsst_admin`/`rpsst_staff` → `org_admin`/`org_staff`; scope `asm_collect`/`rpsst_view` → `caregiver_collect`/`org_view`
 > - §3.9.3 Patient detail: added 🏠/👤 source icons + separate "last self-measured" / "last caregiver-measured" counters (see `ORG_FOUNDATION.md §8.3`)
 > - §3.12 Readings list: added source icon column + measurement source filter (any / self-only / caregiver-only)
+> - §3.8 Create Patient: new account_type radio (proxy_managed / hybrid / self_managed_link) + per-type submit flow
+> - §3.9.1 Patient detail: account type badge + link/unlink actions (hybrid onboarding)
+> - §5.4: new endpoints `link-to-org`, `unlink-from-org`, `users/search` (hybrid onboarding, see `ORG_FOUNDATION.md §8.4`)
 
 ---
 
@@ -359,9 +362,17 @@ Web application สำหรับ **รพ.สต. admin** (role = `org_admin`)
 
 ---
 
-### 3.8 `/admin/patients/new` — Create Proxy Patient
+### 3.8 `/admin/patients/new` — Create Patient
 
-**Purpose**: Register new ชาวบ้าน that doesn't have own account
+**Purpose**: Register new ชาวบ้าน into the org. Supports 3 account types per `ORG_FOUNDATION.md §8.4`.
+
+#### 3.8.0 Account type radio (v1.2 new)
+
+- **ประเภทบัญชี** (required, radio):
+  - `proxy_managed` — ไม่มี login (ผู้ดูแลบันทึกให้) — **default** for รพ.สต.
+  - `hybrid` — มี login + ผู้ดูแลบันทึกให้ได้ — **default** for clinic/hospital; sends activation link (SMS/Telegram) + temp password
+  - `self_managed_link` — ผูกบัญชีเดิม (search existing `self_managed` user by phone/email → link-to-org)
+- Form fields below are gated by selected type (phone/activation UI shown only for `hybrid`)
 
 **Form**:
 
@@ -390,18 +401,32 @@ Web application สำหรับ **รพ.สต. admin** (role = `org_admin`)
   - "อสม. จะเก็บ consent ภายหลังตอนลงพื้นที่" (default — pending)
   - "ชาวบ้านได้ให้ความยินยอมแล้ว" → upload consent scan or digital signature data
 
-**Process on submit**:
-1. Create user record (role=`patient_proxy`, account_type=`proxy_managed`, `managed_by_organization_id=org`)
-2. Encrypt PII + hash for search (citizen_id, phone, name)
-3. Create `care_assignment` (caregiver=selected อสม., patient=new user, org=current, sequence=N)
-4. (If consent provided) create `consent_records` for relevant scopes
-5. Redirect → patient detail page
+**Process on submit** (dispatched per selected account type):
+- `proxy_managed`:
+  1. Create user (role=`patient_proxy`, account_type=`proxy_managed`, `managed_by_organization_id=org`)
+  2. Encrypt PII + hash for search (citizen_id, phone, name)
+  3. Create `care_assignment` (caregiver=selected อสม., patient=new user, org=current, sequence=N)
+  4. (If consent provided) create `consent_records`
+- `hybrid` (v1.2 new):
+  1. Create user (role=`patient_self`, account_type=`hybrid`, `managed_by_organization_id=org`)
+  2. Generate temp password hash + activation token
+  3. Create `care_assignment` (if caregiver selected)
+  4. Send activation link via SMS/Telegram OR show temp credentials modal to admin (for hand-off)
+- `self_managed_link` (v1.2 new):
+  1. Lookup existing user by phone/email (must already be `self_managed`)
+  2. Call `POST /api/v1/admin/patients/{user_id}/link-to-org` — sets account_type=`hybrid`, `managed_by_organization_id=org`
+  3. Create `care_assignment` (if caregiver selected)
+  4. Mark consent pending (caregiver collects next visit)
+- All types: redirect → patient detail page
 
 **API calls**:
-- `POST /api/v1/admin/patients` — full payload
+- `POST /api/v1/admin/patients` — full payload (proxy/hybrid creation)
+- `POST /api/v1/admin/patients/{user_id}/link-to-org` — when `self_managed_link` chosen (v1.2 new)
+- `GET /api/v1/admin/users/search?phone=...` — used by `self_managed_link` lookup
 
 **Audit events**:
 - `user_create`, `care_assignment_create`, (optionally) `consent_grant`
+- Additionally for hybrid: `hybrid_activation_sent`; for self_managed_link: `patient_linked_to_org`
 
 ---
 
@@ -413,8 +438,13 @@ Web application สำหรับ **รพ.สต. admin** (role = `org_admin`)
 
 #### 3.9.1 Header
 - Name (decrypted) + age + gender
+- **Account type badge** (v1.2 new): `proxy` / `hybrid` / `self` — drives action availability below
 - Status badge: active / deceased / inactive
 - Quick actions: Edit / Assign / View consent / Deactivate
+- **Link/unlink actions** (v1.2 new):
+  - `self` account (`self_managed`, not in org): `[Link to org]` → confirm modal + pick caregiver → `POST /api/v1/admin/patients/{id}/link-to-org`
+  - `hybrid` account (in this org): `[Unlink from org]` → confirm modal + reason + consent withdrawal checkbox → `POST /api/v1/admin/patients/{id}/unlink-from-org`
+  - `proxy` account: no link/unlink (would require patient self-activation first; future work)
 
 #### 3.9.2 Profile (collapsible)
 - Full contact info (masked by default, click to unmask with audit)
@@ -832,6 +862,8 @@ POST   /api/v1/admin/patients
 GET    /api/v1/admin/patients/{id}
 PATCH  /api/v1/admin/patients/{id}
 POST   /api/v1/admin/patients/{id}/deactivate
+POST   /api/v1/admin/patients/{id}/link-to-org          # v1.2 (hybrid)
+POST   /api/v1/admin/patients/{id}/unlink-from-org      # v1.2 (hybrid)
 POST   /api/v1/admin/patients/import
 POST   /api/v1/admin/patients/export
 POST   /api/v1/admin/patients/bulk-assign
@@ -839,7 +871,12 @@ GET    /api/v1/admin/patients/{id}/readings
 GET    /api/v1/admin/patients/{id}/consent
 GET    /api/v1/admin/patients/{id}/assignments
 GET    /api/v1/admin/patients/{id}/audit
+GET    /api/v1/admin/users/search                       # v1.2 (hybrid link lookup)
 ```
+
+**Link/unlink semantics** (see `ORG_FOUNDATION.md §8.4`):
+- `link-to-org` — body: `{organization_id, assign_to_caregiver_id?, consent_pending?}`. Sets `account_type=hybrid`, `managed_by_organization_id=org`. Guard: `org_admin` of target org.
+- `unlink-from-org` — body: `{reason, withdraw_consent?: boolean}`. Sets `account_type=self_managed`, clears `managed_by_organization_id`, ends all care_assignments, optionally withdraws `caregiver_collect` + `org_view` consents. Guard: `org_admin` of source org.
 
 ### 5.5 Care Assignments
 

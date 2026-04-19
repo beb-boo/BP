@@ -20,6 +20,7 @@
 > [!IMPORTANT] **v1.2 CHANGELOG** (2026-04-19, GENERALIZE_ORG_PLAN)
 > - Rename: `rpsst_admin`→`org_admin`, `rpsst_staff`→`org_staff`, `asm`→`caregiver`; `asm_collect`→`caregiver_collect`, `rpsst_view`→`org_view`; `asm_field_visit`/`asm_community`→`caregiver_*`; permissions `CREATE_RPSST`→`CREATE_ORG`, `CREATE_ASM_IN_ORG`→`CREATE_CAREGIVER_IN_ORG`; URL namespaces `/api/v1/asm/`→`/api/v1/caregiver/`, `/api/v1/rpsst/`→`/api/v1/org/`
 > - NEW §8.3: Self-measure auto-visible policy for hybrid patients (data flow, visibility rules, withdrawal effects, implementation notes)
+> - NEW §8.4: Hybrid user onboarding — 3 paths (Admin creates / Patient self-registers + admin links / Caregiver creates on field visit) + 4 new API endpoints (link-to-org, unlink-from-org, create-hybrid, activate) + account type state transitions
 
 ---
 
@@ -1343,6 +1344,93 @@ readings = db.query(BloodPressureRecord).filter(
 # Frontend: distinguish by measured_by_user_id
 # null = self-measured (show 🏠 icon)
 # not null = caregiver-measured (show 👤 icon + caregiver name)
+```
+
+### 8.4 Hybrid user onboarding (v1.2 new)
+
+> **Decision (GENERALIZE_ORG_PLAN §4):** `AccountType.hybrid` = ชาวบ้าน/คนไข้ที่**มี login เอง** + **สังกัด org** + มี caregiver assign (optional) + วัดเองได้. รองรับ 3 onboarding paths และสลับระหว่าง account types ผ่าน link/unlink endpoints.
+
+#### 8.4.1 Path A — Admin creates, patient self-activates (แนะนำสำหรับ clinic/hospital)
+
+```
+1. Org admin สร้างบัญชี hybrid patient:
+   POST /api/v1/admin/patients
+   Body: { full_name, phone, dob, gender,
+           account_type: "hybrid",
+           assign_to_caregiver_id: optional }
+   Backend creates:
+   - User (account_type=hybrid, managed_by_organization_id=admin's org)
+   - Random temporary password (hashed, stored)
+   - Care assignment (ถ้ามี caregiver assigned)
+
+2. Admin ให้ข้อมูล login แก่คนไข้:
+   - เบอร์โทร + temp password (พิมพ์ใบ / บอกปากเปล่า / SMS)
+   - หรือ pairing code 6 หลัก (เหมือน caregiver flow)
+
+3. คนไข้ login ครั้งแรก:
+   - เปิดแอพ → ใส่เบอร์ + temp password
+   - Force change password (reuse v1 flow)
+   - Accept ToS + Privacy Policy
+   - Optional: ผูก Telegram (สำหรับ OTP ภายหลัง)
+
+4. คนไข้ใช้งาน:
+   - วัดเอง → ข้อมูลไปรวมใน org (ถ้ามี consent)
+   - caregiver มาวัดให้ → ข้อมูลไปรวมเช่นกัน
+```
+
+#### 8.4.2 Path B — Patient self-registers, admin links to org (แนะนำสำหรับ รพ.สต./อสม.)
+
+```
+1. ชาวบ้าน register เอง (v1 flow เดิม):
+   POST /api/v1/auth/register
+   Body: { phone, password, full_name, role: "patient" }
+   → User created: account_type=self_managed, managed_by_organization_id=null
+
+2. Admin ค้นหา user → link เข้า org:
+   POST /api/v1/admin/patients/{user_id}/link-to-org
+   Body: { organization_id, assign_to_caregiver_id, consent_pending: true }
+   Backend:
+   - Update user: account_type → hybrid, managed_by_organization_id → org.id
+   - Create care_assignment (ถ้ามี)
+   - Mark consent เป็น pending (caregiver ต้องไปเก็บ)
+
+3. Caregiver ไปเยี่ยม → เก็บ consent (กระดาษ + digital)
+
+4. ชาวบ้านยังใช้แอปเดิม + ข้อมูลเริ่ม visible ต่อ org (หลัง consent active)
+```
+
+#### 8.4.3 Path C — Caregiver creates hybrid on field visit
+
+```
+1. Caregiver อยู่ภาคสนาม เจอชาวบ้านที่มีมือถือ+อยากใช้เอง
+2. Caregiver PWA → "สร้างคนไข้ใหม่" → เลือก account_type = hybrid
+   POST /api/v1/caregiver/patients/create-hybrid
+3. Backend creates user + care_assignment + ส่ง activation link ทาง SMS/Telegram
+4. ชาวบ้าน activate เอง (set password) ผ่าน POST /api/v1/auth/activate
+5. Caregiver เก็บ consent ทันที
+```
+
+#### 8.4.4 Hybrid-specific API endpoints (NEW)
+
+| Method | Path | Guard | Purpose |
+|--------|------|-------|---------|
+| POST | `/api/v1/admin/patients/{user_id}/link-to-org` | `org_admin` of target org | Move `self_managed` user into org (account_type → hybrid, set `managed_by_organization_id`) + optional care_assignment |
+| POST | `/api/v1/admin/patients/{user_id}/unlink-from-org` | `org_admin` of target org | Remove user from org (account_type → self_managed, clear `managed_by_organization_id`); end care_assignments; withdraw consent if patient confirms |
+| POST | `/api/v1/caregiver/patients/create-hybrid` | caregiver in active org | Create hybrid user + care_assignment + send activation link |
+| POST | `/api/v1/auth/activate` | `activation_token` | Set password + mark activated (reuse password reset flow w/ different purpose) |
+
+#### 8.4.5 Account type state transitions
+
+```
+self_managed (v1 default)
+  → [link-to-org]      → hybrid (managed_by_organization_id set)
+  → [admin creates]    → hybrid (direct, Path A)
+
+hybrid
+  → [unlink-from-org]  → self_managed (managed_by_organization_id=null, care_assignments ended)
+
+proxy_managed (no login)
+  → [self-activate via activation link] → hybrid (future work; not in MVP)
 ```
 
 ---

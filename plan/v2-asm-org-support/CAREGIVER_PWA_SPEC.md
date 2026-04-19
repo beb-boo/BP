@@ -16,6 +16,7 @@
 > - File renamed from `ASM_PWA_SPEC.md` → `CAREGIVER_PWA_SPEC.md` (git mv)
 > - Routes renamed: `/asm/*` → `/caregiver/*`; APIs `/api/v1/asm/` → `/api/v1/caregiver/`; enum `asm_collect` → `caregiver_collect`, `asm_field_visit` → `caregiver_field_visit`
 > - §4.5: Patient detail now shows 👤/🏠 source icons + edit/delete only on caregiver-measured rows (see `ORG_FOUNDATION.md §8.3`)
+> - §10.3: new endpoint `POST /api/v1/caregiver/patients/create-hybrid` (Path C hybrid onboarding, see `ORG_FOUNDATION.md §8.4.3`)
 
 ---
 
@@ -1123,7 +1124,17 @@ POST /api/v1/caregiver/patients/{external_id}/unmask-phone
 POST /api/v1/caregiver/patients/{external_id}/unmask-citizen-id
   (audit logged)
   Response: { citizen_id: "unmasked" }
+
+POST /api/v1/caregiver/patients/create-hybrid    # v1.2 new
+  Body: { full_name, phone, dob?, gender?, notes? }
+  Guard: caregiver in active org
+  Effect: creates User (account_type=hybrid, managed_by_organization_id=caregiver's active org),
+          care_assignment (caregiver=current, patient=new), sends activation link via SMS/Telegram
+  Response: { user_id, external_id, activation_link_sent: true }
+  See: `ORG_FOUNDATION.md §8.4.3` (Path C)
 ```
+
+**Note (v1.2):** activation is completed by the patient via `POST /api/v1/auth/activate` (body: `{activation_token, new_password}`). That endpoint is shared across onboarding Paths A/B/C — not caregiver-scoped.
 
 ### 10.4 Readings
 
