@@ -4,7 +4,7 @@
 > **Last updated:** 2026-04-18
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `PLAN_REVIEW_RESPONSE.md`
-> **Blocks:** `ADMIN_WEB_SPEC.md`, `ASM_PWA_SPEC.md`, all PDPA implementation
+> **Blocks:** `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, all PDPA implementation
 
 > [!IMPORTANT] **v1.1 CHANGELOG** (2026-04-18)
 > - §4.1.4: Removed `paper_scan_file_id` (data minimization; physical paper only)
@@ -13,7 +13,7 @@
 > - NEW §4.3: DoctorPatient + CareAssignment coexistence
 > - NEW §4.4: License ↔ Organization relationship
 > - §5.1: Migration sequence revised to respect FK dependencies
-> - §5.2: `LEGACY_ROLE_MAP` for backfill (staff → superadmin, not rpsst_staff)
+> - §5.2: `LEGACY_ROLE_MAP` for backfill (staff → superadmin, not org_staff)
 > - §7: AdminAuditLog → AuditLog via dual-write (no data migration)
 > - §6: Multi-org support via JWT claim `active_org_id`
 
@@ -30,7 +30,7 @@
 
 ## 2. Design Principles
 
-1. **Single source of truth** — ใช้ table `users` เดียว ไม่แยก `patients`, `asm_users`, `admin_users` ออกจากกัน แบ่งด้วย role + account_type
+1. **Single source of truth** — ใช้ table `users` เดียว ไม่แยก `patients`, `caregiver_users`, `admin_users` ออกจากกัน แบ่งด้วย role + account_type
 2. **Backward compatible migration** — user เดิมทุกคน default เป็น `self_managed` + role = `patient_self` ไม่ต้องเปลี่ยนพฤติกรรม
 3. **Soft delete over hard delete** — user และ org ใช้ `is_active` + `deleted_at` ไม่ลบจริง (ยกเว้น right to be forgotten)
 4. **Audit everything cross-user** — ทุก action ที่เข้าถึงข้อมูลคนอื่น log หมด
@@ -56,10 +56,10 @@ class AccountType(str, enum.Enum):
 class UserRole(str, enum.Enum):
     """บทบาทใน application"""
     superadmin = "superadmin"          # เรา (Anthropic-style, ทำ system ops)
-    rpsst_admin = "rpsst_admin"        # admin ของ รพ.สต.
-    rpsst_staff = "rpsst_staff"        # staff ปกติใน รพ.สต. (Phase 2)
+    org_admin = "org_admin"        # admin ของ รพ.สต.
+    org_staff = "org_staff"        # staff ปกติใน รพ.สต. (Phase 2)
     doctor = "doctor"                  # แพทย์
-    asm = "asm"                        # อาสาสมัครสาธารณสุข
+    caregiver = "caregiver"            # ผู้ดูแล (อสม./พยาบาล/ผู้ช่วยแพทย์)
     patient_self = "patient_self"      # ชาวบ้านล็อกอินเอง
     patient_proxy = "patient_proxy"    # ชาวบ้าน proxy-managed (ไม่มี login)
 
@@ -78,16 +78,16 @@ class MeasurementContext(str, enum.Enum):
     """บริบทของการวัด"""
     self_home = "self_home"            # วัดเองที่บ้าน (flow เดิม)
     self_other = "self_other"          # วัดเองสถานที่อื่น
-    asm_field_visit = "asm_field_visit"  # อสม. ไปวัดที่บ้านชาวบ้าน
-    asm_community = "asm_community"    # อสม. วัดรวมที่ชุมชน
+    caregiver_field_visit = "caregiver_field_visit"  # อสม. ไปวัดที่บ้านชาวบ้าน
+    caregiver_community = "caregiver_community"    # อสม. วัดรวมที่ชุมชน
     clinic_visit = "clinic_visit"      # วัดที่คลินิก/รพ.สต.
     other = "other"
 
 
 class ConsentScope(str, enum.Enum):
     """Scope ของความยินยอม (granular)"""
-    asm_collect = "asm_collect"                # ยินยอมให้ อสม. เก็บข้อมูล
-    rpsst_view = "rpsst_view"                  # ยินยอมให้ รพ.สต. ดูข้อมูล
+    caregiver_collect = "caregiver_collect"                # ยินยอมให้ อสม. เก็บข้อมูล
+    org_view = "org_view"                  # ยินยอมให้ รพ.สต. ดูข้อมูล
     doctor_view = "doctor_view"                # ยินยอมให้แพทย์ดูข้อมูล
     research_anonymized = "research_anonymized" # ยินยอมให้ใช้เพื่อ research (ไม่ระบุตัวตน)
     data_export_to_smart_osm = "data_export_to_smart_osm"  # ส่งออกไปยัง Smart อสม. (Phase 2)
@@ -279,7 +279,7 @@ class OrganizationMember(Base):
 
 **Notes:**
 - User 1 คน สามารถเป็น member ของหลาย org ได้ และหลาย role ก็ได้
-- เช่น หมอ A เป็น doctor ใน รพ. X และ เป็น rpsst_admin ใน รพ.สต. Y พร้อมกัน
+- เช่น หมอ A เป็น doctor ใน รพ. X และ เป็น org_admin ใน รพ.สต. Y พร้อมกัน
 - `effective_until` รองรับ "เคยทำงานที่นี่แต่ลาออกแล้ว" — audit ย้อนหลังได้
 
 #### 4.1.3 `care_assignments`
@@ -727,7 +727,7 @@ Service layer `app/utils/bp_validation.py:validate_measured_at()` enforce:
 
 ### 4.3 Coexistence: `DoctorPatient` / `AccessRequest` ↔ `CareAssignment` (v1.1 new)
 
-> **Decision 4.3 (PLAN_REVIEW_RESPONSE):** Keep existing B2C tables; care_assignments = parallel for ASM flow only.
+> **Decision 4.3 (PLAN_REVIEW_RESPONSE):** Keep existing B2C tables; care_assignments = parallel for caregiver flow only.
 
 **Rationale:**
 - `DoctorPatient` + `AccessRequest` ใช้งานใน **11 endpoints** ของ `routers/doctor.py` + bot cascade delete
@@ -736,16 +736,16 @@ Service layer `app/utils/bp_validation.py:validate_measured_at()` enforce:
 
 **Namespacing (ไม่ให้ชนกัน):**
 
-| Dimension | Doctor flow (legacy, B2C) | ASM flow (new, Org-based) |
+| Dimension | Doctor flow (legacy, B2C) | Caregiver flow (new, Org-based) |
 |-----------|---------------------------|---------------------------|
 | Tables | `doctor_patients`, `access_requests` | `care_assignments`, `consent_records` |
-| Actor role | `primary_role=doctor` OR legacy `role="doctor"` | `primary_role=asm` |
-| URL namespace | `/api/v1/doctor/*`, `/api/v1/patient/*` | `/api/v1/asm/*`, `/api/v1/rpsst/*` |
-| Permission guard | `require_verified_doctor` + `DoctorPatient.is_active` | `has_permission(VIEW_ASSIGNED_PATIENT)` + `ConsentRecord.scope=asm_collect, status=active` |
+| Actor role | `primary_role=doctor` OR legacy `role="doctor"` | `primary_role=caregiver` |
+| URL namespace | `/api/v1/doctor/*`, `/api/v1/patient/*` | `/api/v1/caregiver/*`, `/api/v1/org/*` |
+| Permission guard | `require_verified_doctor` + `DoctorPatient.is_active` | `has_permission(VIEW_ASSIGNED_PATIENT)` + `ConsentRecord.scope=caregiver_collect, status=active` |
 | Consent mechanism | `AccessRequest` approval chain | `ConsentRecord` (granular scope) |
 | Audit metadata | `via_relationship: "doctor_patient"` | `via_relationship: "care_assignment"` |
 
-**Case: patient คนเดียวมีทั้ง doctor + asm**
+**Case: patient คนเดียวมีทั้ง doctor + caregiver**
 - `BloodPressureRecord` ของ patient 1 คน เห็นได้ 2 paths (แพทย์ + อสม.) — ถูกต้องเพราะให้ยินยอมทั้งคู่
 - Audit log ต้อง distinguish path ใน `metadata.via_relationship`
 - ถอน consent ของฝ่ายใด ไม่กระทบอีกฝ่าย
@@ -755,7 +755,7 @@ Service layer `app/utils/bp_validation.py:validate_measured_at()` enforce:
 - ถอน consent ต่อ อสม.: `CareAssignment.is_active = False` + `ConsentRecord.status = withdrawn` (ไม่แตะ `doctor_patients`)
 
 **Future unification (Phase 2+, not v2):**
-- ถ้าประสบการณ์ pilot ผ่านไปดี, ค่อย migrate `doctor_patients` → `care_assignments` (ด้วย `CareRole={doctor, asm}` enum เพิ่ม)
+- ถ้าประสบการณ์ pilot ผ่านไปดี, ค่อย migrate `doctor_patients` → `care_assignments` (ด้วย `CareRole={doctor, caregiver}` enum เพิ่ม)
 - นอก v2 scope
 
 ### 4.4 Relationship: `License` ↔ `Organization` (v1.1 new)
@@ -849,7 +849,7 @@ migrations/
 LEGACY_ROLE_MAP = {
     "patient": "patient_self",
     "doctor":  "doctor",
-    "staff":   "superadmin",  # env-managed staff = ระบบ admin (NOT rpsst_staff)
+    "staff":   "superadmin",  # env-managed staff = ระบบ admin (NOT org_staff)
 }
 
 def migrate():
@@ -915,7 +915,7 @@ def rollback():
 
 ### 6.1 Permissions matrix
 
-| Action | superadmin | rpsst_admin | doctor | asm | patient_self | patient_proxy |
+| Action | superadmin | org_admin | doctor | caregiver | patient_self | patient_proxy |
 |--------|:----------:|:-----------:|:------:|:---:|:------------:|:-------------:|
 | **User mgmt** ||||||| 
 | Create รพ.สต. | Y | - | - | - | - | - |
@@ -944,7 +944,7 @@ def rollback():
 | Breach response | Y | - | - | - | - | - |
 | Data retention job | Y | - | - | - | - | - |
 
-\* `asm` สามารถสร้าง proxy patient ได้ใน org ของตัวเอง (เพื่อ workflow สะดวก) ต้องอยู่ใน pre-approved whitelist ของ รพ.สต. admin หรือให้ admin approve หลัง create
+\* `caregiver` สามารถสร้าง proxy patient ได้ใน org ของตัวเอง (เพื่อ workflow สะดวก) ต้องอยู่ใน pre-approved whitelist ของ รพ.สต. admin หรือให้ admin approve หลัง create
 
 ### 6.2 Implementation approach
 
@@ -953,8 +953,8 @@ def rollback():
 
 class Permission:
     # Verb_resource format
-    CREATE_RPSST = "create_rpsst"
-    CREATE_ASM_IN_ORG = "create_asm_in_org"
+    CREATE_ORG = "create_rpsst"
+    CREATE_CAREGIVER_IN_ORG = "create_asm_in_org"
     CREATE_PROXY_PATIENT_IN_ORG = "create_proxy_patient_in_org"
     VIEW_OWN_PROFILE = "view_own_profile"
     VIEW_PATIENT_IN_ORG = "view_patient_in_org"
@@ -964,17 +964,17 @@ class Permission:
 
 ROLE_PERMISSIONS = {
     UserRole.superadmin: {
-        Permission.CREATE_RPSST,
-        Permission.CREATE_ASM_IN_ORG,
+        Permission.CREATE_ORG,
+        Permission.CREATE_CAREGIVER_IN_ORG,
         # ... all permissions
     },
-    UserRole.rpsst_admin: {
-        Permission.CREATE_ASM_IN_ORG,
+    UserRole.org_admin: {
+        Permission.CREATE_CAREGIVER_IN_ORG,
         Permission.CREATE_PROXY_PATIENT_IN_ORG,
         Permission.VIEW_PATIENT_IN_ORG,
         # ...
     },
-    UserRole.asm: {
+    UserRole.caregiver: {
         Permission.VIEW_ASSIGNED_PATIENT,
         Permission.CREATE_READING_FOR_ASSIGNED,
         # ...
@@ -1090,7 +1090,7 @@ async def get_patient(patient_id: int, request: Request):
     "type": "access_token",
     "exp": ...,
     "active_org_id": 45,           # v1.1 new, optional
-    "active_role": "rpsst_admin",  # v1.1 new, snapshot of role in that org
+    "active_role": "org_admin",  # v1.1 new, snapshot of role in that org
 }
 ```
 
@@ -1111,7 +1111,7 @@ def get_active_org_context(credentials) -> tuple[int | None, str | None]:
 
 **Implementation order:**
 - Phase 1a (MVP): สร้าง `POST /api/v1/auth/select-org` endpoint + JWT claim
-- Phase 1b: Frontend org selector UI (ADMIN_WEB_SPEC, ASM_PWA_SPEC)
+- Phase 1b: Frontend org selector UI (ADMIN_WEB_SPEC, CAREGIVER_PWA_SPEC)
 - Legacy users (ไม่มี org membership): JWT ไม่มี `active_org_id` → v2 endpoints ที่ต้องการ org context → 403
 
 ---
@@ -1243,18 +1243,18 @@ async def get_audit_history(actor_id: int, ...):
 
 ```
 อสม.เปิด PWA 
-  → GET /asm/patients (with JWT, role=asm)
-  → middleware: check role=asm, get caregiver_id from JWT
+  → GET /caregiver/patients (with JWT, role=caregiver)
+  → middleware: check role=caregiver, get caregiver_id from JWT
   → query: JOIN care_assignments WHERE caregiver_user_id=X AND is_active=True
   → log: patient_list_view
   → return list of patients
 
 อสม.เลือก patient Y, บันทึก BP
-  → POST /asm/readings {patient_id=Y, systolic=130, ...}
+  → POST /caregiver/readings {patient_id=Y, systolic=130, ...}
   → middleware: check permission CREATE_READING_FOR_ASSIGNED with context {target_user_id=Y}
   → verify Y is assigned to อสม.
-  → check active consent scope=asm_collect for Y
-  → create BloodPressureRecord with measured_by_user_id=อสม., measurement_context=asm_field_visit
+  → check active consent scope=caregiver_collect for Y
+  → create BloodPressureRecord with measured_by_user_id=อสม., measurement_context=caregiver_field_visit
   → log: bp_reading_create
   → return 201
 ```
@@ -1265,10 +1265,10 @@ async def get_audit_history(actor_id: int, ...):
 ชาวบ้าน Z ต้องการถอน consent (ผ่านการติดต่อ รพ.สต.)
   → admin เปิด web → dashboard → patient Z → consent records
   → PATCH /admin/consent/{consent_id} {status="withdrawn", reason="..."}
-  → middleware: check role=rpsst_admin, org ownership
+  → middleware: check role=org_admin, org ownership
   → update consent: status=withdrawn, withdrawn_at=now
   → log: consent_withdraw
-  → trigger: stop allowing BP writes for Z (scope=asm_collect)
+  → trigger: stop allowing BP writes for Z (scope=caregiver_collect)
   → optional: notify อสม. assigned to Z
 ```
 
@@ -1313,7 +1313,7 @@ async def get_audit_history(actor_id: int, ...):
 
 ### 9.5 Seed data (for dev + pilot)
 - [ ] Seed: Organization (ตำบลเมืองเก่า รพ.สต.)
-- [ ] Seed: 1 rpsst_admin user
+- [ ] Seed: 1 org_admin user
 - [ ] Seed: 2 อสม. users
 - [ ] Seed: 20-40 proxy patients (fake data for dev)
 

@@ -3,7 +3,7 @@
 > **Status:** Draft v1 — for review before implementation
 > **Last updated:** 2026-04-18
 > **Owner:** Pornthep
-> **Related docs:** `ORG_FOUNDATION.md`, `ADMIN_WEB_SPEC.md`, `ASM_PWA_SPEC.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
+> **Related docs:** `ORG_FOUNDATION.md`, `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
 
 ---
 
@@ -128,7 +128,7 @@
 - ดู consent records ของชาวบ้านแต่ละคน
 - Upload รูปเอกสาร consent กระดาษ (ถ่ายรูปแล้ว upload)
 - Mark consent as active/withdrawn
-- Consent granular scopes: `asm_collect`, `rpsst_view`, `doctor_view` (+ future: `research_anonymized`)
+- Consent granular scopes: `caregiver_collect`, `org_view`, `doctor_view` (+ future: `research_anonymized`)
 - Admin ยอมรับ ToS for Organizations ตอน onboard + ทุกครั้งที่มี version update
 
 #### 4.2.4 BP Data Review
@@ -183,7 +183,7 @@
 - อสม. review + confirm → save
 
 #### 4.3.6 Batch Photo OCR (ใบรายชื่อ + เครื่องวัด)
-- ดูรายละเอียดใน `ASM_PWA_SPEC.md` section "Batch OCR"
+- ดูรายละเอียดใน `CAREGIVER_PWA_SPEC.md` section "Batch OCR"
 - Sub-feature ของ Photo OCR Entry
 - ไม่ auto-submit ใน MVP — pre-fill + confirm
 
@@ -203,8 +203,8 @@
 - ดูรายละเอียดใน `CONSENT_FLOW_SPEC.md`
 
 ### 4.5 RBAC (Role-Based Access Control)
-- Roles ใน MVP: `superadmin`, `rpsst_admin`, `asm`, `patient_self`, `patient_proxy`
-- Future roles: `doctor`, `rpsst_staff` (เลื่อน Phase 2)
+- Roles ใน MVP: `superadmin`, `org_admin`, `caregiver`, `patient_self`, `patient_proxy`
+- Future roles: `doctor`, `org_staff` (เลื่อน Phase 2)
 - Permission matrix: ดู `ORG_FOUNDATION.md` section "Role Matrix"
 - Middleware enforce: ทุก API check role + scope
 
@@ -326,7 +326,7 @@
 
 1. **Cloud vendor ในไทย** ที่จะ migrate ไปใช้ = ? (Internet Thailand, NT Cloud, True IDC, ฯลฯ)
 2. **Legal consultant / PDPA expert** = ใครช่วย review documents?
-3. **ใบรายชื่อ format** = กระดาษ A4 แนวตั้ง? แนวนอน? มีช่อง "ทำเครื่องหมาย" หรือ "ลำดับที่วัดวันนี้"? → กำหนดใน `ASM_PWA_SPEC.md`
+3. **ใบรายชื่อ format** = กระดาษ A4 แนวตั้ง? แนวนอน? มีช่อง "ทำเครื่องหมาย" หรือ "ลำดับที่วัดวันนี้"? → กำหนดใน `CAREGIVER_PWA_SPEC.md`
 4. **เครื่องวัด model ที่ อสม. ใช้** = ? (จอใหญ่/เล็ก, มีเวลา/ไม่มี → กระทบ OCR accuracy)
 5. **Pilot launch date** = ?
 6. **Budget** สำหรับ training, printer, เครื่องวัด, legal review = ?

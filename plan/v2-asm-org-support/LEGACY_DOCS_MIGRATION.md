@@ -107,8 +107,8 @@ if user.terms_accepted_version != CURRENT_TERMS_VERSION:
 **Add new rows:**
 
 ```markdown
-| ให้ อสม. เก็บข้อมูลสุขภาพแทนชาวบ้าน | ข้อมูลสุขภาพ, ตำแหน่ง | ความยินยอมชัดแจ้ง (ม.26) — scope "asm_collect" |
-| ให้ รพ.สต. ดูข้อมูลเพื่อการดูแลต่อเนื่อง | ข้อมูลสุขภาพ | ความยินยอมชัดแจ้ง (ม.26) — scope "rpsst_view" |
+| ให้ อสม. เก็บข้อมูลสุขภาพแทนชาวบ้าน | ข้อมูลสุขภาพ, ตำแหน่ง | ความยินยอมชัดแจ้ง (ม.26) — scope "caregiver_collect" |
+| ให้ รพ.สต. ดูข้อมูลเพื่อการดูแลต่อเนื่อง | ข้อมูลสุขภาพ | ความยินยอมชัดแจ้ง (ม.26) — scope "org_view" |
 | ให้ อสม./admin เก็บ consent ของชาวบ้าน | Digital signature, GPS | สัญญา + ประโยชน์โดยชอบด้วยกฎหมาย |
 | บันทึก audit log ของการเข้าถึงข้อมูล | Activity log | หน้าที่ตามกฎหมาย (ม.37) |
 ```
@@ -120,10 +120,10 @@ if user.terms_accepted_version != CURRENT_TERMS_VERSION:
 ### 5.2 บุคคลอื่นที่อาจเข้าถึงข้อมูล (เพิ่ม)
 
 - **อาสาสมัครสาธารณสุข (อสม.) ที่ได้รับมอบหมาย**: เข้าถึงข้อมูลชาวบ้านที่ตัวเอง 
-  ได้รับการผูกผ่าน care assignment เท่านั้น เมื่อชาวบ้านได้ให้ consent scope "asm_collect"
+  ได้รับการผูกผ่าน care assignment เท่านั้น เมื่อชาวบ้านได้ให้ consent scope "caregiver_collect"
   
 - **เจ้าหน้าที่ รพ.สต. ที่เป็น admin**: เข้าถึงข้อมูลชาวบ้านทุกคนในความรับผิดชอบของ 
-  รพ.สต. นั้น เมื่อได้ให้ consent scope "rpsst_view"
+  รพ.สต. นั้น เมื่อได้ให้ consent scope "org_view"
 
 - **ข้อจำกัด**: ทั้งสองกลุ่มเห็นข้อมูลเฉพาะองค์กรของตัวเอง (organization isolation)
   ทุก access ถูก log ใน audit trail
@@ -408,8 +408,8 @@ BP Monitor มี consent flow หลายแบบ ขึ้นกับปร
 
 | Scope | ชื่อภาษาไทย | บังคับ? |
 |-------|-----------|---------|
-| `asm_collect` | ให้ อสม. เก็บข้อมูล | Core (ต้องมี) |
-| `rpsst_view` | ให้ รพ.สต. ดูข้อมูล | Core (ต้องมี) |
+| `caregiver_collect` | ให้ อสม. เก็บข้อมูล | Core (ต้องมี) |
+| `org_view` | ให้ รพ.สต. ดูข้อมูล | Core (ต้องมี) |
 | `doctor_view` | ให้แพทย์ที่อนุมัติดูข้อมูล | Optional |
 | `research_anonymized` | ให้ใช้เพื่อ research (ไม่ระบุตัวตน) | Optional |
 | `data_export_to_smart_osm` | ส่งข้อมูลไป Smart อสม. | Optional |
@@ -424,8 +424,8 @@ BP Monitor มี consent flow หลายแบบ ขึ้นกับปร
 
 | Scope withdrawn | Effect |
 |----------------|--------|
-| `asm_collect` | อสม. บันทึกข้อมูลใหม่ไม่ได้ (block API). ข้อมูลเดิมยังอยู่จน data erasure request |
-| `rpsst_view` | รพ.สต. admin ดูข้อมูลใหม่ไม่ได้ (ของเก่ายังดูได้ตาม retention) |
+| `caregiver_collect` | อสม. บันทึกข้อมูลใหม่ไม่ได้ (block API). ข้อมูลเดิมยังอยู่จน data erasure request |
+| `org_view` | รพ.สต. admin ดูข้อมูลใหม่ไม่ได้ (ของเก่ายังดูได้ตาม retention) |
 | `doctor_view` | Revoke doctor access (ถ้ามี) |
 | `research_anonymized` | Stop future anonymization for this user |
 | All core | ต้อง ask if want data deletion too (full erasure) |

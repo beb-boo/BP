@@ -140,7 +140,7 @@ def _bool(name: str, default: bool = False) -> bool:
 
 # Core feature flags
 ENABLE_ORG_MODE = _bool("ENABLE_ORG_MODE", default=False)
-"""If True, v2 endpoints (/api/v1/asm/*, /api/v1/rpsst/*) are enabled."""
+"""If True, v2 endpoints (/api/v1/caregiver/*, /api/v1/org/*) are enabled."""
 
 ENABLE_DUAL_WRITE_AUDIT = _bool("ENABLE_DUAL_WRITE_AUDIT", default=True)
 """If True, audit logs are written to BOTH admin_audit_logs (legacy) and audit_logs (new)."""
@@ -160,8 +160,8 @@ def require_org_mode():
 ```python
 from app.utils.feature_flags import require_org_mode
 
-@router.get("/asm/patients", dependencies=[Depends(require_org_mode)])
-async def list_asm_patients(...):
+@router.get("/caregiver/patients", dependencies=[Depends(require_org_mode)])
+async def list_caregiver_patients(...):
     ...
 ```
 

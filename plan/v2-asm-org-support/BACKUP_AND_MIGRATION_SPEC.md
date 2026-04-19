@@ -106,7 +106,7 @@ summary: "Admin web feature for creating Neon branch snapshots (instant safety b
 
 ### 3.1 Route
 
-`/admin/system/backups` — **superadmin only** (not rpsst_admin)
+`/admin/system/backups` — **superadmin only** (not org_admin)
 
 ### 3.2 Guard
 

@@ -143,8 +143,8 @@ Complete within 30 days (PDPA ม.30 vrdlinyfeldi)
 | Store blood pressure readings (self_managed) | Sensitive (health) | Explicit consent (ม.19) | ม.26 |
 | Store blood pressure readings (proxy_managed) | Sensitive (health) | Explicit consent + healthcare purpose | ม.26 |
 | Share BP with doctor | Sensitive (health) | Explicit consent (scope: doctor_view) | ม.26 |
-| Share BP with รพ.สต. admin | Sensitive (health) | Explicit consent (scope: rpsst_view) | ม.26 |
-| อสม. collect on behalf of patient | Sensitive (health) | Explicit consent (scope: asm_collect) | ม.26 |
+| Share BP with รพ.สต. admin | Sensitive (health) | Explicit consent (scope: org_view) | ม.26 |
+| อสม. collect on behalf of patient | Sensitive (health) | Explicit consent (scope: caregiver_collect) | ม.26 |
 | Verify doctor license with TMC | Professional license | Legitimate interest (ม.24(5)) | ม.24 |
 | Audit log of access | Metadata | Legal obligation (ม.37 security) | ม.24(6) |
 | Fraud detection (failed logins) | Activity data | Legitimate interest (ม.24(5)) | ม.24 |
@@ -158,7 +158,7 @@ Complete within 30 days (PDPA ม.30 vrdlinyfeldi)
 
 สำหรับข้อมูลสุขภาพ (ม.26) เราใช้ **granular consent** — แยก scope ให้ user เลือกได้:
 
-- **Core scopes (required to use service):** asm_collect, rpsst_view
+- **Core scopes (required to use service):** caregiver_collect, org_view
 - **Optional scopes:** doctor_view, research_anonymized, data_export_to_smart_osm
 
 ผู้ใช้สามารถ:
@@ -442,7 +442,7 @@ For each processing activity, record:
 |-------|---------|
 | Activity name | "Store BP readings for proxy-managed patients" |
 | Purpose | "Healthcare monitoring by อสม./รพ.สต." |
-| Legal basis | "Explicit consent (ม.26), scope=asm_collect" |
+| Legal basis | "Explicit consent (ม.26), scope=caregiver_collect" |
 | Data categories | "BP values, measured_at, location, patient_id" |
 | Data subjects | "Proxy-managed patients (ชาวบ้าน)" |
 | Recipients | "อสม., รพ.สต. admin (own org), doctor (if consent)" |

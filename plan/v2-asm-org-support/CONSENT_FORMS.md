@@ -19,7 +19,7 @@ summary: "Ready-to-use consent forms in Thai: paper form (A4), digital signature
 related:
   - "[[CONSENT_FLOW_SPEC]]"
   - "[[PDPA_COMPLIANCE]]"
-  - "[[ASM_PWA_SPEC]]"
+  - "[[CAREGIVER_PWA_SPEC]]"
   - "[[LEGACY_DOCS_MIGRATION]]"
 ---
 # Consent Forms (Ready-to-Use Thai)
@@ -685,7 +685,7 @@ Before using in pilot:
 
 - [[CONSENT_FLOW_SPEC]] — workflow detailed spec
 - [[PDPA_COMPLIANCE]] — PDPA master reference
-- [[ASM_PWA_SPEC]] — PWA implementation
+- [[CAREGIVER_PWA_SPEC]] — PWA implementation
 - [[ORG_TERMS_OF_SERVICE]] — Org ToS (coming)
 - [[LEGACY_DOCS_MIGRATION]] — updating existing privacy policy
 - [[ORG_FOUNDATION]] — database schema for consent_records

@@ -35,7 +35,7 @@ summary: "Map of Content for all v2 ASM/รพ.สต. org support planning docu
 7. **[[MIGRATION_STRATEGY]]** — วิธี apply migration บน prod อย่างปลอดภัย
 8. **[[CONSENT_FLOW_SPEC]]** — PDPA workflow (สำคัญมาก ต้องอ่านก่อน code)
 9. **[[ADMIN_WEB_SPEC]]** — web dashboard สำหรับ รพ.สต. admin
-10. **[[ASM_PWA_SPEC]]** — PWA สำหรับ อสม. ภาคสนาม + batch OCR
+10. **[[CAREGIVER_PWA_SPEC]]** — PWA สำหรับ caregiver (อสม./พยาบาล) ภาคสนาม + batch OCR
 11. **[[LEGACY_DOCS_MIGRATION]]** — แผน patch เอกสารเดิม (privacy policy, ToS)
 
 Group C (PDPA/Legal):
@@ -82,12 +82,13 @@ Group C (PDPA/Legal):
 | 0 | [[INDEX]] | ✅ Draft v1.2 | this | MOC — this document |
 | 0.5 | [[PLAN_REVIEW_RESPONSE]] | ✅ Draft v1.0 | ~15KB | **Decision log** — source of truth for architectural decisions |
 | 0.7 | [[BACKUP_AND_MIGRATION_SPEC]] | ✅ **Draft v1.0** | ~17KB | **Prerequisite: Neon branch backup** — build FIRST before v2 migration |
+| 0.75 | [[GENERALIZE_ORG_PLAN]] | ✅ **Draft v1.0** | ~18KB | **Rename rpsst/asm → generic org/caregiver** + hybrid policy + gap close |
 | 0.8 | [[INFRASTRUCTURE_SETUP]] | ✅ Draft v1.0 | ~15KB | **Tier 0 prerequisites** — schema_migrations, flags, staging, backup |
 | 0.9 | [[MIGRATION_STRATEGY]] | ✅ Draft v1.0 | ~15KB | **How to migrate safely** — staged procedure, FK graph, rollback |
 | 1 | [[MVP_PILOT_SCOPE]] | ✅ Draft v1 | 24KB | Scope, personas, metrics, acceptance criteria |
 | 2 | [[ORG_FOUNDATION]] | ✅ **Draft v1.1** | ~54KB | DB schema, RBAC, migration, audit log (decisions applied) |
 | 3 | [[ADMIN_WEB_SPEC]] | ✅ **Draft v1.1** | ~34KB | Admin web dashboard spec (synced w/ decisions) |
-| 4 | [[ASM_PWA_SPEC]] | ✅ **Draft v1.1** | ~54KB | อสม. PWA + batch OCR spec (v1.1 alignment verified) |
+| 4 | [[CAREGIVER_PWA_SPEC]] | ✅ **Draft v1.1** | ~54KB | Caregiver PWA + batch OCR spec (v1.1 alignment verified) |
 | 5 | [[CONSENT_FLOW_SPEC]] | ✅ **Draft v1.1** | ~29KB | Consent workflow end-to-end (synced w/ decisions) |
 | 6 | [[SCALABILITY_PLAN]] | ✅ Draft v1 | 27KB | Scale to 1M, Vercel migration, costs |
 | 7 | [[LEGACY_DOCS_MIGRATION]] | ✅ **Draft v1.1** | 28KB | Patch plan for existing 3 docs in docs/ (aligned w/ decisions) |
@@ -97,7 +98,7 @@ Group C (PDPA/Legal):
 | 11 | [[CONSENT_FORMS]] | ✅ Draft v1 | 38KB | Ready-to-use paper + digital Thai forms |
 | 12 | [[ORG_TERMS_OF_SERVICE]] | ✅ Draft v1 | 38KB | ToS for รพ.สต./admin (new, v1) |
 
-**Total: 17 files, ~470 KB**
+**Total: 18 files, ~490 KB**
 
 Legend: ✅ Complete · 🚧 In progress · 📝 Planned · 🔴 Blocked
 

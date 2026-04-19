@@ -20,7 +20,7 @@ related:
   - "[[MVP_PILOT_SCOPE]]"
   - "[[ORG_FOUNDATION]]"
   - "[[ADMIN_WEB_SPEC]]"
-  - "[[ASM_PWA_SPEC]]"
+  - "[[CAREGIVER_PWA_SPEC]]"
 ---
 # Scalability Plan & Infrastructure Migration
 

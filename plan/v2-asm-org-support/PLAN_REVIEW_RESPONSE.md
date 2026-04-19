@@ -56,13 +56,13 @@ Facts ที่ verify แล้วจาก codebase จริง (ไม่ใ
 | **Architectural (Q1–Q3)** |||| 
 | Q1 | Migration tooling | **A+** (ad-hoc + `schema_migrations` table + rollback discipline) | [[INFRASTRUCTURE_SETUP]] (new) |
 | Q2 | Role refactor | **Additive dual-read** (keep `role`, add `primary_role`, helper `get_effective_role()`) | ORG_FOUNDATION §4.2.1, §5.2 |
-| Q3 | DoctorPatient handling | **Keep + parallel** (doctor flow ใช้ DoctorPatient, ASM flow ใช้ CareAssignment) | ORG_FOUNDATION §6, new §4.3 |
+| Q3 | DoctorPatient handling | **Keep + parallel** (doctor flow ใช้ DoctorPatient, caregiver flow ใช้ CareAssignment) | ORG_FOUNDATION §6, new §4.3 |
 | **Gemini items (G1–G7)** |||| 
 | G1 | AdminAuditLog + new AuditLog | Dual-write transition (no data migration) | ORG_FOUNDATION §7, MIGRATION_STRATEGY |
 | G2 | `paper_scan_file_id` inconsistency | Remove from `consent_records` | ORG_FOUNDATION §4.1.4 |
 | G3 | License ↔ Organization FK | Add nullable `organization_id` to licenses; backfill from string | ORG_FOUNDATION new §4.3 |
 | G4 | `measured_at` fat-finger | Warn >7d, block future, block >30d back | ORG_FOUNDATION §4.2.2 |
-| G5 | Role migration mapping | `staff` → `superadmin` (not `rpsst_staff`); no auto-create org | ORG_FOUNDATION §5.2 |
+| G5 | Role migration mapping | `staff` → `superadmin` (not `org_staff`); no auto-create org | ORG_FOUNDATION §5.2 |
 | G6 | Timezone column type change | Staged (new col + backfill + swap), not big-bang | MIGRATION_STRATEGY |
 | G7 | Migration sequence FK order | Revised (see §4.7) | ORG_FOUNDATION §5.1 |
 | **Internal additional findings (I1–I3)** |||| 
@@ -158,13 +158,13 @@ Facts ที่ verify แล้วจาก codebase จริง (ไม่ใ
 
 **Namespacing (ไม่ให้ชนกัน):**
 
-| Dimension | Doctor flow (เดิม) | ASM flow (ใหม่) |
+| Dimension | Doctor flow (เดิม) | Caregiver flow (ใหม่) |
 |-----------|--------------------|------------------|
 | Tables | `doctor_patients`, `access_requests` | `care_assignments`, `consent_records` |
-| Actor role | `primary_role=doctor` (or legacy `role="doctor"`) | `primary_role=asm` |
-| URL namespace | `/api/v1/doctor/*`, `/api/v1/patient/*` | `/api/v1/asm/*`, `/api/v1/rpsst/*` |
+| Actor role | `primary_role=doctor` (or legacy `role="doctor"`) | `primary_role=caregiver` |
+| URL namespace | `/api/v1/doctor/*`, `/api/v1/patient/*` | `/api/v1/caregiver/*`, `/api/v1/org/*` |
 | Permission check | `require_verified_doctor` + DoctorPatient.is_active | `has_permission(VIEW_ASSIGNED_PATIENT)` + ConsentRecord scope check |
-| Consent mechanism | `AccessRequest` approval chain | `ConsentRecord` (scope=asm_collect) |
+| Consent mechanism | `AccessRequest` approval chain | `ConsentRecord` (scope=caregiver_collect) |
 
 **Patient viewable by both:** Valid case — patient ให้สิทธิ์ทั้งหมอและ อสม. แยกกัน
 - `BloodPressureRecord` ของ patient 1 คน เห็นได้ 2 paths
@@ -349,7 +349,7 @@ For each column ที่ต้องเปลี่ยนเป็น timezone-
 
 **Action items:**
 - [ ] ORG_FOUNDATION §6: add subsection "Multi-org JWT claims"
-- [ ] `ADMIN_WEB_SPEC`, `ASM_PWA_SPEC`: add org selector UI spec
+- [ ] `ADMIN_WEB_SPEC`, `CAREGIVER_PWA_SPEC`: add org selector UI spec
 
 ---
 
@@ -364,7 +364,7 @@ For each column ที่ต้องเปลี่ยนเป็น timezone-
 | `MIGRATION_STRATEGY.md` (new) | Staged migration procedures, FK order, rollback | **P0** (new doc) |
 | `INFRASTRUCTURE_SETUP.md` (new) | `schema_migrations` table, feature flags, staging env, backup drill | **P0** (new doc) |
 | `ADMIN_WEB_SPEC.md` | Remove references to `paper_scan_file_id`; add org selector UI; add dual-source audit view | P1 |
-| `ASM_PWA_SPEC.md` | Add org selector UI; verify consent flow matches decision 4.5 | P1 |
+| `CAREGIVER_PWA_SPEC.md` | Add org selector UI; verify consent flow matches decision 4.5 | P1 |
 | `CONSENT_FLOW_SPEC.md` | Verify no `paper_scan_file_id` references; clarify paper = physical only | P1 |
 | `docs/privacy-policy.md` | Mention org data controller split (joint controller) | P2 |
 | `docs/consent-and-implementation-guide.md` | Align with new consent scope enums | P2 |

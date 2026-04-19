@@ -4,7 +4,7 @@
 > **Last updated:** 2026-04-18
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `ORG_FOUNDATION.md`, `PLAN_REVIEW_RESPONSE.md`
-> **Related:** `ASM_PWA_SPEC.md`, `CONSENT_FLOW_SPEC.md`
+> **Related:** `CAREGIVER_PWA_SPEC.md`, `CONSENT_FLOW_SPEC.md`
 
 > [!INFO] **v1.1 changes**
 > - §2 routes: Added `/admin/select-org` สำหรับ admin ที่อยู่หลาย org (decision 4.10 — JWT `active_org_id` claim)
@@ -17,7 +17,7 @@
 
 ## 1. Purpose
 
-Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin`) ใช้ผ่าน PC/Laptop browser ที่ รพ.สต.
+Web application สำหรับ **รพ.สต. admin** (role = `org_admin`) ใช้ผ่าน PC/Laptop browser ที่ รพ.สต.
 
 หน้าที่หลัก:
 - จัดการ organization (รพ.สต. เอง)
@@ -37,29 +37,29 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 | Route | Page | Access |
 |-------|------|--------|
 | `/admin/login` | Admin login (phone/email + password + optional 2FA) | Public |
-| `/admin/select-org` | Organization selector (v1.1 — ถ้า admin อยู่ > 1 org) | rpsst_admin |
-| `/admin/onboarding` | First-login ToS acceptance + org setup | rpsst_admin (new) |
-| `/admin` | Dashboard home (KPIs + quick links) | rpsst_admin |
-| `/admin/organization` | Organization profile + settings | rpsst_admin |
-| `/admin/asm` | อสม. list | rpsst_admin |
-| `/admin/asm/new` | Create new อสม. + generate pairing code | rpsst_admin |
-| `/admin/asm/[id]` | อสม. detail + assignments + activity | rpsst_admin |
-| `/admin/patients` | Patient list | rpsst_admin |
-| `/admin/patients/new` | Create new proxy patient | rpsst_admin |
-| `/admin/patients/[id]` | Patient detail + history + consent | rpsst_admin |
-| `/admin/patients/[id]/edit` | Edit patient info | rpsst_admin |
-| `/admin/patients/import` | Import CSV (optional) | rpsst_admin |
-| `/admin/assignments` | Care assignment management | rpsst_admin |
-| `/admin/consent` | Consent records browser | rpsst_admin |
-| `/admin/consent/[id]` | Consent detail + withdraw | rpsst_admin |
-| `/admin/readings` | BP readings list (all in org) | rpsst_admin |
-| `/admin/readings/[id]` | Reading detail + edit + delete | rpsst_admin |
-| `/admin/review-queue` | OCR low-confidence review queue | rpsst_admin |
-| `/admin/alerts` | Patient alert list (high BP, irregular) | rpsst_admin |
-| `/admin/reports` | Report builder + export | rpsst_admin |
-| `/admin/audit-log` | Audit log viewer | rpsst_admin |
-| `/admin/settings` | Admin profile + password + 2FA + transfer ownership | rpsst_admin |
-| `/admin/settings/users` | Manage other admins (if multi-admin) | rpsst_admin |
+| `/admin/select-org` | Organization selector (v1.1 — ถ้า admin อยู่ > 1 org) | org_admin |
+| `/admin/onboarding` | First-login ToS acceptance + org setup | org_admin (new) |
+| `/admin` | Dashboard home (KPIs + quick links) | org_admin |
+| `/admin/organization` | Organization profile + settings | org_admin |
+| `/admin/caregivers` | อสม. list | org_admin |
+| `/admin/caregivers/new` | Create new อสม. + generate pairing code | org_admin |
+| `/admin/caregivers/[id]` | อสม. detail + assignments + activity | org_admin |
+| `/admin/patients` | Patient list | org_admin |
+| `/admin/patients/new` | Create new proxy patient | org_admin |
+| `/admin/patients/[id]` | Patient detail + history + consent | org_admin |
+| `/admin/patients/[id]/edit` | Edit patient info | org_admin |
+| `/admin/patients/import` | Import CSV (optional) | org_admin |
+| `/admin/assignments` | Care assignment management | org_admin |
+| `/admin/consent` | Consent records browser | org_admin |
+| `/admin/consent/[id]` | Consent detail + withdraw | org_admin |
+| `/admin/readings` | BP readings list (all in org) | org_admin |
+| `/admin/readings/[id]` | Reading detail + edit + delete | org_admin |
+| `/admin/review-queue` | OCR low-confidence review queue | org_admin |
+| `/admin/alerts` | Patient alert list (high BP, irregular) | org_admin |
+| `/admin/reports` | Report builder + export | org_admin |
+| `/admin/audit-log` | Audit log viewer | org_admin |
+| `/admin/settings` | Admin profile + password + 2FA + transfer ownership | org_admin |
+| `/admin/settings/users` | Manage other admins (if multi-admin) | org_admin |
 | `/admin/system/backups` | Neon branch backup tool (see [[BACKUP_AND_MIGRATION_SPEC]]) | **superadmin only** |
 
 ---
@@ -111,7 +111,7 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Subtitle: "คุณเป็นสมาชิกของ X องค์กร เลือกองค์กรที่ต้องการใช้งาน"
 - List of org cards:
   - Org name + type icon (รพ.สต./คลินิก/รพ.)
-  - Role ใน org นั้น (rpsst_admin / rpsst_staff)
+  - Role ใน org นั้น (org_admin / org_staff)
   - จำนวน patients ใน org (stat)
   - Button: "เลือก"
 
@@ -198,11 +198,11 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - `GET /api/v1/admin/dashboard/recent-activity`
 - `GET /api/v1/admin/dashboard/review-queue-summary`
 - `GET /api/v1/admin/dashboard/bp-trend?days=30`
-- `GET /api/v1/admin/dashboard/asm-activity?days=7`
+- `GET /api/v1/admin/dashboard/caregiver-activity?days=7`
 
 ---
 
-### 3.4 `/admin/asm` — อสม. List
+### 3.4 `/admin/caregivers` — อสม. List
 
 **Purpose**: Manage อสม. in organization
 
@@ -222,18 +222,18 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Search by name / phone
 
 **Actions**:
-- **Create new อสม.** → `/admin/asm/new`
+- **Create new อสม.** → `/admin/caregivers/new`
 - **Export CSV** — list of อสม. for offline reference
 - **Bulk suspend** (multi-select)
 
 **API calls**:
-- `GET /api/v1/admin/asm?status=active&search=&page=1`
-- `POST /api/v1/admin/asm/{id}/suspend`
-- `POST /api/v1/admin/asm/{id}/resend-pairing`
+- `GET /api/v1/admin/caregivers?status=active&search=&page=1`
+- `POST /api/v1/admin/caregivers/{id}/suspend`
+- `POST /api/v1/admin/caregivers/{id}/resend-pairing`
 
 ---
 
-### 3.5 `/admin/asm/new` — Create อสม.
+### 3.5 `/admin/caregivers/new` — Create อสม.
 
 **Purpose**: Onboard new อสม.
 
@@ -248,8 +248,8 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Note (optional, admin use)
 
 **Process on submit**:
-1. Create user record (role=`asm`, account_type=`self_managed`)
-2. Add to `organization_members` (role=`asm`, effective_from=now)
+1. Create user record (role=`caregiver`, account_type=`self_managed`)
+2. Add to `organization_members` (role=`caregiver`, effective_from=now)
 3. Generate 6-digit pairing code → insert `pairing_codes` (TTL 15 min)
 4. (If pre-assigned) create `care_assignments`
 5. Show success modal with:
@@ -268,15 +268,15 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Pairing code sent clearly — admin **ต้อง** ถ่าย screenshot หรือจดเองก่อนปิด modal
 
 **API calls**:
-- `POST /api/v1/admin/asm` — create user + org membership
-- `POST /api/v1/admin/asm/{id}/pairing-code` — generate new code (auto on create)
+- `POST /api/v1/admin/caregivers` — create user + org membership
+- `POST /api/v1/admin/caregivers/{id}/pairing-code` — generate new code (auto on create)
 
 **Audit events**:
 - `user_create`, `org_member_add`, `care_assignment_create` (if pre-assigned)
 
 ---
 
-### 3.6 `/admin/asm/[id]` — อสม. Detail
+### 3.6 `/admin/caregivers/[id]` — อสม. Detail
 
 **Purpose**: View/edit specific อสม. + see their work
 
@@ -304,10 +304,10 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Average time from measurement to submission
 
 **API calls**:
-- `GET /api/v1/admin/asm/{id}`
-- `GET /api/v1/admin/asm/{id}/patients`
-- `GET /api/v1/admin/asm/{id}/activity?days=30`
-- `GET /api/v1/admin/asm/{id}/statistics`
+- `GET /api/v1/admin/caregivers/{id}`
+- `GET /api/v1/admin/caregivers/{id}/patients`
+- `GET /api/v1/admin/caregivers/{id}/activity?days=30`
+- `GET /api/v1/admin/caregivers/{id}/statistics`
 
 ---
 
@@ -348,7 +348,7 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Unmask click → confirm + audit log event `patient_view` with metadata `{field: "citizen_id_unmasked"}`
 
 **API calls**:
-- `GET /api/v1/admin/patients?search=&asm=&age_min=&...`
+- `GET /api/v1/admin/patients?search=&caregiver=&age_min=&...`
 - `POST /api/v1/admin/patients/bulk-assign`
 - `POST /api/v1/admin/patients/export` (returns signed download URL)
 
@@ -469,8 +469,8 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Confirm transfer (since it affects data visibility)
 
 **API calls**:
-- `GET /api/v1/admin/assignments?asm_id={id}`
-- `POST /api/v1/admin/assignments/transfer` — body: `{patient_ids: [...], from_asm: X, to_asm: Y}`
+- `GET /api/v1/admin/assignments?caregiver_id={id}`
+- `POST /api/v1/admin/assignments/transfer` — body: `{patient_ids: [...], from_caregiver: X, to_caregiver: Y}`
 - `POST /api/v1/admin/assignments/end` — body: `{patient_ids: [...], reason}`
 
 ---
@@ -492,7 +492,7 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 
 **Filters**:
 - Status (active / withdrawn / expired)
-- Scope (asm_collect / rpsst_view / ...)
+- Scope (caregiver_collect / org_view / ...)
 - Method
 - Paper filing status (filed / not filed)
 - Date range
@@ -529,7 +529,7 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 - Measured at (TH datetime)
 - Systolic / Diastolic / Pulse
 - Measured by (อสม. name)
-- Context (self / asm_field_visit / ...)
+- Context (self / caregiver_field_visit / ...)
 - Source (manual / ocr_single / ocr_batch)
 - OCR confidence (if OCR)
 - Status flags: flagged_high / edited / ocr_reviewed
@@ -709,7 +709,7 @@ Web application สำหรับ **รพ.สต. admin** (role = `rpsst_admin
 #### 3.17.4 Transfer Ownership
 - **IMPORTANT**: If admin is sole owner, must designate replacement before deactivating
 - Flow:
-  1. Choose replacement user (must be in same org + role=`rpsst_admin` or promote)
+  1. Choose replacement user (must be in same org + role=`org_admin` or promote)
   2. Require password confirmation
   3. New admin receives notification + must accept
   4. On acceptance: original admin can be deactivated
@@ -802,16 +802,16 @@ POST   /api/v1/admin/organization/accept-transfer
 ### 5.3 อสม.
 
 ```
-GET    /api/v1/admin/asm
-POST   /api/v1/admin/asm
-GET    /api/v1/admin/asm/{id}
-PATCH  /api/v1/admin/asm/{id}
-POST   /api/v1/admin/asm/{id}/suspend
-POST   /api/v1/admin/asm/{id}/reactivate
-POST   /api/v1/admin/asm/{id}/pairing-code
-GET    /api/v1/admin/asm/{id}/patients
-GET    /api/v1/admin/asm/{id}/activity
-GET    /api/v1/admin/asm/{id}/statistics
+GET    /api/v1/admin/caregivers
+POST   /api/v1/admin/caregivers
+GET    /api/v1/admin/caregivers/{id}
+PATCH  /api/v1/admin/caregivers/{id}
+POST   /api/v1/admin/caregivers/{id}/suspend
+POST   /api/v1/admin/caregivers/{id}/reactivate
+POST   /api/v1/admin/caregivers/{id}/pairing-code
+GET    /api/v1/admin/caregivers/{id}/patients
+GET    /api/v1/admin/caregivers/{id}/activity
+GET    /api/v1/admin/caregivers/{id}/statistics
 ```
 
 ### 5.4 Patients
@@ -897,7 +897,7 @@ GET    /api/v1/admin/dashboard/kpi
 GET    /api/v1/admin/dashboard/recent-activity
 GET    /api/v1/admin/dashboard/review-queue-summary
 GET    /api/v1/admin/dashboard/bp-trend
-GET    /api/v1/admin/dashboard/asm-activity
+GET    /api/v1/admin/dashboard/caregiver-activity
 ```
 
 ### 5.13 Settings
@@ -926,7 +926,7 @@ frontend/app/admin/
 ├── login/page.tsx
 ├── onboarding/page.tsx
 ├── organization/page.tsx
-├── asm/
+├── caregivers/
 │   ├── page.tsx                  # List
 │   ├── new/page.tsx              # Create
 │   └── [id]/page.tsx             # Detail
@@ -958,7 +958,7 @@ frontend/components/admin/
 ├── nav/
 ├── dashboard/
 ├── patients/
-├── asm/
+├── caregivers/
 ├── consent/
 ├── readings/
 └── shared/
@@ -986,7 +986,7 @@ frontend/components/admin/
 - Middleware in `frontend/proxy.ts`:
   - Check auth cookie
   - Verify JWT signature (on server)
-  - Check role (must be `rpsst_admin` for `/admin/*`)
+  - Check role (must be `org_admin` for `/admin/*`)
   - Redirect to login if unauthorized
 
 ### 6.5 Permission enforcement on UI

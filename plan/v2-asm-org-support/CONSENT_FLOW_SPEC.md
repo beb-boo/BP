@@ -4,7 +4,7 @@
 > **Last updated:** 2026-04-18
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `ORG_FOUNDATION.md`, `PLAN_REVIEW_RESPONSE.md`
-> **Related:** `ADMIN_WEB_SPEC.md`, `ASM_PWA_SPEC.md`, `docs/pdpa/CONSENT_FORMS.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
+> **Related:** `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, `docs/pdpa/CONSENT_FORMS.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
 
 > [!INFO] **v1.1 changes**
 > - §4.1.5: Data categories clarified — single-OCR images NOT stored; only low-confidence batch OCR images stored temporarily (7 days max)
@@ -51,14 +51,14 @@
 
 | Scope | Description | Required for |
 |-------|-------------|-------------|
-| `asm_collect` | ยินยอมให้ อสม. เก็บ BP + ข้อมูลพื้นฐาน | **Core** (required for pilot) |
-| `rpsst_view` | ยินยอมให้เจ้าหน้าที่ รพ.สต. เข้าถึงข้อมูล | **Core** |
+| `caregiver_collect` | ยินยอมให้ อสม. เก็บ BP + ข้อมูลพื้นฐาน | **Core** (required for pilot) |
+| `org_view` | ยินยอมให้เจ้าหน้าที่ รพ.สต. เข้าถึงข้อมูล | **Core** |
 | `doctor_view` | ยินยอมให้แพทย์ที่ รพ.สต. อนุมัติเข้าถึง | Optional (Phase 2) |
 | `research_anonymized` | ยินยอมให้ใช้ข้อมูลเพื่อ research (ไม่ระบุตัวตน) | Optional (Phase 3) |
 | `data_export_to_smart_osm` | ยินยอมให้ส่งข้อมูลไป Smart อสม. | Optional (Phase 2) |
 
 ### 3.2 Grouping at grant time
-- **Recommended grouping**: core scopes (`asm_collect` + `rpsst_view`) grant ด้วยกัน (1 signature, 2 records in DB)
+- **Recommended grouping**: core scopes (`caregiver_collect` + `org_view`) grant ด้วยกัน (1 signature, 2 records in DB)
 - **Optional scopes** แต่ละรายการ = แยก signature/checkbox
 - Withdrawal สามารถทำทีละ scope ได้
 
@@ -134,7 +134,7 @@
 
 ```
 ☐ ข้าพเจ้ายินยอมให้ อสม. และ รพ.สต. เก็บ ใช้ และรักษาข้อมูลสุขภาพของข้าพเจ้า
-   เพื่อการดูแลสุขภาพตามวัตถุประสงค์ข้างต้น                    [asm_collect + rpsst_view - REQUIRED]
+   เพื่อการดูแลสุขภาพตามวัตถุประสงค์ข้างต้น                    [caregiver_collect + org_view - REQUIRED]
 
 ☐ ข้าพเจ้ายินยอมให้เปิดเผยข้อมูลแก่แพทย์ที่ได้รับอนุมัติเพื่อ
    การรักษาและปรึกษา                                         [doctor_view - OPTIONAL]
@@ -256,8 +256,8 @@ Step 3 — Confirm with patient
 Step 4 — Apply withdrawal
   consent_records ที่ถอน → status = withdrawn, withdrawn_at = now
   Backend effects:
-    - ถ้า asm_collect ถอน: อสม. ไม่สามารถสร้าง reading ใหม่ได้ (block API)
-    - ถ้า rpsst_view ถอน: admin ยังดูได้ (retention) แต่ไม่ create ใหม่
+    - ถ้า caregiver_collect ถอน: อสม. ไม่สามารถสร้าง reading ใหม่ได้ (block API)
+    - ถ้า org_view ถอน: admin ยังดูได้ (retention) แต่ไม่ create ใหม่
     - ถ้า all ถอน: data subject อาจขอ delete เพิ่ม
   Audit: consent_withdraw
 
@@ -319,11 +319,11 @@ class ConsentRecord:
 #### 6.2.1 PWA (อสม.) endpoints
 
 ```
-POST /api/v1/asm/consent/initiate
-  Body: { patient_id, scopes: ["asm_collect", "rpsst_view"] }
+POST /api/v1/caregiver/consent/initiate
+  Body: { patient_id, scopes: ["caregiver_collect", "org_view"] }
   Response: { session_id, patient_summary, consent_form_content }
   
-POST /api/v1/asm/consent/submit
+POST /api/v1/caregiver/consent/submit
   Body: {
     session_id,
     scopes_accepted: [...],
@@ -333,7 +333,7 @@ POST /api/v1/asm/consent/submit
   }
   Response: { consent_record_ids: [...], summary }
   
-GET /api/v1/asm/consent/patient/{patient_id}/active
+GET /api/v1/caregiver/consent/patient/{patient_id}/active
   Returns: active consent scopes for patient
 ```
 
@@ -391,14 +391,14 @@ async def check_active_consent(
 
 
 # Usage in endpoint
-@router.post("/asm/readings")
+@router.post("/caregiver/readings")
 async def create_reading_for_patient(
     reading_data: ReadingCreate,
-    current_user: User = Depends(get_current_asm)
+    current_user: User = Depends(get_current_caregiver)
 ):
     # Check consent
-    if not await check_active_consent(reading_data.patient_id, ConsentScope.asm_collect):
-        raise HTTPException(403, "Patient has not consented to ASM data collection")
+    if not await check_active_consent(reading_data.patient_id, ConsentScope.caregiver_collect):
+        raise HTTPException(403, "Patient has not consented to caregiver data collection")
     
     # Check care assignment
     if not await is_caregiver_of(current_user.id, reading_data.patient_id):
@@ -615,7 +615,7 @@ Admin can generate these reports:
 - [ ] Deletion certificate PDF generate ได้
 
 ### Compliance
-- [ ] 100% of readings associated with active `asm_collect` consent
+- [ ] 100% of readings associated with active `caregiver_collect` consent
 - [ ] Audit log complete for all consent events
 - [ ] Retention policies enforced (auto-delete jobs)
 - [ ] Data subject rights SLA < 30 วัน

@@ -524,7 +524,7 @@ Also serve at URL: `https://yourdomain.com/org-terms-of-service`
 
 ### 2.1 First-time Admin Onboarding
 
-When admin first logs in as `rpsst_admin`:
+When admin first logs in as `org_admin`:
 - Check `organization.terms_version` against `CURRENT_ORG_TERMS_VERSION`
 - If null or outdated: show modal with ToS
 - Must check 3 checkboxes + click "ยอมรับและดำเนินการต่อ"
@@ -545,7 +545,7 @@ When admin accepts:
 # app/api/org_onboarding.py
 
 @router.post("/accept-org-terms")
-@require_role(UserRole.rpsst_admin)
+@require_role(UserRole.org_admin)
 async def accept_org_terms(
     version: str,
     request: Request,
@@ -589,7 +589,7 @@ async def accept_org_terms(
 async def check_org_terms_middleware(request: Request, call_next):
     # Only for authenticated admin requests
     user = getattr(request.state, "user", None)
-    if not user or user.primary_role != UserRole.rpsst_admin:
+    if not user or user.primary_role != UserRole.org_admin:
         return await call_next(request)
     
     # Skip for the ToS acceptance endpoint itself

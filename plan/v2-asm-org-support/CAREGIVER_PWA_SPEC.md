@@ -1,4 +1,4 @@
-# ASM PWA Specification — Progressive Web App for อาสาสมัครสาธารณสุข
+# Caregiver PWA Specification — Progressive Web App for อาสาสมัครสาธารณสุข
 
 > **Status:** Draft v1.1 — aligned with [[PLAN_REVIEW_RESPONSE]] decisions (2026-04-18)
 > **Last updated:** 2026-04-18
@@ -9,7 +9,7 @@
 > [!INFO] **v1.1 alignment status**
 > - Image handling (§5.2, §6.5) — ✅ already matches v1.1 policy (no single-OCR storage, temp batch storage 7 days)
 > - Consent flow (§7) — ✅ already excludes paper scan upload (§7.3)
-> - JWT payload (§3.3) — ✅ includes `organization_id` (= `active_org_id` for ASM = default single org)
+> - JWT payload (§3.3) — ✅ includes `organization_id` (= `active_org_id` for caregiver = default single org)
 > - **Multi-org สำหรับ อสม.:** MVP = 1 อสม. : 1 รพ.สต. (no org selector). Phase 2 ถ้า อสม. เป็น member หลาย รพ.สต. = reuse `/admin/select-org` pattern จาก ADMIN_WEB_SPEC §3.1.5
 
 ---
@@ -47,7 +47,7 @@ Progressive Web App (PWA) สำหรับ **อาสาสมัครสา
 ### 2.2 Route structure
 
 ```
-frontend/app/asm/
+frontend/app/caregiver/
 ├── layout.tsx                    # PWA shell, bottom nav
 ├── login/page.tsx                # Phone + OTP login
 ├── onboarding/page.tsx           # Telegram pairing guide
@@ -66,14 +66,14 @@ frontend/app/asm/
 └── manifest.json                 # PWA manifest
 ```
 
-### 2.3 PWA manifest (`/asm/manifest.json`)
+### 2.3 PWA manifest (`/caregiver/manifest.json`)
 
 ```json
 {
   "name": "BP Monitor — อสม.",
   "short_name": "BP อสม.",
   "description": "บันทึกความดันโลหิตสำหรับอาสาสมัครสาธารณสุข",
-  "start_url": "/asm",
+  "start_url": "/caregiver",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#2563eb",
@@ -182,7 +182,7 @@ async def handle_start_command(update, context):
 
 ต่อไปนี้ รหัสผ่านชั่วคราว (OTP) จะส่งมาที่นี่
 เปิด PWA เพื่อเริ่มใช้งาน:
-https://bp-frontend.example.com/asm
+https://bp-frontend.example.com/caregiver
     """)
 ```
 
@@ -191,14 +191,14 @@ https://bp-frontend.example.com/asm
 ```
 Step 1 — Open PWA
   อสม. เปิด PWA (home screen icon หรือ browser)
-  → /asm → redirect to /asm/login (ถ้ายังไม่ login)
+  → /caregiver → redirect to /caregiver/login (ถ้ายังไม่ login)
 
 Step 2 — Request OTP
   หน้า login: input เบอร์โทร
   กด "ขอรหัส OTP"
 
 Step 3 — Backend generates + sends
-  POST /api/v1/asm/auth/request-otp {phone}
+  POST /api/v1/caregiver/auth/request-otp {phone}
   Backend:
     - Validate phone format
     - Look up user by phone_hash
@@ -213,7 +213,7 @@ Step 3 — Backend generates + sends
 Step 4 — Enter OTP
   PWA shows OTP input (6 digits, numeric keyboard)
   อสม. เปิด Telegram → เห็นรหัสจาก bot → กลับมา PWA → ใส่รหัส
-  POST /api/v1/asm/auth/verify-otp {phone, otp}
+  POST /api/v1/caregiver/auth/verify-otp {phone, otp}
   Backend:
     - Validate OTP (check hash, check attempts < 3)
     - If OK: issue JWT (TTL 24h) + refresh token (TTL 30d, HTTP-only cookie)
@@ -250,12 +250,12 @@ Bot: verify ว่า Telegram chat ผูกกับ user ที่มี acti
 - Stored server-side (hashed) for revocation
 
 **Auto-refresh:**
-- When access token expires in < 5 min, client calls `POST /asm/auth/refresh`
+- When access token expires in < 5 min, client calls `POST /caregiver/auth/refresh`
 - If refresh token valid → new access token
 - If expired → redirect to login
 
 **Logout:**
-- `POST /asm/auth/logout`
+- `POST /caregiver/auth/logout`
 - Invalidate refresh token
 - Clear client storage
 - Redirect to login
@@ -273,7 +273,7 @@ Bot: verify ว่า Telegram chat ผูกกับ user ที่มี acti
 
 ## 4. Core Screens
 
-### 4.1 `/asm/login` — Login
+### 4.1 `/caregiver/login` — Login
 
 **Layout**:
 ```
@@ -311,7 +311,7 @@ After OTP requested:
 └─────────────────────────┘
 ```
 
-### 4.2 `/asm/onboarding` — First-time Guide
+### 4.2 `/caregiver/onboarding` — First-time Guide
 
 **Trigger**: `terms_accepted_at` is null OR first successful login
 
@@ -334,7 +334,7 @@ Screen 3: Quick Tour (3 tiles)
 - "ดูประวัติการบันทึก" → history
 - [เริ่มใช้งาน] → home
 
-### 4.3 `/asm` — Home Dashboard
+### 4.3 `/caregiver` — Home Dashboard
 
 **Layout:**
 ```
@@ -378,14 +378,14 @@ Screen 3: Quick Tour (3 tiles)
 - "วันนี้ต้องไปวัด" — patients ที่ last reading > N วัน (N configurable)
 
 **CTAs:**
-- Primary: "+ บันทึกผลวัดใหม่" → `/asm/record` (chooser: single / batch)
-- Secondary: patient tap → `/asm/patients/{id}`
+- Primary: "+ บันทึกผลวัดใหม่" → `/caregiver/record` (chooser: single / batch)
+- Secondary: patient tap → `/caregiver/patients/{id}`
 
 **API**:
-- `GET /api/v1/asm/dashboard`
+- `GET /api/v1/caregiver/dashboard`
   - Returns: `{patient_count, readings_month, due_patients: [...], recent_activity}`
 
-### 4.4 `/asm/patients` — Patient List
+### 4.4 `/caregiver/patients` — Patient List
 
 **Layout:**
 ```
@@ -414,12 +414,12 @@ Screen 3: Quick Tour (3 tiles)
 - Tap row → patient detail
 
 **API**:
-- `GET /api/v1/asm/patients?search=&sort=&filter=`
+- `GET /api/v1/caregiver/patients?search=&sort=&filter=`
 - Returns: `[{id, external_id, sequence, name, age, gender, last_reading, flags}]`
 
 **Privacy**: ชื่อ display ตรง ๆ (อสม. มีสิทธิ์เห็น). เบอร์โทรและเลขบัตร mask by default
 
-### 4.5 `/asm/patients/[id]` — Patient Detail
+### 4.5 `/caregiver/patients/[id]` — Patient Detail
 
 **Layout:**
 ```
@@ -452,15 +452,15 @@ Screen 3: Quick Tour (3 tiles)
 ```
 
 **Actions**:
-- "+ บันทึกผลวัดใหม่" → chooser: พิมพ์เอง / ถ่ายรูป → `/asm/patients/{id}/reading/new`
+- "+ บันทึกผลวัดใหม่" → chooser: พิมพ์เอง / ถ่ายรูป → `/caregiver/patients/{id}/reading/new`
 - Unmask phone/citizen: confirm modal + audit log
-- If no active consent: block record button + message "ต้องเก็บ consent ก่อน" → link to `/asm/patients/{id}/consent`
+- If no active consent: block record button + message "ต้องเก็บ consent ก่อน" → link to `/caregiver/patients/{id}/consent`
 
 **API**:
-- `GET /api/v1/asm/patients/{id}` — detail + consent + readings summary
-- `GET /api/v1/asm/patients/{id}/readings?days=30` — history for chart
+- `GET /api/v1/caregiver/patients/{id}` — detail + consent + readings summary
+- `GET /api/v1/caregiver/patients/{id}/readings?days=30` — history for chart
 
-### 4.6 `/asm/patients/[id]/reading/new` — Quick Entry
+### 4.6 `/caregiver/patients/[id]/reading/new` — Quick Entry
 
 **Flow**:
 
@@ -510,8 +510,8 @@ Screen 2B — Photo OCR (single):
 - If duplicate detected: confirm modal "พบข้อมูลคล้ายกันเมื่อ X นาทีที่แล้ว บันทึกซ้ำ?"
 
 **API**:
-- `POST /api/v1/asm/readings` — manual entry
-- `POST /api/v1/asm/readings/ocr/single` — with image upload
+- `POST /api/v1/caregiver/readings` — manual entry
+- `POST /api/v1/caregiver/readings/ocr/single` — with image upload
 
 **Validation**:
 - systolic: 60-260
@@ -549,14 +549,14 @@ Screen 2B — Photo OCR (single):
 ```
 1. Client: capture image (in memory)
 2. Client: compress if > 3MB (client-side resize)
-3. Client: POST to /api/v1/asm/readings/ocr/single (multipart)
+3. Client: POST to /api/v1/caregiver/readings/ocr/single (multipart)
 4. Server: receive image (in memory)
 5. Server: call Gemini API (pass image base64)
 6. Server: parse Gemini JSON response
 7. Server: return { pre_fill_values, confidence, warnings } to client
 8. Server: discard image (never stored)
 9. Client: show pre-fill form
-10. อสม. confirm → POST to /api/v1/asm/readings (manual-style with pre_fill metadata)
+10. อสม. confirm → POST to /api/v1/caregiver/readings (manual-style with pre_fill metadata)
 11. Server: create bp_reading with source_type="ocr_single", ocr_raw_output (JSON)
 ```
 
@@ -657,7 +657,7 @@ SINGLE_OCR_PROMPT = """
 
 **Generate logic (admin web):**
 ```python
-# Admin: /admin/asm/{id}/print-patient-list
+# Admin: /admin/caregiver/{id}/print-patient-list
 # Returns PDF with care assignments ของ อสม. คนนี้, sorted by sequence_in_list
 ```
 
@@ -897,17 +897,17 @@ Pulse: -- (ไม่สามารถอ่านได้)
 
 ```
 อสม. กด "บันทึก"
-→ POST /api/v1/asm/readings/ocr/batch/confirm
+→ POST /api/v1/caregiver/readings/ocr/batch/confirm
    Body: { temp_reading_id, confirmed_patient_id, values, edits: {...} }
 → Backend:
    - Verify อสม. owns care_assignment to confirmed_patient_id
-   - Check active consent (asm_collect)
+   - Check active consent (caregiver_collect)
    - Create bp_reading
      - source_type = "ocr_batch"
      - ocr_raw_output = {original JSON}
      - ocr_confidence_score = overall
      - source_image_file_id = temp_image_id (if stored)
-     - measurement_context = "asm_field_visit"
+     - measurement_context = "caregiver_field_visit"
    - If image was stored: schedule immediate deletion (after commit)
      - For "auto_confirm" flow: delete immediately (image was never really needed)
      - For "review_needed" that was resolved by อสม.: delete immediately
@@ -931,7 +931,7 @@ Phase 2: multiple checkmarks in one photo (batch multiple patients in one shot) 
 
 ### 7.1 Entry point
 
-`/asm/patients/{id}/consent` — อสม. opens when first visiting patient
+`/caregiver/patients/{id}/consent` — อสม. opens when first visiting patient
 
 ### 7.2 PWA-specific UI
 
@@ -961,7 +961,7 @@ Screen 5: Digital signature
 - Auto-capture: GPS coords, device timestamp, อสม. user_id (as witness)
 
 Screen 6: Submit
-- POST /api/v1/asm/consent/submit
+- POST /api/v1/caregiver/consent/submit
 - Server creates consent_records (1 per selected scope)
 - Return success + reminder: "กรุณาให้ชาวบ้านเซ็นในกระดาษ + ส่งกระดาษกลับ รพ.สต."
 
@@ -974,7 +974,7 @@ Based on privacy-first principle:
 
 ### 7.4 Blocked state: no consent → no reading
 
-If `/asm/patients/{id}/reading/new` opened but patient has no active `asm_collect` consent:
+If `/caregiver/patients/{id}/reading/new` opened but patient has no active `caregiver_collect` consent:
 - Banner: "ยังไม่ได้รับ consent สำหรับการเก็บข้อมูล"
 - CTA: "ไปเก็บ consent ก่อน"
 - "บันทึก" button disabled
@@ -984,7 +984,7 @@ If `/asm/patients/{id}/reading/new` opened but patient has no active `asm_collec
 
 ## 8. History Screen
 
-### 8.1 `/asm/history`
+### 8.1 `/caregiver/history`
 
 อสม. ดูผลงานที่บันทึกเอง (not patients' full history)
 
@@ -1011,15 +1011,15 @@ If `/asm/patients/{id}/reading/new` opened but patient has no active `asm_collec
 **Edit/Delete window**: 24 hours after creation (beyond that, only admin can)
 
 **API**:
-- `GET /api/v1/asm/history?month=2026-04`
-- `PATCH /api/v1/asm/readings/{id}` (within 24h)
-- `DELETE /api/v1/asm/readings/{id}` (within 24h)
+- `GET /api/v1/caregiver/history?month=2026-04`
+- `PATCH /api/v1/caregiver/readings/{id}` (within 24h)
+- `DELETE /api/v1/caregiver/readings/{id}` (within 24h)
 
 ---
 
 ## 9. Profile Screen
 
-### 9.1 `/asm/profile`
+### 9.1 `/caregiver/profile`
 
 ```
 ┌─────────────────────────┐
@@ -1058,22 +1058,22 @@ If `/asm/patients/{id}/reading/new` opened but patient has no active `asm_collec
 ### 10.1 Authentication
 
 ```
-POST /api/v1/asm/auth/request-otp
+POST /api/v1/caregiver/auth/request-otp
   Body: { phone }
   Response: { sent: true }  # don't leak user existence
 
-POST /api/v1/asm/auth/verify-otp
+POST /api/v1/caregiver/auth/verify-otp
   Body: { phone, otp }
   Response: { access_token, user, assignment_summary }
 
-POST /api/v1/asm/auth/refresh
+POST /api/v1/caregiver/auth/refresh
   (uses refresh token cookie)
   Response: { access_token }
 
-POST /api/v1/asm/auth/logout
+POST /api/v1/caregiver/auth/logout
   Response: { success: true }
 
-POST /api/v1/asm/onboarding/accept-terms
+POST /api/v1/caregiver/onboarding/accept-terms
   Body: { terms_version, privacy_policy_version }
   Response: { success: true }
 ```
@@ -1081,7 +1081,7 @@ POST /api/v1/asm/onboarding/accept-terms
 ### 10.2 Dashboard
 
 ```
-GET /api/v1/asm/dashboard
+GET /api/v1/caregiver/dashboard
   Response: {
     patient_count,
     readings_month,
@@ -1093,21 +1093,21 @@ GET /api/v1/asm/dashboard
 ### 10.3 Patients
 
 ```
-GET /api/v1/asm/patients
+GET /api/v1/caregiver/patients
   Query: search, sort, filter
   Response: [{id, external_id, sequence, name, age, last_reading, flags, has_consent}]
 
-GET /api/v1/asm/patients/{external_id}
+GET /api/v1/caregiver/patients/{external_id}
   Response: full patient detail + consent status + recent readings
 
-GET /api/v1/asm/patients/{external_id}/readings?days=30
+GET /api/v1/caregiver/patients/{external_id}/readings?days=30
   Response: [{id, measured_at, systolic, diastolic, pulse, ...}]
 
-POST /api/v1/asm/patients/{external_id}/unmask-phone
+POST /api/v1/caregiver/patients/{external_id}/unmask-phone
   (audit logged)
   Response: { phone: "unmasked" }
 
-POST /api/v1/asm/patients/{external_id}/unmask-citizen-id
+POST /api/v1/caregiver/patients/{external_id}/unmask-citizen-id
   (audit logged)
   Response: { citizen_id: "unmasked" }
 ```
@@ -1115,12 +1115,12 @@ POST /api/v1/asm/patients/{external_id}/unmask-citizen-id
 ### 10.4 Readings
 
 ```
-POST /api/v1/asm/readings
+POST /api/v1/caregiver/readings
   Body: { patient_external_id, systolic, diastolic, pulse, measured_at, 
           location_name, note, source_type }
   Response: { reading_id, success }
 
-POST /api/v1/asm/readings/ocr/single
+POST /api/v1/caregiver/readings/ocr/single
   Body: multipart { patient_external_id, image }
   Response: {
     pre_fill: { systolic, diastolic, pulse, measurement_time, measurement_date },
@@ -1129,7 +1129,7 @@ POST /api/v1/asm/readings/ocr/single
     raw_output_hash  # for correlation when submitting
   }
 
-POST /api/v1/asm/readings/ocr/batch
+POST /api/v1/caregiver/readings/ocr/batch
   Body: multipart { image }
   Response: {
     flow: "auto_confirm" | "review_needed",
@@ -1140,7 +1140,7 @@ POST /api/v1/asm/readings/ocr/batch
     temp_reading_session_id  # identifier to reference in confirm step
   }
 
-POST /api/v1/asm/readings/ocr/batch/confirm
+POST /api/v1/caregiver/readings/ocr/batch/confirm
   Body: {
     temp_reading_session_id,
     confirmed_patient_external_id,
@@ -1149,27 +1149,27 @@ POST /api/v1/asm/readings/ocr/batch/confirm
   }
   Response: { reading_id, success }
 
-PATCH /api/v1/asm/readings/{id}
+PATCH /api/v1/caregiver/readings/{id}
   (within 24h + own readings only)
   Body: partial fields
   Response: { reading_id, success }
 
-DELETE /api/v1/asm/readings/{id}
+DELETE /api/v1/caregiver/readings/{id}
   (within 24h + own readings only)
   Response: { success }
 
-GET /api/v1/asm/history?month=YYYY-MM
+GET /api/v1/caregiver/history?month=YYYY-MM
   Response: [{reading}...]
 ```
 
 ### 10.5 Consent
 
 ```
-POST /api/v1/asm/consent/initiate
+POST /api/v1/caregiver/consent/initiate
   Body: { patient_external_id, scopes }
   Response: { session_id, consent_form_content, version }
 
-POST /api/v1/asm/consent/submit
+POST /api/v1/caregiver/consent/submit
   Body: {
     session_id,
     scopes_accepted,
@@ -1179,14 +1179,14 @@ POST /api/v1/asm/consent/submit
   }
   Response: { consent_record_ids, summary }
 
-GET /api/v1/asm/consent/patient/{external_id}/status
+GET /api/v1/caregiver/consent/patient/{external_id}/status
   Response: { scopes: [{scope, status, granted_at}] }
 ```
 
 ### 10.6 Profile
 
 ```
-GET /api/v1/asm/profile
+GET /api/v1/caregiver/profile
   Response: { ... }
 ```
 
@@ -1350,7 +1350,7 @@ GET /api/v1/asm/profile
 ## 15. Implementation Checklist
 
 ### 15.1 Foundation
-- [ ] Route structure under `/app/asm/`
+- [ ] Route structure under `/app/caregiver/`
 - [ ] PWA manifest + Service Worker (basic)
 - [ ] Auth state management (Zustand)
 - [ ] API client with JWT + refresh flow
@@ -1424,4 +1424,4 @@ GET /api/v1/asm/profile
 
 ---
 
-**End of ASM_PWA_SPEC.md**
+**End of CAREGIVER_PWA_SPEC.md**
