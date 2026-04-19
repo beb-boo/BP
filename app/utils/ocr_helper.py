@@ -7,8 +7,13 @@ import PIL.Image
 from PIL.ExifTags import TAGS
 from dotenv import load_dotenv
 from ..schemas import OCRResult
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Optional
 from .timezone import now_tz
+
+# OCR date sanity check: discard OCR-read date if it's this many days away from upload time.
+# BP monitors with un-set internal clocks often report defaults like 2024-01-01 — this catches them.
+OCR_DATE_SANITY_WINDOW_DAYS = 30
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -62,8 +67,16 @@ def extract_exif_datetime(metadata: dict):
         
     return None
 
-def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
-    """Read blood pressure values from image using Gemini API with priority timestamp logic"""
+def read_blood_pressure_with_gemini(
+    image_path: str,
+    upload_time: Optional[datetime] = None,
+) -> OCRResult:
+    """Read blood pressure values from image using Gemini API with priority timestamp logic.
+
+    Timestamp fallback order: OCR (image) → EXIF → upload_time (caller-provided) → now_tz().
+    OCR date/time is discarded if it falls outside ±OCR_DATE_SANITY_WINDOW_DAYS of the
+    reference time (upload_time or now) to guard against BP monitors with unset clocks.
+    """
     if not GOOGLE_AI_API_KEY:
         return OCRResult(error="Google AI API key not configured")
 
@@ -111,37 +124,55 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
             result_data = json.loads(raw_text)
             metadata = get_image_metadata(image_path)
             
-            # --- Timestamp Logic Priority (Granular) ---
+            # --- Timestamp Logic Priority ---
+            # OCR → EXIF → upload_time (caller) → now_tz() (defensive)
             final_date = None
             final_time = None
             date_source = "Unknown"
             time_source = "Unknown"
-            
-            # 1. OCR (Try individual components)
+
+            # Reference time for sanity checks and final fallback.
+            # Prefer caller-provided upload_time (e.g. Telegram message.date or request start time);
+            # fall back to now_tz() if caller didn't pass one.
+            reference_time = upload_time or now_tz()
+            # Normalize to naive (compare against naive datetimes built from OCR/EXIF strings).
+            if reference_time.tzinfo is not None:
+                reference_time = reference_time.replace(tzinfo=None)
+
+            # 1. OCR (with sanity check to reject BP-monitor default-clock dates)
             ocr_date = result_data.get("date")
             ocr_time = result_data.get("time")
+            ocr_date_rejected = False
 
             if ocr_date:
                 try:
-                    datetime.strptime(ocr_date, "%Y-%m-%d") # Validate format
-                    final_date = ocr_date
-                    date_source = "OCR"
+                    parsed_ocr_date = datetime.strptime(ocr_date, "%Y-%m-%d")
+                    delta_days = abs((parsed_ocr_date.date() - reference_time.date()).days)
+                    if delta_days <= OCR_DATE_SANITY_WINDOW_DAYS:
+                        final_date = ocr_date
+                        date_source = "OCR"
+                    else:
+                        ocr_date_rejected = True
+                        logger.warning(
+                            f"OCR date {ocr_date} rejected: {delta_days} days from reference "
+                            f"{reference_time.date()} (window: {OCR_DATE_SANITY_WINDOW_DAYS})"
+                        )
                 except ValueError:
                     pass
 
             if ocr_time:
                 try:
-                    datetime.strptime(ocr_time, "%H:%M") # Validate format
+                    datetime.strptime(ocr_time, "%H:%M")  # Validate format
                     final_time = ocr_time
                     time_source = "OCR"
                 except ValueError:
                     pass
 
-            # 2. EXIF Data (Fill gaps)
+            # 2. EXIF Data (fill gaps)
             exif_dt = None
             if not final_date or not final_time:
                 exif_dt = extract_exif_datetime(metadata)
-            
+
             if exif_dt:
                 if not final_date:
                     final_date = exif_dt.strftime("%Y-%m-%d")
@@ -150,30 +181,18 @@ def read_blood_pressure_with_gemini(image_path: str) -> OCRResult:
                     final_time = exif_dt.strftime("%H:%M")
                     time_source = "EXIF"
 
-            # 3. File Creation Time (Fill gaps)
-            if not final_date or not final_time:
-                 try:
-                    creation_time = os.path.getctime(image_path)
-                    ct_dt = datetime.fromtimestamp(creation_time)
-                    if not final_date:
-                        final_date = ct_dt.strftime("%Y-%m-%d")
-                        date_source = "File Create"
-                    if not final_time:
-                        final_time = ct_dt.strftime("%H:%M")
-                        time_source = "File Create"
-                 except Exception:
-                     pass
-
-            # 4. Current Time (Fallback)
-            now = now_tz()
+            # 3. Upload time (caller-provided) — represents when the server received the file.
+            # Preferred over now_tz() because the Gemini call may add several seconds of delay.
             if not final_date:
-                final_date = now.strftime("%Y-%m-%d")
-                date_source = "Fallback"
+                final_date = reference_time.strftime("%Y-%m-%d")
+                date_source = "Upload" if upload_time else "Fallback"
             if not final_time:
-                final_time = now.strftime("%H:%M")
-                time_source = "Fallback"
+                final_time = reference_time.strftime("%H:%M")
+                time_source = "Upload" if upload_time else "Fallback"
 
             source_notes = [f"Date: {date_source}", f"Time: {time_source}"]
+            if ocr_date_rejected:
+                source_notes.append(f"OCR-date-rejected: {ocr_date}")
 
             return OCRResult(
                 systolic=result_data.get("systolic"),

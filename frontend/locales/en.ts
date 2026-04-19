@@ -163,7 +163,12 @@ export const en = {
         pulse: "Pulse (bpm)",
         notes: "Notes",
         add_title: "Add New Record",
-        add_desc: "Enter your measurement details below."
+        add_desc: "Enter your measurement details below.",
+        edit_title: "Edit Record",
+        edit_desc: "Update the measurement values or date/time.",
+        update_success: "Record updated successfully",
+        update_failed: "Failed to update record",
+        actions: "Actions"
     },
     subscription: {
         title: "Subscription Plans",

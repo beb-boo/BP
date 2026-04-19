@@ -527,8 +527,17 @@ class BotService:
             return info
 
     @staticmethod
-    def update_bp_record(user_id: int, record_id: int, systolic: int, diastolic: int, pulse: int) -> bool:
-        """Update an existing BP record's values."""
+    def update_bp_record(
+        user_id: int,
+        record_id: int,
+        systolic: int = None,
+        diastolic: int = None,
+        pulse: int = None,
+        measurement_date=None,
+        measurement_time: str = None,
+    ) -> bool:
+        """Update an existing BP record. Any field set to None is left unchanged."""
+        from datetime import datetime
         with SessionLocal() as db:
             record = db.query(BloodPressureRecord).filter(
                 BloodPressureRecord.id == record_id,
@@ -536,9 +545,22 @@ class BotService:
             ).first()
             if not record:
                 return False
-            record.systolic = systolic
-            record.diastolic = diastolic
-            record.pulse = pulse
+            if systolic is not None:
+                record.systolic = systolic
+            if diastolic is not None:
+                record.diastolic = diastolic
+            if pulse is not None:
+                record.pulse = pulse
+            if measurement_date is not None:
+                if isinstance(measurement_date, str):
+                    try:
+                        record.measurement_date = datetime.strptime(measurement_date, "%Y-%m-%d")
+                    except ValueError:
+                        pass
+                else:
+                    record.measurement_date = measurement_date
+            if measurement_time is not None:
+                record.measurement_time = measurement_time
             record.notes = (record.notes or "") + " (Edited)"
             db.commit()
             return True

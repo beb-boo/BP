@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 from ..schemas import StandardResponse, OCRResult
 from ..utils.ocr_helper import read_blood_pressure_with_gemini
 from ..utils.rate_limiter import limiter
+from ..utils.timezone import now_tz
 
 router = APIRouter(prefix="/api/v1", tags=["blood pressure"])
 logger = logging.getLogger(__name__)
@@ -32,6 +33,8 @@ async def process_bp_image(
 ):
     """Extract blood pressure values from uploaded image (OCR only)"""
     request_id = generate_request_id()
+    # Capture request arrival time for ocr_helper's upload-time fallback.
+    upload_time = now_tz()
 
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -63,7 +66,7 @@ async def process_bp_image(
             temp_file_path = temp_file.name
 
         # Process with Gemini
-        ocr_result = read_blood_pressure_with_gemini(temp_file_path)
+        ocr_result = read_blood_pressure_with_gemini(temp_file_path, upload_time=upload_time)
         
         # Cleanup
         os.unlink(temp_file_path)

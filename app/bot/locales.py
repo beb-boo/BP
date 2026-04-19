@@ -94,6 +94,7 @@ LOCALES = {
         "ocr_read_error": "❌ Read Error: {error}\nPlease try again.",
         "ocr_no_values": "⚠️ Could not clearly read numbers. Please try again.",
         "ocr_date_fallback": "\n⚠️ **Date not found in image**, using current date.",
+        "ocr_date_rejected": "\n⚠️ **Date on device screen looks off** (monitor clock may not be set) — using upload time instead.",
         "heic_not_supported": "❌ HEIC format is not supported. Please convert to JPEG or PNG and try again.",
         "ocr_auto_saved": "⏰ **Auto-saved!** ({sys}/{dia} {pulse})\nYou didn't confirm within 2 minutes, so it was saved automatically.\nIf values are wrong, use /delete to remove and re-upload.",
 
@@ -103,6 +104,10 @@ LOCALES = {
         "manual_bp_cancelled": "❌ Cancelled. Record was not saved.",
         "ocr_edit_prompt": "Please type the values in this format:\n**SYS DIA PULSE**\nExample: `120 80 72`",
         "ocr_edit_invalid": "⚠️ Invalid format. Try: **120 80 72**",
+        "ocr_edit_datetime_prompt": "Enter the correct date and time:\n**DD/MM/YYYY HH:MM**\nExample: `17/04/2026 09:42`",
+        "ocr_edit_datetime_invalid": "⚠️ Invalid format. Use: **DD/MM/YYYY HH:MM**",
+        "btn_edit_values": "✏️ Edit values",
+        "btn_edit_datetime": "📅 Edit date/time",
         "manual_bp_invalid_format": "⚠️ Invalid format.\nPlease type BP as: **130 90 65** or **130/90/65**\n(systolic/diastolic/pulse)",
         "manual_bp_out_of_range": "⚠️ Values out of range.\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nPlease try again.",
 
@@ -128,10 +133,14 @@ LOCALES = {
         # /edit
         "edit_title": "✏️ **Edit BP Record**\nSelect a record to edit:",
         "edit_no_records": "📭 No records found.",
-        "edit_prompt": "Current record:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (Pulse {pulse})\n\nType new values: **SYS DIA PULSE**\nExample: `120 80 72`",
+        "edit_prompt": "Current record:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (Pulse {pulse})\n\nChoose what to edit:",
+        "edit_datetime_prompt": "Current: 📅 {date} {time}\n\nEnter the new date and time:\n**DD/MM/YYYY HH:MM**\nExample: `17/04/2026 09:42`",
+        "edit_values_prompt": "Current: **{sys}/{dia}** mmHg (Pulse {pulse})\n\nType new values:\n**SYS DIA PULSE**\nExample: `120 80 72`",
         "edit_success": "✅ Record updated! ({sys}/{dia} {pulse})",
+        "edit_datetime_success": "✅ Date/time updated!\n📅 {date} {time}",
         "edit_cancelled": "❌ Edit cancelled.",
         "edit_invalid_format": "⚠️ Invalid format. Type: **120 80 72**",
+        "edit_datetime_invalid": "⚠️ Invalid format. Use: **DD/MM/YYYY HH:MM**",
 
         # /password
         "password_title": "🔐 **Password Management**",
@@ -271,6 +280,7 @@ LOCALES = {
         "ocr_read_error": "❌ อ่านค่าไม่ได้: {error}\nกรุณาลองใหม่ครับ",
         "ocr_no_values": "⚠️ ไม่สามารถอ่านตัวเลขได้ชัดเจน กรุณาลองใหม่ครับ",
         "ocr_date_fallback": "\n⚠️ **ไม่พบวันที่ในรูป** ใช้วันที่ปัจจุบันแทน",
+        "ocr_date_rejected": "\n⚠️ **วันที่บนจอเครื่องวัดดูผิดปกติ** (นาฬิกาของเครื่องอาจยังไม่ได้ตั้ง) — ใช้เวลาที่ส่งรูปแทน",
         "heic_not_supported": "❌ ไม่รองรับ HEIC กรุณาแปลงเป็น JPEG หรือ PNG แล้วลองใหม่",
         "ocr_auto_saved": "⏰ **บันทึกอัตโนมัติ!** ({sys}/{dia} {pulse})\nคุณไม่ได้กดยืนยันภายใน 2 นาที จึงบันทึกให้อัตโนมัติ\nถ้าค่าไม่ถูกต้อง ใช้ /delete เพื่อลบแล้วส่งรูปใหม่",
 
@@ -280,6 +290,10 @@ LOCALES = {
         "manual_bp_cancelled": "❌ ยกเลิกแล้ว ไม่ได้บันทึกข้อมูล",
         "ocr_edit_prompt": "กรุณาพิมพ์ค่าในรูปแบบนี้:\n**บน ล่าง ชีพจร**\nตัวอย่าง: `120 80 72`",
         "ocr_edit_invalid": "⚠️ รูปแบบไม่ถูกต้อง ลองใหม่: **120 80 72**",
+        "ocr_edit_datetime_prompt": "พิมพ์วันที่และเวลาที่ถูกต้อง:\n**วว/ดด/ปปปป ชช:นน**\nตัวอย่าง: `17/04/2026 09:42`",
+        "ocr_edit_datetime_invalid": "⚠️ รูปแบบไม่ถูกต้อง ใช้: **วว/ดด/ปปปป ชช:นน**",
+        "btn_edit_values": "✏️ แก้ค่า",
+        "btn_edit_datetime": "📅 แก้วัน/เวลา",
         "manual_bp_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง\nกรุณาพิมพ์ค่าความดัน: **130 90 65** หรือ **130/90/65**\n(บน/ล่าง/ชีพจร)",
         "manual_bp_out_of_range": "⚠️ ค่าไม่อยู่ในช่วงที่กำหนด\nSystolic: 50-300, Diastolic: 30-200, Pulse: 30-200\nกรุณาลองใหม่",
 
@@ -305,10 +319,14 @@ LOCALES = {
         # /edit
         "edit_title": "✏️ **แก้ไขรายการบันทึก**\nเลือกรายการที่ต้องการแก้ไข:",
         "edit_no_records": "📭 ไม่พบรายการบันทึก",
-        "edit_prompt": "รายการปัจจุบัน:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (ชีพจร {pulse})\n\nพิมพ์ค่าใหม่: **บน ล่าง ชีพจร**\nตัวอย่าง: `120 80 72`",
+        "edit_prompt": "รายการปัจจุบัน:\n📅 {date} {time}\n💓 **{sys}/{dia}** mmHg (ชีพจร {pulse})\n\nเลือกสิ่งที่ต้องการแก้ไข:",
+        "edit_datetime_prompt": "ปัจจุบัน: 📅 {date} {time}\n\nพิมพ์วันที่และเวลาใหม่:\n**วว/ดด/ปปปป ชช:นน**\nตัวอย่าง: `17/04/2026 09:42`",
+        "edit_values_prompt": "ปัจจุบัน: **{sys}/{dia}** mmHg (ชีพจร {pulse})\n\nพิมพ์ค่าใหม่:\n**บน ล่าง ชีพจร**\nตัวอย่าง: `120 80 72`",
         "edit_success": "✅ แก้ไขเรียบร้อย! ({sys}/{dia} {pulse})",
+        "edit_datetime_success": "✅ แก้ไขวัน/เวลาเรียบร้อย!\n📅 {date} {time}",
         "edit_cancelled": "❌ ยกเลิกการแก้ไข",
         "edit_invalid_format": "⚠️ รูปแบบไม่ถูกต้อง พิมพ์: **120 80 72**",
+        "edit_datetime_invalid": "⚠️ รูปแบบไม่ถูกต้อง ใช้: **วว/ดด/ปปปป ชช:นน**",
 
         # /password
         "password_title": "🔐 **จัดการรหัสผ่าน**",

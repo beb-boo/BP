@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Cookies from "js-cookie";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock } from "lucide-react";
+import { Activity, Users, FilePlus, Calendar, LogOut, Settings, Camera, Loader2, X, ChevronLeft, ChevronRight, Crown, TrendingUp, TrendingDown, Minus, Heart, Lock, Pencil } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 
@@ -239,6 +239,15 @@ function PatientView({ user }: { user: AppUser }) {
     const [loadingData, setLoadingData] = useState(true);
     const [isAddOpen, setIsAddOpen] = useState(false);
 
+    // Edit record dialog state
+    const [editingRecord, setEditingRecord] = useState<BPRecord | null>(null);
+    const [editSys, setEditSys] = useState("");
+    const [editDia, setEditDia] = useState("");
+    const [editPulse, setEditPulse] = useState("");
+    const [editDate, setEditDate] = useState("");
+    const [editTime, setEditTime] = useState("");
+    const [editSubmitting, setEditSubmitting] = useState(false);
+
     // OCR & Form states
     const [activeTab, setActiveTab] = useState("photo");
     const [ocrLoading, setOcrLoading] = useState(false);
@@ -348,6 +357,37 @@ function PatientView({ user }: { user: AppUser }) {
     const clearPreview = () => {
         setPreviewUrl(null);
         setSys(""); setDia(""); setPulse("");
+    };
+
+    const openEditDialog = (record: BPRecord) => {
+        setEditingRecord(record);
+        setEditSys(String(record.systolic));
+        setEditDia(String(record.diastolic));
+        setEditPulse(String(record.pulse));
+        setEditDate(formatDateForInput(new Date(record.measurement_date)));
+        setEditTime(record.measurement_time || "");
+    };
+
+    const handleUpdateRecord = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingRecord) return;
+        setEditSubmitting(true);
+        try {
+            await api.put(`/bp-records/${editingRecord.id}`, {
+                systolic: parseInt(editSys),
+                diastolic: parseInt(editDia),
+                pulse: parseInt(editPulse),
+                measurement_date: buildLocalDateTimePayload(editDate, editTime),
+                measurement_time: editTime,
+            });
+            toast.success(t('record.update_success', 'Record updated successfully'));
+            setEditingRecord(null);
+            fetchInitialData();
+        } catch (error: unknown) {
+            toast.error(getApiErrorMessage(error, t('record.update_failed', 'Failed to update record')));
+        } finally {
+            setEditSubmitting(false);
+        }
     };
 
     const handleAddRecord = async (e: React.FormEvent) => {
@@ -659,6 +699,48 @@ function PatientView({ user }: { user: AppUser }) {
                 <ManageDoctorsDialog />
             </div>
 
+            {/* Edit Record Dialog */}
+            <Dialog open={!!editingRecord} onOpenChange={(open) => { if (!open) setEditingRecord(null); }}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle>{t('record.edit_title', 'Edit Record')}</DialogTitle>
+                        <DialogDescription>{t('record.edit_desc', 'Update the measurement values or date/time.')}</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleUpdateRecord}>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="edit-date" className="text-right">{t('record.date')}</Label>
+                                <Input id="edit-date" value={editDate} onChange={e => setEditDate(e.target.value)} type="date" className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="edit-time" className="text-right">{t('record.time')}</Label>
+                                <Input id="edit-time" value={editTime} onChange={e => setEditTime(e.target.value)} type="time" className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="edit-sys" className="text-right">{t('record.systolic')}</Label>
+                                <Input id="edit-sys" value={editSys} onChange={e => setEditSys(e.target.value)} type="number" className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="edit-dia" className="text-right">{t('record.diastolic')}</Label>
+                                <Input id="edit-dia" value={editDia} onChange={e => setEditDia(e.target.value)} type="number" className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="edit-pulse" className="text-right">{t('record.pulse')}</Label>
+                                <Input id="edit-pulse" value={editPulse} onChange={e => setEditPulse(e.target.value)} type="number" className="col-span-3" required />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setEditingRecord(null)} disabled={editSubmitting}>
+                                {t('common.cancel', 'Cancel')}
+                            </Button>
+                            <Button type="submit" disabled={editSubmitting}>
+                                {editSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.save', 'Save')}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             {/* Trends Chart */}
             <Card>
                 <CardHeader>
@@ -702,6 +784,7 @@ function PatientView({ user }: { user: AppUser }) {
                                             <span className="hidden md:inline">{t('record.notes', 'Notes')}</span>
                                             <span className="md:hidden">Note</span>
                                         </TableHead>
+                                        <TableHead className="text-right">{t('record.actions', 'Actions')}</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -719,6 +802,17 @@ function PatientView({ user }: { user: AppUser }) {
                                             <TableCell>{r.pulse}</TableCell>
                                             <TableCell className="text-slate-500 text-xs md:text-sm">
                                                 {r.notes || "Manual"}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={() => openEditDialog(r)}
+                                                    aria-label={t('common.edit', 'Edit')}
+                                                >
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))}

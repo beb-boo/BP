@@ -143,6 +143,7 @@ REG_LICENSE = 8
 # --- OCR States ---
 OCR_CONFIRM = 10
 OCR_EDIT = 11
+OCR_EDIT_DATETIME = 12
 
 # --- Manual BP States ---
 MANUAL_BP_CONFIRM = 20
@@ -175,6 +176,8 @@ BROADCAST_CONFIRM = 71
 # --- Edit States ---
 EDIT_SELECT = 80
 EDIT_INPUT = 81
+EDIT_FIELD_CHOICE = 82
+EDIT_DATETIME_INPUT = 83
 
 # Regex for manual BP input: 130/90/65 or 130-90-65 or 130 90 65
 BP_TEXT_PATTERN = re.compile(r'^(\d{2,3})[/\-\s](\d{2,3})[/\-\s](\d{2,3})$')
@@ -599,7 +602,10 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 return ConversationHandler.END
 
     try:
-        ocr_result = read_blood_pressure_with_gemini(temp_path)
+        # Pass Telegram message timestamp as upload_time so ocr_helper's sanity check
+        # and fallback use the moment the user sent the photo, not when Gemini responds.
+        upload_time = update.message.date if update.message and update.message.date else None
+        ocr_result = read_blood_pressure_with_gemini(temp_path, upload_time=upload_time)
         os.unlink(temp_path)
 
         if ocr_result.error:
@@ -623,10 +629,11 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # Format Date/Time for display
         date_warning = ""
-        if ocr_result.measurement_date and ocr_result.measurement_time:
-             # Check if it was a fallback for DATE specifically
-             if "Date: Fallback" in ocr_result.raw_response:
-                 date_warning = get_text("ocr_date_fallback", lang)
+        raw_source = ocr_result.raw_response or ""
+        if "OCR-date-rejected" in raw_source:
+            date_warning = get_text("ocr_date_rejected", lang)
+        elif "Date: Fallback" in raw_source or "Date: Upload" in raw_source:
+            date_warning = get_text("ocr_date_fallback", lang)
 
         msg = get_text("ocr_confirm", lang,
             sys=ocr_result.systolic,
@@ -636,16 +643,18 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
             time=ocr_result.measurement_time
         )
         if date_warning:
-             msg += f"\n({date_warning})"
+             msg += date_warning
 
         btn_confirm_txt = get_text("btn_confirm", lang)
-        btn_edit_txt = get_text("btn_edit", lang)
+        btn_edit_values_txt = get_text("btn_edit_values", lang)
+        btn_edit_datetime_txt = get_text("btn_edit_datetime", lang)
 
         keyboard = [
+            [InlineKeyboardButton(btn_confirm_txt, callback_data="save_ocr")],
             [
-                InlineKeyboardButton(btn_confirm_txt, callback_data="save_ocr"),
-                InlineKeyboardButton(btn_edit_txt, callback_data="edit_ocr")
-            ]
+                InlineKeyboardButton(btn_edit_values_txt, callback_data="edit_ocr"),
+                InlineKeyboardButton(btn_edit_datetime_txt, callback_data="edit_ocr_datetime"),
+            ],
         ]
 
         await processing_msg.edit_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -729,6 +738,15 @@ async def ocr_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return OCR_EDIT
 
+    elif data == "edit_ocr_datetime":
+        user = BotService.get_user_by_telegram_id(update.effective_user.id)
+        lang = (user.language or "en") if user else "en"
+        await query.edit_message_text(
+            get_text("ocr_edit_datetime_prompt", lang),
+            parse_mode="Markdown"
+        )
+        return OCR_EDIT_DATETIME
+
 async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Cancel auto-save job since user is editing
     if context.job_queue:
@@ -779,6 +797,90 @@ async def ocr_edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text(get_text("ocr_edit_invalid", lang))
         return OCR_EDIT
+
+
+def _parse_user_datetime(text: str):
+    """Parse DD/MM/YYYY HH:MM (with flexible separators) into (date_str YYYY-MM-DD, time_str HH:MM).
+
+    Returns (date, time) or (None, None) if parsing fails.
+    """
+    from datetime import datetime as _dt
+    text = text.strip()
+    if not text:
+        return None, None
+    # Accept `/`, `-`, `.` as date separators; keep first space/`T` as date-time delimiter.
+    try:
+        # Split date and time on first whitespace or 'T'
+        parts = text.replace("T", " ").split(None, 1)
+        if len(parts) != 2:
+            return None, None
+        date_part, time_part = parts[0], parts[1]
+        date_part = date_part.replace("-", "/").replace(".", "/")
+        for fmt in ("%d/%m/%Y %H:%M", "%d/%m/%y %H:%M"):
+            try:
+                dt = _dt.strptime(f"{date_part} {time_part.strip()}", fmt)
+                return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+            except ValueError:
+                continue
+    except Exception:
+        pass
+    return None, None
+
+
+async def ocr_edit_datetime_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle new date/time input during OCR confirm flow — updates ocr_temp and returns to OCR_CONFIRM."""
+    # Cancel auto-save job since user is editing
+    if context.job_queue:
+        job_name = f"ocr_autosave_{update.effective_chat.id}"
+        for job in context.job_queue.get_jobs_by_name(job_name):
+            job.schedule_removal()
+
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    new_date, new_time = _parse_user_datetime(update.message.text)
+    if not new_date:
+        await update.message.reply_text(get_text("ocr_edit_datetime_invalid", lang), parse_mode="Markdown")
+        return OCR_EDIT_DATETIME
+
+    ocr_data = context.user_data.get('ocr_temp')
+    if not ocr_data:
+        await update.message.reply_text(get_text("session_expired", lang))
+        return ConversationHandler.END
+
+    ocr_data['date'] = new_date
+    ocr_data['time'] = new_time
+    # Mark that the user manually overrode the timestamp so we can surface it in notes.
+    ocr_data['raw_source'] = (ocr_data.get('raw_source') or "") + " | DateTime: UserEdit"
+
+    msg = get_text("ocr_confirm", lang,
+        sys=ocr_data['sys'],
+        dia=ocr_data['dia'],
+        pulse=ocr_data['pulse'],
+        date=new_date,
+        time=new_time,
+    )
+    keyboard = [
+        [InlineKeyboardButton(get_text("btn_confirm", lang), callback_data="save_ocr")],
+        [
+            InlineKeyboardButton(get_text("btn_edit_values", lang), callback_data="edit_ocr"),
+            InlineKeyboardButton(get_text("btn_edit_datetime", lang), callback_data="edit_ocr_datetime"),
+        ],
+    ]
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # Re-schedule auto-save job
+    if context.job_queue:
+        job_name = f"ocr_autosave_{update.effective_chat.id}"
+        context.job_queue.run_once(
+            ocr_auto_save_job,
+            when=120,
+            chat_id=update.effective_chat.id,
+            name=job_name,
+            data={"ocr_data": ocr_data.copy(), "lang": lang},
+        )
+    return OCR_CONFIRM
+
 
 # ============================================================================
 # OCR Auto-Save Job (Approach C)
@@ -1125,7 +1227,8 @@ def get_ocr_handler():
         entry_points=[MessageHandler(filters.PHOTO | filters.Document.IMAGE, handle_photo_entry)],
         states={
             OCR_CONFIRM: [CallbackQueryHandler(ocr_confirm_callback)],
-            OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)]
+            OCR_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_input)],
+            OCR_EDIT_DATETIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, ocr_edit_datetime_input)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         per_message=False,
@@ -1389,7 +1492,7 @@ async def edit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def edit_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle record selection for editing."""
+    """Handle record selection for editing — shows field chooser (values vs date/time)."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -1404,7 +1507,6 @@ async def edit_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     record_id = int(data.replace("edit_select_", ""))
     context.user_data['edit_record_id'] = record_id
 
-    # Show current values and ask for new ones
     records = BotService.get_recent_records(context.user_data.get('edit_user_id', 0))
     record = next((r for r in records if r['id'] == record_id), None)
 
@@ -1412,13 +1514,57 @@ async def edit_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_text("error", lang))
         return ConversationHandler.END
 
+    context.user_data['edit_record_snapshot'] = record
+
     msg = get_text("edit_prompt", lang,
         date=record['date'], time=record['time'],
         sys=record['sys'], dia=record['dia'], pulse=record['pulse']
     )
+    keyboard = [
+        [InlineKeyboardButton(get_text("btn_edit_values", lang), callback_data="edit_field_values")],
+        [InlineKeyboardButton(get_text("btn_edit_datetime", lang), callback_data="edit_field_datetime")],
+        [InlineKeyboardButton(get_text("btn_cancel", lang), callback_data="edit_field_cancel")],
+    ]
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    return EDIT_FIELD_CHOICE
 
-    await query.edit_message_text(msg, parse_mode="Markdown")
-    return EDIT_INPUT
+
+async def edit_field_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Route to values or date/time edit state."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    lang = (user.language or "en") if user else "en"
+    record = context.user_data.get('edit_record_snapshot') or {}
+
+    if data == "edit_field_cancel":
+        await query.edit_message_text(get_text("edit_cancelled", lang))
+        context.user_data.pop('edit_record_id', None)
+        context.user_data.pop('edit_user_id', None)
+        context.user_data.pop('edit_record_snapshot', None)
+        return ConversationHandler.END
+
+    if data == "edit_field_values":
+        await query.edit_message_text(
+            get_text("edit_values_prompt", lang,
+                sys=record.get('sys', '-'), dia=record.get('dia', '-'), pulse=record.get('pulse', '-')
+            ),
+            parse_mode="Markdown",
+        )
+        return EDIT_INPUT
+
+    if data == "edit_field_datetime":
+        await query.edit_message_text(
+            get_text("edit_datetime_prompt", lang,
+                date=record.get('date', '-'), time=record.get('time', '-')
+            ),
+            parse_mode="Markdown",
+        )
+        return EDIT_DATETIME_INPUT
+
+    return EDIT_FIELD_CHOICE
 
 
 async def edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1445,7 +1591,8 @@ async def edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             record_id = context.user_data.get('edit_record_id')
             user_id = context.user_data.get('edit_user_id')
 
-            success = BotService.update_bp_record(user_id, record_id, sys_val, dia_val, pulse_val)
+            success = BotService.update_bp_record(user_id, record_id,
+                systolic=sys_val, diastolic=dia_val, pulse=pulse_val)
             if success:
                 msg = get_text("edit_success", lang, sys=sys_val, dia=dia_val, pulse=pulse_val)
                 await update.message.reply_text(msg, parse_mode="Markdown")
@@ -1456,6 +1603,7 @@ async def edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             context.user_data.pop('edit_record_id', None)
             context.user_data.pop('edit_user_id', None)
+            context.user_data.pop('edit_record_snapshot', None)
             return ConversationHandler.END
         else:
             await update.message.reply_text(get_text("edit_invalid_format", lang))
@@ -1465,12 +1613,54 @@ async def edit_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return EDIT_INPUT
 
 
+async def edit_datetime_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle new date/time input for editing an existing record."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = (user.language or "en") if user else "en"
+
+    new_date, new_time = _parse_user_datetime(update.message.text)
+    if not new_date:
+        await update.message.reply_text(get_text("edit_datetime_invalid", lang), parse_mode="Markdown")
+        return EDIT_DATETIME_INPUT
+
+    record_id = context.user_data.get('edit_record_id')
+    user_id = context.user_data.get('edit_user_id')
+
+    success = BotService.update_bp_record(
+        user_id, record_id,
+        measurement_date=new_date,
+        measurement_time=new_time,
+    )
+    if success:
+        # Display format matches the /edit list (DD/MM/YYYY).
+        try:
+            from datetime import datetime as _dt
+            display_date = _dt.strptime(new_date, "%Y-%m-%d").strftime("%d/%m/%Y")
+        except ValueError:
+            display_date = new_date
+        await update.message.reply_text(
+            get_text("edit_datetime_success", lang, date=display_date, time=new_time),
+            parse_mode="Markdown",
+        )
+        BotLogService.log(user_id, "OUT", "edit_record_datetime",
+            f"Edit #{record_id} datetime: {new_date} {new_time}", user_id)
+    else:
+        await update.message.reply_text(get_text("error", lang))
+
+    context.user_data.pop('edit_record_id', None)
+    context.user_data.pop('edit_user_id', None)
+    context.user_data.pop('edit_record_snapshot', None)
+    return ConversationHandler.END
+
+
 def get_edit_handler():
     return ConversationHandler(
         entry_points=[CommandHandler("edit", edit_command)],
         states={
             EDIT_SELECT: [CallbackQueryHandler(edit_select_callback, pattern='^edit_select_')],
+            EDIT_FIELD_CHOICE: [CallbackQueryHandler(edit_field_callback, pattern='^edit_field_')],
             EDIT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_input)],
+            EDIT_DATETIME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_datetime_input)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         conversation_timeout=120,
