@@ -42,6 +42,15 @@ export default function TelegramBPPage() {
   const [stats, setStats] = useState<BPStats | null>(null);
   const [records, setRecords] = useState<BPRecord[]>([]);
 
+  // Edit modal
+  const [editingRecord, setEditingRecord] = useState<BPRecord | null>(null);
+  const [editSys, setEditSys] = useState("");
+  const [editDia, setEditDia] = useState("");
+  const [editPulse, setEditPulse] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
   // Theme
   const [isDark, setIsDark] = useState(false);
 
@@ -202,6 +211,67 @@ export default function TelegramBPPage() {
       e.target.value = "";
     }
   }
+
+  // ── Edit record ──
+
+  const closeEditModal = useCallback(() => {
+    setEditingRecord(null);
+  }, []);
+
+  function openEditModal(record: BPRecord) {
+    setEditingRecord(record);
+    setEditSys(String(record.systolic));
+    setEditDia(String(record.diastolic));
+    setEditPulse(String(record.pulse));
+    setEditDate(formatDateForInput(new Date(record.measurement_date)));
+    setEditTime(record.measurement_time || "");
+  }
+
+  async function handleEditSave() {
+    if (!editingRecord) return;
+    const sys = parseInt(editSys);
+    const dia = parseInt(editDia);
+    const pul = parseInt(editPulse);
+
+    if (!sys || !dia || !pul) return;
+    if (sys < 50 || sys > 300 || dia < 30 || dia > 200 || pul < 30 || pul > 200) {
+      getTelegramWebApp()?.showAlert("Invalid values. Check your input.");
+      return;
+    }
+
+    setEditSaving(true);
+    try {
+      await telegramApi.put(`/bp-records/${editingRecord.id}`, {
+        systolic: sys,
+        diastolic: dia,
+        pulse: pul,
+        measurement_date: buildLocalDateTimePayload(editDate, editTime),
+        measurement_time: editTime,
+      });
+      await Promise.all([fetchStats(), fetchRecords()]);
+      closeEditModal();
+      getTelegramWebApp()?.showAlert("Updated!");
+    } catch (error: unknown) {
+      const detail = getApiErrorMessage(error, "Update failed");
+      getTelegramWebApp()?.showAlert(`Update failed: ${detail}`);
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  // Wire Telegram BackButton to close the edit modal (mirrors native mobile back gesture).
+  useEffect(() => {
+    const tg = getTelegramWebApp();
+    if (!tg) return;
+    if (editingRecord) {
+      tg.BackButton.show();
+      tg.BackButton.onClick(closeEditModal);
+      return () => {
+        tg.BackButton.offClick(closeEditModal);
+        tg.BackButton.hide();
+      };
+    }
+  }, [editingRecord, closeEditModal]);
 
   // ── Render helpers ──
 
@@ -460,9 +530,14 @@ export default function TelegramBPPage() {
                 .padStart(2, "0")}`;
               const timeStr = r.measurement_time || d.toTimeString().slice(0, 5);
               return (
-                <div
+                <button
+                  type="button"
                   key={r.id}
-                  className="flex items-center justify-between py-1.5"
+                  onClick={() => openEditModal(r)}
+                  className={`w-full flex items-center justify-between py-1.5 px-1 -mx-1 rounded-md text-left transition-colors active:opacity-60 ${
+                    isDark ? "hover:bg-gray-700/50" : "hover:bg-gray-100"
+                  }`}
+                  aria-label={`Edit ${dateStr} ${timeStr} record`}
                 >
                   <span className="text-xs opacity-50 w-20">
                     {dateStr} {timeStr}
@@ -470,10 +545,110 @@ export default function TelegramBPPage() {
                   <span className="font-mono text-sm font-medium">
                     {r.systolic}/{r.diastolic}
                   </span>
-                  <span className="text-xs opacity-50">({r.pulse})</span>
-                </div>
+                  <span className="text-xs opacity-50 flex items-center gap-1">
+                    ({r.pulse})
+                    <span aria-hidden className="opacity-40">{"\u203A"}</span>
+                  </span>
+                </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Record Modal (full-screen bottom sheet for small viewports) */}
+      {editingRecord && (
+        <div
+          className={`fixed inset-0 z-50 flex flex-col ${themeClass}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit record"
+        >
+          <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+            <p className="font-semibold">Edit record</p>
+            <button
+              type="button"
+              onClick={closeEditModal}
+              className="text-sm opacity-60 active:opacity-40 px-2 py-1"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">SYS</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={editSys}
+                  onChange={(e) => setEditSys(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-center text-lg font-bold ${inputClass}`}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">DIA</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={editDia}
+                  onChange={(e) => setEditDia(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-center text-lg font-bold ${inputClass}`}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">PULSE</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={editPulse}
+                  onChange={(e) => setEditPulse(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-center text-lg font-bold ${inputClass}`}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">DATE</label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputClass}`}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider opacity-50 mb-1 block">TIME</label>
+                <input
+                  type="time"
+                  value={editTime}
+                  onChange={(e) => setEditTime(e.target.value)}
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${inputClass}`}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={`border-t p-3 flex gap-2 ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+            <button
+              type="button"
+              onClick={closeEditModal}
+              disabled={editSaving}
+              className={`flex-1 rounded-lg border px-4 py-3 font-medium active:opacity-70 ${isDark ? "border-gray-600 text-gray-300" : "border-gray-300 text-gray-700"}`}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleEditSave}
+              disabled={editSaving}
+              className="flex-1 rounded-lg bg-blue-500 text-white px-4 py-3 font-medium active:bg-blue-600 disabled:opacity-50"
+            >
+              {editSaving ? "Saving..." : "Save"}
+            </button>
           </div>
         </div>
       )}
