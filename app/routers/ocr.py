@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 import tempfile
@@ -65,15 +66,29 @@ async def process_bp_image(
             temp_file.write(content)
             temp_file_path = temp_file.name
 
-        # Process with Gemini
-        ocr_result = read_blood_pressure_with_gemini(temp_file_path, upload_time=upload_time)
-        
+        # Run sync Gemini call off the event loop so it doesn't block other requests.
+        ocr_result = await asyncio.to_thread(
+            read_blood_pressure_with_gemini, temp_file_path, upload_time=upload_time
+        )
+
         # Cleanup
         os.unlink(temp_file_path)
 
         if ocr_result.error:
             logger.warning(
-                f"OCR processing failed: {ocr_result.error} - Request ID: {request_id}")
+                f"OCR processing failed: {ocr_result.error} (code={ocr_result.error_code}) "
+                f"- Request ID: {request_id}"
+            )
+            if ocr_result.error_code == "OCR_RATE_LIMITED":
+                raise HTTPException(
+                    status_code=429,
+                    detail="OCR service is rate-limited or quota exhausted. Please try again later.",
+                )
+            if ocr_result.error_code == "OCR_UNSUPPORTED_FORMAT":
+                raise HTTPException(
+                    status_code=415,
+                    detail="Unsupported image format. Please send a JPEG or PNG photo.",
+                )
             raise HTTPException(
                 status_code=400, detail=f"OCR Error: {ocr_result.error}")
 

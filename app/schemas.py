@@ -315,6 +315,10 @@ class OCRResult(BaseModel):
     confidence: Optional[float] = None
     image_metadata: Optional[dict] = None
     error: Optional[str] = None
+    # Stable error code for callers to map to i18n / HTTP status.
+    # Known values: OCR_RATE_LIMITED, OCR_UNSUPPORTED_FORMAT, OCR_NOT_CONFIGURED,
+    # OCR_IMAGE_INVALID, OCR_PARSE_FAILED, OCR_API_ERROR.
+    error_code: Optional[str] = None
     raw_response: Optional[str] = None
 
 

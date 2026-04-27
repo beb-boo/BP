@@ -1,14 +1,16 @@
 
 import os
+import io
 import json
 import logging
 import google.generativeai as genai
+from google.api_core import exceptions as gax_exc
 import PIL.Image
 from PIL.ExifTags import TAGS
 from dotenv import load_dotenv
 from ..schemas import OCRResult
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 from .timezone import now_tz
 
 # OCR date sanity check: discard OCR-read date if it's this many days away from upload time.
@@ -19,7 +21,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 if GOOGLE_AI_API_KEY:
     genai.configure(api_key=GOOGLE_AI_API_KEY)
@@ -67,6 +69,38 @@ def extract_exif_datetime(metadata: dict):
         
     return None
 
+
+# Image formats that some Gemini models reject (e.g., gemini-2.5-flash rejects MPO).
+# We re-encode these to JPEG before sending. Camera/phone burst shots are commonly MPO.
+_REENCODE_FORMATS = {"MPO"}
+
+
+def _prepare_image_for_gemini(image_path: str) -> Tuple[PIL.Image.Image, dict]:
+    """Open image, validate, and re-encode unsupported formats (e.g. MPO) to JPEG.
+
+    Returns the PIL.Image to send to Gemini and the EXIF metadata read from the
+    *original* file (re-encoding strips EXIF — we capture it before flattening).
+    """
+    metadata = get_image_metadata(image_path)
+
+    img = PIL.Image.open(image_path)
+    img.verify()
+    img = PIL.Image.open(image_path)
+
+    if img.format in _REENCODE_FORMATS:
+        # MPO is multi-frame; PIL gives us the first (primary) frame only when seek(0).
+        img.seek(0)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=92)
+        buf.seek(0)
+        img = PIL.Image.open(buf)
+        logger.info(f"Re-encoded {image_path} from MPO to JPEG for Gemini")
+
+    return img, metadata
+
+
 def read_blood_pressure_with_gemini(
     image_path: str,
     upload_time: Optional[datetime] = None,
@@ -78,21 +112,28 @@ def read_blood_pressure_with_gemini(
     reference time (upload_time or now) to guard against BP monitors with unset clocks.
     """
     if not GOOGLE_AI_API_KEY:
-        return OCRResult(error="Google AI API key not configured")
+        return OCRResult(
+            error="Google AI API key not configured",
+            error_code="OCR_NOT_CONFIGURED",
+        )
 
     model = genai.GenerativeModel(GEMINI_MODEL)
 
     try:
-        img = PIL.Image.open(image_path)
-        img.verify()  # Verify it's a valid image
-        img = PIL.Image.open(image_path)  # Re-open after verify (verify closes it)
+        img, metadata = _prepare_image_for_gemini(image_path)
     except FileNotFoundError:
-        return OCRResult(error="Image not found")
+        return OCRResult(error="Image not found", error_code="OCR_IMAGE_INVALID")
     except PIL.Image.UnidentifiedImageError:
-        return OCRResult(error="Unsupported image format. Please send as JPEG or PNG.")
+        return OCRResult(
+            error="Unsupported image format. Please send as JPEG or PNG.",
+            error_code="OCR_UNSUPPORTED_FORMAT",
+        )
     except Exception as e:
         logger.error(f"Error opening image {image_path}: {e}")
-        return OCRResult(error=f"Cannot read image. Please try JPEG or PNG format.")
+        return OCRResult(
+            error="Cannot read image. Please try JPEG or PNG format.",
+            error_code="OCR_IMAGE_INVALID",
+        )
 
     prompt = """
     Analyze this blood pressure monitor screen image:
@@ -122,8 +163,8 @@ def read_blood_pressure_with_gemini(
 
         try:
             result_data = json.loads(raw_text)
-            metadata = get_image_metadata(image_path)
-            
+            # metadata already captured by _prepare_image_for_gemini before any re-encode
+
             # --- Timestamp Logic Priority ---
             # OCR → EXIF → upload_time (caller) → now_tz() (defensive)
             final_date = None
@@ -208,12 +249,30 @@ def read_blood_pressure_with_gemini(
         except json.JSONDecodeError:
             return OCRResult(
                 error="Could not parse response as JSON",
+                error_code="OCR_PARSE_FAILED",
                 raw_response=raw_text,
-                image_metadata=get_image_metadata(image_path)
+                image_metadata=metadata,
             )
 
+    except gax_exc.ResourceExhausted as e:
+        # 429 from Gemini — quota / per-model rate limit / regional throttle.
+        # Caller should map OCR_RATE_LIMITED to HTTP 429 (web) or i18n message (bot).
+        logger.warning(f"Gemini ResourceExhausted (model={GEMINI_MODEL}): {e}")
+        return OCRResult(
+            error="Gemini API rate-limited or quota exhausted",
+            error_code="OCR_RATE_LIMITED",
+            image_metadata=metadata,
+        )
+    except gax_exc.InvalidArgument as e:
+        # 400 — usually unsupported MIME, image too large, or bad request shape.
+        msg = str(e)
+        logger.warning(f"Gemini InvalidArgument (model={GEMINI_MODEL}): {msg}")
+        code = "OCR_UNSUPPORTED_FORMAT" if "MIME" in msg or "mime" in msg else "OCR_API_ERROR"
+        return OCRResult(error=f"Gemini rejected the image: {msg}", error_code=code, image_metadata=metadata)
     except Exception as e:
+        logger.error(f"Gemini call failed (model={GEMINI_MODEL}): {type(e).__name__}: {e}")
         return OCRResult(
             error=f"Error calling Gemini API: {str(e)}",
-            image_metadata=get_image_metadata(image_path)
+            error_code="OCR_API_ERROR",
+            image_metadata=metadata,
         )

@@ -605,11 +605,21 @@ async def handle_photo_entry(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Pass Telegram message timestamp as upload_time so ocr_helper's sanity check
         # and fallback use the moment the user sent the photo, not when Gemini responds.
         upload_time = update.message.date if update.message and update.message.date else None
-        ocr_result = read_blood_pressure_with_gemini(temp_path, upload_time=upload_time)
+
+        # Run sync Gemini call in a worker thread so the bot's event loop stays
+        # responsive (other users' commands aren't blocked while one OCR is in flight).
+        ocr_result = await asyncio.to_thread(
+            read_blood_pressure_with_gemini, temp_path, upload_time=upload_time
+        )
         os.unlink(temp_path)
 
         if ocr_result.error:
-            await processing_msg.edit_text(get_text("ocr_read_error", lang, error=ocr_result.error))
+            if ocr_result.error_code == "OCR_RATE_LIMITED":
+                await processing_msg.edit_text(get_text("ocr_rate_limited", lang))
+            elif ocr_result.error_code == "OCR_UNSUPPORTED_FORMAT":
+                await processing_msg.edit_text(get_text("ocr_unsupported_format", lang))
+            else:
+                await processing_msg.edit_text(get_text("ocr_read_error", lang, error=ocr_result.error))
             return ConversationHandler.END
 
         if not (ocr_result.systolic and ocr_result.diastolic and ocr_result.pulse):
