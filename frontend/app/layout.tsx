@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import PWAUpdatePrompt from "@/components/pwa/PWAUpdatePrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,6 +34,7 @@ export default function RootLayout({
         <LanguageProvider>
           {children}
           <Toaster />
+          <PWAUpdatePrompt />
         </LanguageProvider>
       </body>
     </html>

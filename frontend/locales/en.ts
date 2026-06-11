@@ -288,6 +288,11 @@ export const en = {
             title: "No Internet Connection",
             message: "Please check your connection and try again.",
             retry: "Retry"
+        },
+        update: {
+            available: "A new version is available",
+            now: "Update now",
+            later: "Later"
         }
     }
 };
