@@ -282,5 +282,12 @@ export const en = {
         resend_otp: "Resend Code",
         verify_success: "Email verified successfully! You can now login.",
         verify_failed: "Invalid code. Please try again."
+    },
+    pwa: {
+        offline: {
+            title: "No Internet Connection",
+            message: "Please check your connection and try again.",
+            retry: "Retry"
+        }
     }
 };
