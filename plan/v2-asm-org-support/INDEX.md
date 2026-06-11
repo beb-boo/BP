@@ -10,8 +10,8 @@ tags:
   - v2-asm-org
 order: 0
 status: draft
-version: 1.3
-updated: 2026-04-19
+version: 1.5
+updated: 2026-06-11
 summary: "Map of Content for all v2 ASM/รพ.สต. org support planning documents"
 ---
 # v2 ASM Organization Support — Planning Index
@@ -36,6 +36,7 @@ summary: "Map of Content for all v2 ASM/รพ.สต. org support planning docu
 8. **[[CONSENT_FLOW_SPEC]]** — PDPA workflow (สำคัญมาก ต้องอ่านก่อน code)
 9. **[[ADMIN_WEB_SPEC]]** — web dashboard สำหรับ รพ.สต. admin
 10. **[[CAREGIVER_PWA_SPEC]]** — PWA สำหรับ caregiver (อสม./พยาบาล) ภาคสนาม + batch OCR
+10.5. **[[PWA_SPEC]]** — PWA layer บน frontend หลัก (general users) — web push, offline-first, notification adapter (+ **[[PWA_SPRINT_TASKS]]** task list สำหรับ Claude Code)
 11. **[[LEGACY_DOCS_MIGRATION]]** — แผน patch เอกสารเดิม (privacy policy, ToS)
 
 Group C (PDPA/Legal):
@@ -89,6 +90,8 @@ Group C (PDPA/Legal):
 | 2 | [[ORG_FOUNDATION]] | ✅ **Draft v1.2** | ~60KB | DB schema, RBAC, migration, audit log, self-measure policy (§8.3), hybrid onboarding (§8.4), role labels (§6.5) |
 | 3 | [[ADMIN_WEB_SPEC]] | ✅ **Draft v1.2** | ~36KB | Admin web dashboard spec — account_type radio, link/unlink actions, source icons |
 | 4 | [[CAREGIVER_PWA_SPEC]] | ✅ **Draft v1.2** | ~55KB | Caregiver PWA + batch OCR spec — 🏠/👤 source icons, create-hybrid endpoint |
+| 4.5 | [[PWA_SPEC]] | ✅ **Implemented v1.1** | ~16KB | **Main app PWA** (general users) — Serwist SW (@serwist/turbopack), Web Push (VAPID), offline queue, NotificationChannel adapter, reminder cron; D1-D5 locked, deviations in header note |
+| 4.6 | [[PWA_SPRINT_TASKS]] | ✅ **Done v1.1** | ~13KB | Claude Code execution plan — 4 sprints executed on feature/pwa-sprint-1..4 (field testing pending) |
 | 5 | [[CONSENT_FLOW_SPEC]] | ✅ **Draft v1.2** | ~32KB | Consent workflow end-to-end — self-measure withdrawal effect (§5.3.3), templated consent text (§4.3) |
 | 6 | [[SCALABILITY_PLAN]] | ✅ Draft v1 | 27KB | Scale to 1M, Vercel migration, costs |
 | 7 | [[LEGACY_DOCS_MIGRATION]] | ✅ **Draft v1.1** | 28KB | Patch plan for existing 3 docs in docs/ (aligned w/ decisions) |
@@ -98,7 +101,7 @@ Group C (PDPA/Legal):
 | 11 | [[CONSENT_FORMS]] | ✅ Draft v1.1 | 40KB | Ready-to-use paper + digital Thai forms — org-type templating hooks (§10) |
 | 12 | [[ORG_TERMS_OF_SERVICE]] | ✅ Draft v1 | 38KB | ToS for รพ.สต./admin (new, v1) |
 
-**Total: 18 files, ~520 KB**
+**Total: 20 files, ~547 KB**
 
 Legend: ✅ Complete · 🚧 In progress · 📝 Planned · 🔴 Blocked
 
@@ -113,6 +116,7 @@ Legend: ✅ Complete · 🚧 In progress · 📝 Planned · 🔴 Blocked
 5. **Data Minimization: No long-term image storage** — only OCR batch review queue (7 days max)
 6. **Partition-ready audit_logs from day 1** — don't wait for scale
 7. **Consent: Paper + digital signature hybrid** — physical paper at รพ.สต., no scan
+8. **Main-app PWA decisions D1-D5 locked** (2026-06-11) — see [[PWA_SPEC]] §2: frontend เดิมทั้งหมด, email/password + LINE-ready, JSONB prefs, generic push default + opt-in detail, SW update via user prompt. SW tooling canonical = **Serwist** (supersedes `next-pwa` mention in [[CAREGIVER_PWA_SPEC]] §2.1); Web Push infra จาก PWA_SPEC จะถูก reuse โดย caregiver PWA ใน Phase 2
 
 ---
 
@@ -166,4 +170,4 @@ Legacy docs that need updating per [[LEGACY_DOCS_MIGRATION]]:
 
 ---
 
-**End of INDEX.md** — Last updated 2026-04-19 (v1.3: GENERALIZE_ORG_PLAN applied — rename rpsst/asm → org/caregiver across all docs, v1.2 bumps on ORG_FOUNDATION/ADMIN_WEB_SPEC/CAREGIVER_PWA_SPEC/CONSENT_FLOW_SPEC, v1.1 on CONSENT_FORMS; v1.2: added BACKUP_AND_MIGRATION_SPEC สำหรับ Neon branch backup tool ใน admin web; v1.1: added PLAN_REVIEW_RESPONSE, INFRASTRUCTURE_SETUP, MIGRATION_STRATEGY)
+**End of INDEX.md** — Last updated 2026-06-11 (v1.5: PWA_SPEC → Implemented v1.1 + PWA_SPRINT_TASKS → Done — all 4 sprints executed (@serwist/turbopack deviation, web push + reminder cron + offline queue + BPRecordService live on feature/pwa-sprint-1..4); v1.4: added PWA_SPEC + PWA_SPRINT_TASKS — main-app PWA with D1-D5 locked decisions, Serwist as canonical SW tooling; v1.3: GENERALIZE_ORG_PLAN applied — rename rpsst/asm → org/caregiver across all docs, v1.2 bumps on ORG_FOUNDATION/ADMIN_WEB_SPEC/CAREGIVER_PWA_SPEC/CONSENT_FLOW_SPEC, v1.1 on CONSENT_FORMS; v1.2: added BACKUP_AND_MIGRATION_SPEC สำหรับ Neon branch backup tool ใน admin web; v1.1: added PLAN_REVIEW_RESPONSE, INFRASTRUCTURE_SETUP, MIGRATION_STRATEGY)
