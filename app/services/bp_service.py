@@ -95,6 +95,8 @@ class BPRecordService:
                     return existing, False
             raise
         db.refresh(record)
+
+        self._maybe_alert_abnormal(db, record, source=source)
         return record, True
 
     # ------------------------------------------------------------------

@@ -194,6 +194,9 @@ LOCALES = {
         "push_test_body": "Test notification — your device is set up correctly!",
         "reminder_title": "BP Monitor",
         "reminder_body": "Time to measure your blood pressure",
+        "alert_abnormal_title": "BP Monitor — Important",
+        "alert_abnormal_body": "Your reading {sys}/{dia} (pulse {pulse}) is in the hypertensive crisis range. If you also have symptoms (chest pain, shortness of breath, numbness), seek medical care immediately. Otherwise rest 5 minutes and measure again.",
+        "alert_abnormal_generic": "You have an important update in BP Monitor",
     },
     "th": {
         "welcome": "ยินดีต้อนรับกลับครับ, {name}! ✅\nบัญชีของคุณเชื่อมต่อเรียบร้อยแล้ว\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปมาเพื่อบันทึกได้เลยครับ",
@@ -389,6 +392,9 @@ LOCALES = {
         "push_test_body": "ทดสอบการแจ้งเตือน — อุปกรณ์ของคุณตั้งค่าถูกต้องแล้ว!",
         "reminder_title": "BP Monitor",
         "reminder_body": "ถึงเวลาวัดความดันโลหิต",
+        "alert_abnormal_title": "BP Monitor — สำคัญ",
+        "alert_abnormal_body": "ค่าความดัน {sys}/{dia} (ชีพจร {pulse}) อยู่ในเกณฑ์วิกฤต หากมีอาการร่วม (เจ็บหน้าอก หายใจลำบาก แขนขาชา) ให้รีบพบแพทย์ทันที หากไม่มีอาการ ให้พัก 5 นาทีแล้ววัดซ้ำ",
+        "alert_abnormal_generic": "คุณมีข้อมูลสำคัญใน BP Monitor",
     }
 }
 

@@ -1,13 +1,10 @@
-import asyncio
 import logging
 import uuid
-import tempfile
-import os
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File
 
 from ..schemas import StandardResponse, OCRResult
-from ..utils.ocr_helper import read_blood_pressure_with_gemini
+from ..services.bp_service import bp_record_service
 from ..utils.rate_limiter import limiter
 from ..utils.timezone import now_tz
 
@@ -61,18 +58,11 @@ async def process_bp_image(
         raise HTTPException(status_code=400, detail="Error reading file")
 
     try:
-        # Save to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-
-        # Run sync Gemini call off the event loop so it doesn't block other requests.
-        ocr_result = await asyncio.to_thread(
-            read_blood_pressure_with_gemini, temp_file_path, upload_time=upload_time
+        # Shared service handles temp file + thread offload + cleanup
+        # (ephemeral — image is never stored).
+        ocr_result = await bp_record_service.process_ocr(
+            bytes(content), upload_time=upload_time
         )
-
-        # Cleanup
-        os.unlink(temp_file_path)
 
         if ocr_result.error:
             logger.warning(
@@ -112,8 +102,6 @@ async def process_bp_image(
     except Exception as e:
         logger.error(
             f"Image processing error: {str(e)} - Request ID: {request_id}")
-        if 'temp_file_path' in locals() and os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
         raise HTTPException(
             status_code=500, detail="Internal server error processing image")
 
