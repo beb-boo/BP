@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
+from sqlalchemy.exc import IntegrityError
 from ..database import get_db
 from ..models import User, BloodPressureRecord
 from ..schemas import (
@@ -132,7 +133,23 @@ async def create_bp_record(
 ):
     """Create a new blood pressure record manually"""
     request_id = generate_request_id()
-    
+
+    # Idempotency (PWA_SPEC §7.3): same client_record_id → return the
+    # existing record with 200, never create a duplicate.
+    if record.client_record_id:
+        existing_by_client_id = db.query(BloodPressureRecord).filter(
+            BloodPressureRecord.client_record_id == record.client_record_id,
+            BloodPressureRecord.user_id == current_user.id
+        ).first()
+        if existing_by_client_id:
+            return create_standard_response(
+                status="success",
+                message="Record already exists (idempotent replay)",
+                data={"record": BloodPressureRecordResponse.model_validate(
+                    existing_by_client_id).dict()},
+                request_id=request_id
+            )
+
     # Duplicate Check
     from sqlalchemy import func
     expected_date = record.measurement_date.date() if record.measurement_date else now_th().date()
@@ -157,11 +174,31 @@ async def create_bp_record(
         measurement_date=record.measurement_date,
         measurement_time=record.measurement_time,
         notes=record.notes,
+        client_record_id=record.client_record_id,
         created_at=now_th()
     )
 
     db.add(new_record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Race on the client_record_id unique index (two retries landing
+        # at once) — the row exists now, return it idempotently.
+        db.rollback()
+        if record.client_record_id:
+            existing_by_client_id = db.query(BloodPressureRecord).filter(
+                BloodPressureRecord.client_record_id == record.client_record_id,
+                BloodPressureRecord.user_id == current_user.id
+            ).first()
+            if existing_by_client_id:
+                return create_standard_response(
+                    status="success",
+                    message="Record already exists (idempotent replay)",
+                    data={"record": BloodPressureRecordResponse.model_validate(
+                        existing_by_client_id).dict()},
+                    request_id=request_id
+                )
+        raise
     db.refresh(new_record)
 
     logger.info(
