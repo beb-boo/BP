@@ -23,7 +23,7 @@ from .database import engine, Base
 from .utils.rate_limiter import limiter
 
 # Import routers
-from .routers import auth, users, bp_records, ocr, doctor, export, payment, telegram_auth, admin, admin_system, push
+from .routers import auth, users, bp_records, ocr, doctor, export, payment, telegram_auth, admin, admin_system, push, cron
 
 # Configure logging
 logging.basicConfig(
@@ -89,6 +89,7 @@ app.include_router(telegram_auth.router)
 app.include_router(admin.router)
 app.include_router(admin_system.router)
 app.include_router(push.router)
+app.include_router(cron.router)
 
 # Telegram Bot Webhook (conditional)
 BOT_MODE = os.getenv("BOT_MODE", "polling")
