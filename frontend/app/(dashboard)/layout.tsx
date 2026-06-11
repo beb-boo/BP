@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import OfflineSyncIndicator from "@/components/pwa/OfflineSyncIndicator";
 
 // Force dynamic rendering (cookies() requires it)
 export const dynamic = "force-dynamic";
@@ -18,5 +19,10 @@ export default async function DashboardLayout({
     redirect("/auth/login");
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <OfflineSyncIndicator />
+      {children}
+    </>
+  );
 }
