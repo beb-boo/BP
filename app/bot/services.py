@@ -238,13 +238,18 @@ class BotService:
 
     @staticmethod
     def create_bp_record(user_id: int, systolic: int, diastolic: int, pulse: int, notes: str = None, measurement_date=None, measurement_time=None):
-        """Create a new blood pressure record."""
-        from app.models import BloodPressureRecord # Local import to avoid circular dependency
+        """Create a new blood pressure record (delegates to BPRecordService).
+
+        Bot-specific behavior preserved here: date-string parsing
+        ("%Y-%m-%d", invalid → fall back to now) and defaulting the
+        measurement time to the current time.
+        """
         from datetime import datetime
+        from app.services.bp_service import bp_record_service
 
         final_date = now_tz()
         final_time = now_tz().strftime("%H:%M")
-        
+
         if measurement_date:
             if isinstance(measurement_date, str):
                 try:
@@ -258,33 +263,17 @@ class BotService:
             final_time = measurement_time
 
         with SessionLocal() as db:
-            from sqlalchemy import func
-            # Check for duplicate: Compare only the DATE part of measurement_date
-            existing = db.query(BloodPressureRecord).filter(
-                BloodPressureRecord.user_id == user_id,
-                func.date(BloodPressureRecord.measurement_date) == final_date.date(),
-                BloodPressureRecord.measurement_time == final_time,
-                BloodPressureRecord.systolic == systolic,
-                BloodPressureRecord.diastolic == diastolic,
-                BloodPressureRecord.pulse == pulse
-            ).first()
-            
-            if existing:
-                return existing, False
-
-            record = BloodPressureRecord(
-                user_id=user_id,
+            return bp_record_service.create_record(
+                db,
+                user_id,
                 systolic=systolic,
                 diastolic=diastolic,
                 pulse=pulse,
                 measurement_date=final_date,
                 measurement_time=final_time,
                 notes=notes,
-                created_at=now_tz()
+                source="bot",
             )
-            db.add(record)
-            db.commit()
-            return record, True
 
     @staticmethod
     def get_user_stats(user_id: int, days: int = 30):
