@@ -293,6 +293,16 @@ export const en = {
             available: "A new version is available",
             now: "Update now",
             later: "Later"
+        },
+        install: {
+            title: "Install BP Monitor",
+            message: "Add to your home screen for quick access",
+            action: "Install",
+            dismiss: "Dismiss",
+            ios_title: "Install on iPhone/iPad",
+            ios_intro: "Install this app on your home screen from Safari:",
+            ios_step1: "Tap the Share button in the toolbar",
+            ios_step2: "Choose \"Add to Home Screen\""
         }
     }
 };

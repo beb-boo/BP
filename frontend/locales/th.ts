@@ -293,6 +293,16 @@ export const th = {
             available: "มีเวอร์ชันใหม่พร้อมใช้งาน",
             now: "อัปเดตเลย",
             later: "ภายหลัง"
+        },
+        install: {
+            title: "ติดตั้ง BP Monitor",
+            message: "เพิ่มลงหน้าจอโฮมเพื่อเข้าใช้งานได้รวดเร็ว",
+            action: "ติดตั้ง",
+            dismiss: "ปิด",
+            ios_title: "ติดตั้งบน iPhone/iPad",
+            ios_intro: "ติดตั้งแอปนี้ลงหน้าจอโฮมผ่าน Safari:",
+            ios_step1: "แตะปุ่มแชร์ (Share) ที่แถบเครื่องมือ",
+            ios_step2: "เลือก \"เพิ่มลงหน้าจอโฮม\" (Add to Home Screen)"
         }
     }
 };
