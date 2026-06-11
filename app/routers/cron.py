@@ -15,7 +15,6 @@ timezone, so each run covers exactly one window and never double-sends
 """
 
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -37,7 +36,8 @@ WINDOW_MINUTES = 15
 
 
 def verify_cron_secret(authorization: str = Header(default="")):
-    secret = os.getenv("CRON_SECRET", "")
+    from ..config.settings import get_pwa_settings
+    secret = get_pwa_settings().cron_secret
     if not secret:
         raise HTTPException(
             status_code=503, detail="CRON_SECRET is not configured")
