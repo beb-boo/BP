@@ -313,6 +313,11 @@ PREMIUM_BYPASS_USERS=   # Comma-separated: user IDs, Telegram IDs, phone numbers
 STAFF_ALLOWLIST=        # Leave unset to skip sync; use NONE to demote env-managed staff; prefer user:/email:/phone:/telegram:
 STAFF_SYNC_MODE=apply   # dry-run | apply
 STAFF_SYNC_TIMEOUT_MS=800  # default 800; raise to 5000 on Vercel+Neon to avoid cold-start timeouts
+WEB_PUSH_VAPID_PUBLIC=  # Web Push VAPID public key (npx web-push generate-vapid-keys)
+WEB_PUSH_VAPID_PRIVATE= # Web Push VAPID private key (backend only; rotating kills all subscriptions)
+WEB_PUSH_VAPID_SUBJECT= # mailto:... VAPID subject
+CRON_SECRET=            # Protects /api/v1/cron/* (Vercel Cron sends Authorization: Bearer automatically)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=  # Frontend copy of WEB_PUSH_VAPID_PUBLIC
 ```
 
 ## API Response Format
@@ -351,6 +356,17 @@ Server-side BP trend chart rendering with dual renderer support:
 - **Telegram Bot:** `/stats` command sends chart image after text stats
 - **`CHART_RENDERER`:** `auto` (default) = Node.js if available, else QuickChart.io | `nodejs` | `quickchart`
 - **Node.js requires:** Node.js installed + `npm install` in `app/chart-renderer/`
+
+## PWA (Main App)
+
+Frontend หลักเป็น installable PWA (spec: `plan/v2-asm-org-support/PWA_SPEC.md` v1.1, decisions D1-D5 locked):
+
+- **Service worker:** Serwist via `@serwist/turbopack` (`@serwist/next` ใช้กับ Next 16 Turbopack ไม่ได้) — SW source `frontend/sw/index.ts`, served at `/serwist/sw.js` by `frontend/app/serwist/[path]/route.ts`. **No auto skipWaiting (D5)** — `PWAUpdatePrompt` asks the user. Cache rules: NetworkOnly for `/api/v1/auth`, `/api/v1/ocr`, `/telegram`, and all uncategorized `/api/v1` (PII); NetworkFirst for bp-records GET; SWR for stats; navigation fallback `/~offline`.
+- **Web Push:** `pywebpush` + VAPID. `PushSubscription` model, `POST/DELETE /api/v1/push/subscribe`, `POST /api/v1/push/test`, prefs at `GET/PATCH /api/v1/users/me/notification-preferences` (JSONB `users.notification_preferences`). **D4:** push body is generic unless `show_details_in_push` — enforced in `app/services/notification_service.py` only. Adapters in `app/adapters/notification/` (web_push, telegram wrapping `send_telegram_message`).
+- **Daily reminders:** `GET /api/v1/cron/reminders` (Bearer `CRON_SECRET`), every 15 min (vercel.json crons), matches `reminder_times` in the user's own timezone via NotificationService.
+- **Offline-first BP entry:** idb queue (`frontend/lib/pwa/offlineQueue.ts`) + client-side sync engine; idempotency via `client_record_id` UUID column (partial unique index) — replays return the existing record with 200. Logout wipes idb + CacheStorage (PHI hygiene).
+- **Service layer:** `app/services/bp_service.py` (`BPRecordService`) — single create/duplicate/idempotency path for web router + bot; fires hypertensive-crisis alert (>180/>120) through NotificationService.
+- Icons in `frontend/public/icons/` are placeholders pending a real logo.
 
 ## Known Limitations
 

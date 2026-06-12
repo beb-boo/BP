@@ -15,7 +15,6 @@ timezone, so each run covers exactly one window and never double-sends
 """
 
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -37,7 +36,8 @@ WINDOW_MINUTES = 15
 
 
 def verify_cron_secret(authorization: str = Header(default="")):
-    secret = os.getenv("CRON_SECRET", "")
+    from ..config.settings import get_pwa_settings
+    secret = get_pwa_settings().cron_secret
     if not secret:
         raise HTTPException(
             status_code=503, detail="CRON_SECRET is not configured")
@@ -77,6 +77,19 @@ async def run_reminders(
     """Send BP measurement reminders due in the current 15-minute window."""
     request_id = str(uuid.uuid4())
     now_utc = datetime.now(pytz.UTC)
+
+    # Keep-alive: ping Redis every cron run so Upstash never sees the
+    # database as idle (free tier deletes inactive databases — this
+    # already bit us once). Never blocks reminders. Import-guarded:
+    # redis_health ships in the fix/redis-resilience branch.
+    redis_status = "unknown"
+    try:
+        import asyncio as _asyncio
+        from ..utils.redis_health import ping_redis
+        redis_status = await _asyncio.to_thread(ping_redis)
+    except ImportError:
+        pass
+
     service = get_notification_service()
 
     if not service.channels:
@@ -130,11 +143,12 @@ async def run_reminders(
 
     logger.info(
         f"Reminder cron: due={checked} sent={sent} failed={failed} "
-        f"- Request ID: {request_id}")
+        f"redis={redis_status} - Request ID: {request_id}")
 
     return StandardResponse(
         status="success",
         message="Reminder run complete",
-        data={"due": checked, "sent": sent, "failed": failed},
+        data={"due": checked, "sent": sent, "failed": failed,
+              "redis": redis_status},
         request_id=request_id,
     )

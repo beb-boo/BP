@@ -12,6 +12,11 @@
 > - JWT payload (§3.3) — ✅ includes `organization_id` (= `active_org_id` for caregiver = default single org)
 > - **Multi-org สำหรับ อสม.:** MVP = 1 อสม. : 1 รพ.สต. (no org selector). Phase 2 ถ้า อสม. เป็น member หลาย รพ.สต. = reuse `/admin/select-org` pattern จาก ADMIN_WEB_SPEC §3.1.5
 
+> [!INFO] **Cascade from PWA_SPEC v1.1 (2026-06-11, main-app PWA implemented)**
+> - SW tooling canonical = **Serwist via `@serwist/turbopack`** (supersedes "next-pwa package or custom Service Worker" ใน §2.1) — `@serwist/next` ใช้กับ Next 16/Turbopack ไม่ได้
+> - **Web Push infra พร้อม reuse แล้ว** (supersedes §16 out-of-scope): `PushSubscription` model, `/api/v1/push/*` endpoints, `NotificationChannel` adapters + `NotificationService` (D4 enforcement), reminder cron `/api/v1/cron/reminders` — เปิดให้ caregiver = config + UI เท่านั้น
+> - Offline queue pattern (idb + client-side sync engine + `client_record_id` idempotency บน `blood_pressure_records`) ใช้ซ้ำได้ตรงๆ
+
 > [!INFO] **v1.2 changes** (2026-04-19, GENERALIZE_ORG_PLAN)
 > - File renamed from `ASM_PWA_SPEC.md` → `CAREGIVER_PWA_SPEC.md` (git mv)
 > - Routes renamed: `/asm/*` → `/caregiver/*`; APIs `/api/v1/asm/` → `/api/v1/caregiver/`; enum `asm_collect` → `caregiver_collect`, `asm_field_visit` → `caregiver_field_visit`
