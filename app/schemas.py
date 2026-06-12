@@ -272,6 +272,20 @@ class BloodPressureRecordCreate(BaseModel):
     measurement_date: datetime
     measurement_time: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=1000)
+    # Idempotency key for offline sync retries (PWA_SPEC §7.3)
+    client_record_id: Optional[str] = Field(
+        None,
+        description="Client-generated UUID; retries with the same id return the existing record")
+
+    @model_validator(mode="after")
+    def validate_client_record_id(self):
+        if self.client_record_id is not None:
+            import uuid as _uuid
+            try:
+                self.client_record_id = str(_uuid.UUID(self.client_record_id))
+            except ValueError:
+                raise ValueError("client_record_id must be a valid UUID")
+        return self
 
 
 class BloodPressureRecordResponse(BaseModel):

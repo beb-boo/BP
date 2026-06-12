@@ -37,7 +37,14 @@ api.interceptors.response.use(
       Cookies.remove('token');
       Cookies.remove('user');
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth')) {
-        window.location.href = '/auth/login';
+        // PHI hygiene on forced logout: wipe offline queue + caches,
+        // then leave. Dynamic import avoids loading idb on every page.
+        import('@/lib/pwa/clearOfflineData')
+          .then(({ clearOfflineData }) => clearOfflineData())
+          .finally(() => {
+            window.location.href = '/auth/login';
+          });
+        return Promise.reject(error);
       }
     }
     return Promise.reject(error);

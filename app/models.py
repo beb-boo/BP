@@ -220,6 +220,9 @@ class BloodPressureRecord(Base):
     notes = Column(Text, nullable=True)
     image_path = Column(String, nullable=True)
     ocr_confidence = Column(Float, nullable=True)
+    # Idempotency key for offline sync retries (PWA_SPEC §7.3) —
+    # client-generated UUID; unique when present (partial index).
+    client_record_id = Column(String(36), nullable=True, unique=True, index=True)
     created_at = Column(DateTime, default=now_tz)
 
     user = relationship("User", back_populates="bp_records")

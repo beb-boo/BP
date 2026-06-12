@@ -165,4 +165,21 @@ self.addEventListener("message", (event) => {
     }
 });
 
+// Background Sync (Android Chrome): the offline queue lives in the
+// client (idb + axios auth), so the SW just wakes any open window to
+// run the sync. Client-side triggers (online/mount/manual) remain the
+// primary mechanism — they also cover iOS, which lacks Background Sync.
+self.addEventListener("sync", (event) => {
+    const syncEvent = event as Event & { tag?: string; waitUntil(p: Promise<unknown>): void };
+    if (syncEvent.tag !== "bp-sync") return;
+    syncEvent.waitUntil(
+        (async () => {
+            const clientList = await self.clients.matchAll({ type: "window" });
+            for (const client of clientList) {
+                client.postMessage({ type: "SYNC_BP_QUEUE" });
+            }
+        })(),
+    );
+});
+
 serwist.addEventListeners();

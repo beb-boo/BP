@@ -294,6 +294,15 @@ export const en = {
             now: "Update now",
             later: "Later"
         },
+        sync: {
+            savedOffline: "Saved on this device — will send when back online",
+            pending: "{n} record(s) waiting to sync",
+            syncNow: "Sync now",
+            synced: "{n} record(s) synced",
+            stillOffline: "Still offline — will retry automatically",
+            failedItem: "could not send",
+            retry: "Retry"
+        },
         push: {
             title: "Notifications",
             desc: "Receive reminders and alerts on this device, even when the app is closed",
