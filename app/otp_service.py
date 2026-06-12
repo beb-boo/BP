@@ -48,7 +48,13 @@ class RedisOTPBackend:
 
     def __init__(self, redis_url):
         import redis
-        self.client = redis.from_url(redis_url, decode_responses=True)
+        self.client = redis.from_url(
+            redis_url, decode_responses=True,
+            socket_connect_timeout=3, socket_timeout=3,
+        )
+        # redis.from_url is lazy — ping so a dead/deleted Redis is caught
+        # here and OTPService can fall back to memory at startup.
+        self.client.ping()
         self.prefix = "otp:"
         self.verified_prefix = "otp_verified:"
 
@@ -73,7 +79,15 @@ class RedisOTPBackend:
 
 
 class OTPService:
-    """OTP service with auto-selected backend (Memory or Redis)"""
+    """OTP service with auto-selected backend (Memory or Redis).
+
+    Fails open: if Redis dies at runtime (e.g. an Upstash database
+    deleted for inactivity), the service degrades to the in-memory
+    backend instead of 500ing every OTP request. On serverless the
+    memory backend is per-instance (OTP may not verify across cold
+    starts) — degraded, but the app keeps working. Errors are logged
+    loudly so the broken REDIS_URL gets fixed.
+    """
 
     def __init__(self):
         if REDIS_URL:
@@ -81,11 +95,26 @@ class OTPService:
                 self.backend = RedisOTPBackend(REDIS_URL)
                 logger.info("OTP Service: Using Redis backend")
             except Exception as e:
-                logger.warning(f"Redis failed ({e}), falling back to memory")
+                logger.error(
+                    f"OTP Service: Redis unavailable ({e}) — falling back "
+                    "to in-memory backend. Fix REDIS_URL!")
                 self.backend = MemoryOTPBackend()
         else:
             self.backend = MemoryOTPBackend()
             logger.info("OTP Service: Using in-memory backend")
+
+    def _call(self, method, *args):
+        """Run a backend op; on Redis failure switch to memory and retry."""
+        try:
+            return getattr(self.backend, method)(*args)
+        except Exception as e:
+            if isinstance(self.backend, MemoryOTPBackend):
+                raise
+            logger.error(
+                f"OTP Service: Redis backend failed at runtime ({e}) — "
+                "switching to in-memory backend. Fix REDIS_URL!")
+            self.backend = MemoryOTPBackend()
+            return getattr(self.backend, method)(*args)
 
     def generate_otp(self, contact_target, expiration=300):
         contact_target = contact_target.strip().lower()
@@ -93,7 +122,7 @@ class OTPService:
         base32_key = base64.b32encode(bytes.fromhex(hex_key)).decode('utf-8')
         totp = pyotp.TOTP(base32_key, digits=4, interval=expiration)
         otp = totp.now()
-        self.backend.store(contact_target, {
+        self._call('store', contact_target, {
             'base32_key': base32_key,
             'interval': expiration,
             'created_at': time.time(),
@@ -103,20 +132,20 @@ class OTPService:
 
     def confirm_otp(self, contact_target, otp):
         contact_target = contact_target.strip().lower()
-        data = self.backend.get(contact_target)
+        data = self._call('get', contact_target)
         if not data:
             return False
         if time.time() - data['created_at'] > data['expiration']:
-            self.backend.delete(contact_target)
+            self._call('delete', contact_target)
             return False
         totp = pyotp.TOTP(data['base32_key'], digits=4, interval=data['interval'])
         if totp.verify(otp, valid_window=1):
-            self.backend.mark_verified(contact_target)
+            self._call('mark_verified', contact_target)
             return True
         return False
 
     def is_verified(self, contact_target):
-        return self.backend.is_verified(contact_target.strip().lower())
+        return self._call('is_verified', contact_target.strip().lower())
 
 
 # Global Instance
