@@ -1,5 +1,6 @@
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, Enum, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, validates
 from datetime import datetime
 from .database import Base
@@ -79,6 +80,13 @@ class User(Base):
     # Monetization (B2C)
     subscription_tier = Column(String, default="free") # free, premium
     subscription_expires_at = Column(DateTime, nullable=True)
+
+    # Notification preferences (PWA_SPEC D3) — JSONB on PG, JSON/TEXT on SQLite.
+    # Shape is validated by Pydantic at the API layer; '{}' means "use defaults".
+    notification_preferences = Column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False, default=dict, server_default='{}'
+    )
 
     # Relations
     bp_records = relationship("BloodPressureRecord", back_populates="user")
@@ -215,6 +223,28 @@ class BloodPressureRecord(Base):
     created_at = Column(DateTime, default=now_tz)
 
     user = relationship("User", back_populates="bp_records")
+
+
+class PushSubscription(Base):
+    """Web Push subscription — 1 user : N devices (PWA_SPEC §6.2).
+
+    Endpoint URLs are not direct PII but are treated as sensitive
+    (never log them in full).
+    """
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    endpoint = Column(String(500), nullable=False, unique=True)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    user_agent = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=now_tz)
+    last_used_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    user = relationship("User")
 
 
 class DoctorPatient(Base):
