@@ -22,5 +22,6 @@ RUN cd app/chart-renderer && npm install --production
 
 # Application code
 COPY ./app ./app
+COPY ./migrations ./migrations
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80", "--log-level", "debug"]
