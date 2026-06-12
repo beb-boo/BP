@@ -113,7 +113,17 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Liveness + dependency visibility.
+
+    Reports Redis state without failing the check (the app degrades
+    gracefully without Redis). Point an uptime monitor here — it both
+    catches a dead REDIS_URL early and generates Upstash activity so
+    the free-tier inactivity cleanup never triggers.
+    """
+    import asyncio
+    from .utils.redis_health import ping_redis
+    redis_status = await asyncio.to_thread(ping_redis)
+    return {"status": "healthy", "redis": redis_status}
 
 # Exception Handlers
 
