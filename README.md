@@ -152,6 +152,10 @@ APP_TIMEZONE=Asia/Bangkok
 AUTO_CREATE_TABLES=true
 ALLOWED_ORIGINS=https://your-frontend.vercel.app
 CHART_RENDERER=quickchart
+WEB_PUSH_VAPID_PUBLIC=<from: npx web-push generate-vapid-keys>
+WEB_PUSH_VAPID_PRIVATE=<same command — backend only, never rotate casually>
+WEB_PUSH_VAPID_SUBJECT=mailto:admin@example.com
+CRON_SECRET=<openssl rand -hex 32 — protects /api/v1/cron/reminders>
 ```
 
 5. Deploy. Verify at `https://your-backend.vercel.app/health`
@@ -166,6 +170,7 @@ CHART_RENDERER=quickchart
 ```env
 NEXT_PUBLIC_API_URL=/api/v1
 NEXT_PUBLIC_API_KEY=<same-key-as-backend-API_KEYS>
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<same value as backend WEB_PUSH_VAPID_PUBLIC>
 BACKEND_URL=https://your-backend.vercel.app
 ```
 
@@ -234,6 +239,15 @@ cd frontend && npm run build && npm start
 * **Intelligent Timestamp**: OCR screen time > EXIF metadata > Current time.
 * **Trends & History**: Free (30 records) / Premium (unlimited).
 * **Doctor Access**: Grant or revoke access for doctors.
+
+### PWA (Installable Web App)
+
+* **Install to home screen**: Android (install banner) and iOS (Add to Home Screen guide), standalone mode.
+* **Web Push notifications**: opt-in per device from Settings → Notifications; lock-screen text stays generic unless the user opts into details (privacy by default).
+* **Daily reminders**: user-configurable times (up to 6), delivered in the user's own timezone via Web Push or Telegram.
+* **Offline-first BP entry**: records saved on-device while offline and synced automatically (no duplicates — idempotency keys), with a pending-sync indicator.
+* **Abnormal alert**: hypertensive-crisis readings (>180/>120) trigger an immediate notification.
+* **Setup guide**: see [docs/operations/pwa-setup.md](docs/operations/pwa-setup.md) for VAPID keys, `CRON_SECRET`, migrations, cron scheduling, and device-testing checklists.
 
 ### For Doctors
 

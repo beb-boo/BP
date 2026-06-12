@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
+import PushNotificationSettings from "@/components/pwa/PushNotificationSettings";
 import { TIMEZONE_CHOICES } from "@/lib/date-utils";
 import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
 import type { AppUser } from "@/lib/app-types";
@@ -294,7 +295,12 @@ export default function SettingsPage() {
                 <TabsList>
                     <TabsTrigger value="profile">{t('settings.profile')}</TabsTrigger>
                     <TabsTrigger value="security">{t('settings.security')}</TabsTrigger>
+                    <TabsTrigger value="notifications">{t('pwa.push.title')}</TabsTrigger>
                 </TabsList>
+
+                <TabsContent value="notifications">
+                    <PushNotificationSettings />
+                </TabsContent>
 
                 <TabsContent value="profile">
                     <Card>

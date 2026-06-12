@@ -43,6 +43,8 @@ import { BPChart } from "@/components/bp-chart";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { buildLocalDateTimePayload, formatDateForInput } from "@/lib/date-utils";
+import { useBPRecordSubmit } from "@/lib/pwa/useBPRecordSubmit";
+import { clearOfflineData } from "@/lib/pwa/clearOfflineData";
 import { getApiErrorMessage, type ApiResponse } from "@/lib/api-helpers";
 import type {
     AccessRequestItem,
@@ -136,6 +138,8 @@ export default function DashboardPage() {
         }
         Cookies.remove("token");
         Cookies.remove("user");
+        // PHI hygiene: wipe offline queue + caches (PWA_SPEC §7.4)
+        await clearOfflineData();
         router.push("/");
         toast.success("Logged out successfully");
     };
@@ -231,6 +235,7 @@ function StaffAwareView({ user }: { user: AppUser }) {
 
 function PatientView({ user }: { user: AppUser }) {
     const { t } = useLanguage();
+    const { submitRecord } = useBPRecordSubmit();
     const [stats, setStats] = useState<BPStats | null>(null);
     const [isPremium, setIsPremium] = useState(false);
     const [graphRecords, setGraphRecords] = useState<BPRecord[]>([]);
@@ -394,7 +399,7 @@ function PatientView({ user }: { user: AppUser }) {
         e.preventDefault();
         setSubmitting(true);
         try {
-            await api.post("/bp-records", {
+            const outcome = await submitRecord({
                 systolic: parseInt(sys),
                 diastolic: parseInt(dia),
                 pulse: parseInt(pulse),
@@ -402,13 +407,19 @@ function PatientView({ user }: { user: AppUser }) {
                 measurement_time: measureTime,
                 notes: "Web Entry"
             });
-            toast.success("Record added successfully");
+            if (outcome === "queued") {
+                toast.info(t('pwa.sync.savedOffline'));
+            } else {
+                toast.success("Record added successfully");
+            }
             setIsAddOpen(false);
             // Reset form
             setSys(""); setDia(""); setPulse("");
             setPreviewUrl(null);
             setActiveTab("photo");
-            fetchInitialData(); // Refresh both table and graph
+            if (outcome === "saved") {
+                fetchInitialData(); // Refresh both table and graph
+            }
         } catch (error: unknown) {
             toast.error(getApiErrorMessage(error, "Failed to add record"));
         } finally {

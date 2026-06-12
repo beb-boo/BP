@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from ..database import get_db
 from ..models import User
-from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate
+from ..schemas import StandardResponse, UserProfileResponse, UserProfileUpdate, NotificationPreferencesUpdate
 from ..utils.security import verify_api_key, get_current_user, verify_password
 from ..utils.timezone import now_tz, get_timezone_choices_dict, is_valid_timezone
 from ..utils.encryption import decrypt_value, encrypt_value, hash_value
@@ -265,5 +265,58 @@ async def get_timezone_list(
         status="success",
         message="Timezone list retrieved",
         data={"timezones": timezones},
+        request_id=request_id
+    )
+
+
+@router.get("/me/notification-preferences", response_model=StandardResponse)
+async def get_notification_preferences(
+    current_user: User = Depends(get_current_user),
+    api_key: str = Depends(verify_api_key)
+):
+    """Get effective notification preferences (stored values over defaults)."""
+    from ..services.notification_service import parse_preferences
+
+    request_id = generate_request_id()
+    prefs = parse_preferences(current_user.notification_preferences)
+
+    return create_standard_response(
+        status="success",
+        message="Notification preferences retrieved",
+        data={"preferences": prefs.model_dump()},
+        request_id=request_id
+    )
+
+
+@router.patch("/me/notification-preferences", response_model=StandardResponse)
+async def update_notification_preferences(
+    update: NotificationPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
+    """Shallow-merge provided keys into stored preferences (PWA_SPEC §6.4)."""
+    from ..services.notification_service import parse_preferences
+
+    request_id = generate_request_id()
+
+    stored = dict(current_user.notification_preferences or {})
+    stored.update(update.model_dump(exclude_unset=True, exclude_none=True))
+
+    # Reassign (not mutate) so SQLAlchemy detects the JSON change.
+    current_user.notification_preferences = stored
+    current_user.updated_at = now_tz()
+    db.commit()
+
+    prefs = parse_preferences(stored)
+
+    logger.info(
+        f"Notification preferences updated for user {current_user.id} "
+        f"- Request ID: {request_id}")
+
+    return create_standard_response(
+        status="success",
+        message="Notification preferences updated",
+        data={"preferences": prefs.model_dump()},
         request_id=request_id
     )

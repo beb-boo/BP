@@ -272,6 +272,20 @@ class BloodPressureRecordCreate(BaseModel):
     measurement_date: datetime
     measurement_time: Optional[str] = None
     notes: Optional[str] = Field(None, max_length=1000)
+    # Idempotency key for offline sync retries (PWA_SPEC §7.3)
+    client_record_id: Optional[str] = Field(
+        None,
+        description="Client-generated UUID; retries with the same id return the existing record")
+
+    @model_validator(mode="after")
+    def validate_client_record_id(self):
+        if self.client_record_id is not None:
+            import uuid as _uuid
+            try:
+                self.client_record_id = str(_uuid.UUID(self.client_record_id))
+            except ValueError:
+                raise ValueError("client_record_id must be a valid UUID")
+        return self
 
 
 class BloodPressureRecordResponse(BaseModel):
@@ -377,3 +391,41 @@ class AdminAuditLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Web Push (PWA Sprint 2) ---
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str = Field(..., min_length=1, max_length=255)
+    auth: str = Field(..., min_length=1, max_length=255)
+
+
+class PushSubscribeInput(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=500)
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeInput(BaseModel):
+    endpoint: str = Field(..., min_length=1, max_length=500)
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    """PATCH body for /users/me/notification-preferences — shallow merge.
+
+    All fields optional; only provided keys are merged into the stored
+    JSON (PWA_SPEC §6.4 shape v1).
+    """
+    channels: Optional[List[Literal["web_push", "telegram"]]] = None
+    show_details_in_push: Optional[bool] = None
+    reminder_enabled: Optional[bool] = None
+    reminder_times: Optional[List[str]] = Field(None, max_length=6)
+
+    @model_validator(mode="after")
+    def validate_reminder_times(self):
+        if self.reminder_times is not None:
+            import re
+            for t in self.reminder_times:
+                if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t):
+                    raise ValueError(
+                        f"reminder_times entries must be HH:MM (24h), got: {t}")
+        return self

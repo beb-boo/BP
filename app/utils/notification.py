@@ -148,45 +148,62 @@ def send_sms_otp(phone: str, otp: str, purpose: str):
 # Telegram Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
+
+def send_telegram_message(telegram_id: int, text: str, parse_mode: str = "Markdown") -> bool:
+    """Send an arbitrary message via the Telegram Bot HTTP API.
+
+    Works outside the bot's runtime (FastAPI request handlers, cron) —
+    same raw-HTTP pattern the OTP sender has always used. Returns the
+    real delivery outcome so callers (e.g. NotificationService) can
+    fall back to another channel.
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        logger.warning("send_telegram_message: TELEGRAM_BOT_TOKEN not configured")
+        return False
+
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": telegram_id,
+            "text": text,
+            "parse_mode": parse_mode
+        }
+
+        response = requests.post(url, json=payload, timeout=10)
+
+        if response.status_code == 200:
+            return True
+        logger.error(
+            f"Telegram API error: {response.status_code} - {response.text}")
+        return False
+    except Exception as e:
+        logger.error(f"Failed to send Telegram message: {str(e)}")
+        return False
+
+
 def send_telegram_otp(telegram_id: int, otp: str, purpose: str):
     """Send OTP via Telegram Bot"""
     if not TELEGRAM_BOT_TOKEN:
         _print_mock_otp("TELEGRAM", str(telegram_id), otp, purpose)
         return True
 
-    try:
-        message_map = {
-            "registration": f"🔐 BP Monitor\n\nรหัส OTP สำหรับลงทะเบียน: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
-            "login": f"🔐 BP Monitor\n\nรหัส OTP เข้าสู่ระบบ: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
-            "password_reset": f"🔐 BP Monitor\n\nรหัส OTP รีเซ็ตรหัสผ่าน: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
-            "phone_verification": f"🔐 BP Monitor\n\nรหัส OTP ยืนยันเบอร์โทร: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)"
-        }
+    message_map = {
+        "registration": f"🔐 BP Monitor\n\nรหัส OTP สำหรับลงทะเบียน: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
+        "login": f"🔐 BP Monitor\n\nรหัส OTP เข้าสู่ระบบ: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
+        "password_reset": f"🔐 BP Monitor\n\nรหัส OTP รีเซ็ตรหัสผ่าน: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)",
+        "phone_verification": f"🔐 BP Monitor\n\nรหัส OTP ยืนยันเบอร์โทร: `{otp}`\n(หมดอายุใน {OTP_EXPIRE_MINUTES} นาที)"
+    }
 
-        message = message_map.get(purpose, f"🔐 BP Monitor\n\nรหัส OTP: `{otp}`")
+    message = message_map.get(purpose, f"🔐 BP Monitor\n\nรหัส OTP: `{otp}`")
 
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": telegram_id,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-
-        response = requests.post(url, json=payload, timeout=10)
-
-        if response.status_code == 200:
-            logger.info(f"OTP Telegram sent to {telegram_id}")
-            return True
-        else:
-            logger.error(
-                f"Telegram API error: {response.status_code} - {response.text}")
-            # Fallback to mock if API fails (or maybe fallback to SMS? complex logic, keep simple for now)
-            _print_mock_otp("TELEGRAM", str(telegram_id), otp, purpose)
-            return True
-
-    except Exception as e:
-        logger.error(f"Failed to send Telegram OTP: {str(e)}")
-        _print_mock_otp("TELEGRAM", str(telegram_id), otp, purpose)
+    if send_telegram_message(telegram_id, message):
+        logger.info(f"OTP Telegram sent to {telegram_id}")
         return True
+
+    # Preserve historical behavior: OTP delivery falls back to mock and
+    # still reports success so the auth flow can continue in dev.
+    _print_mock_otp("TELEGRAM", str(telegram_id), otp, purpose)
+    return True
 
 
 def _print_mock_otp(channel: str, target: str, otp: str, purpose: str):

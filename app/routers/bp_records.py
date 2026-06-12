@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
+from sqlalchemy.exc import IntegrityError
 from ..database import get_db
 from ..models import User, BloodPressureRecord
 from ..schemas import (
@@ -12,6 +13,7 @@ from ..schemas import (
 from ..utils.security import verify_api_key, get_current_user, check_premium
 from ..utils.timezone import now_th
 from ..utils.chart_generator import generate_bp_chart
+from ..services.bp_service import bp_record_service
 import logging
 import uuid
 import statistics as stats_module
@@ -132,37 +134,32 @@ async def create_bp_record(
 ):
     """Create a new blood pressure record manually"""
     request_id = generate_request_id()
-    
-    # Duplicate Check
-    from sqlalchemy import func
-    expected_date = record.measurement_date.date() if record.measurement_date else now_th().date()
-    
-    existing = db.query(BloodPressureRecord).filter(
-        BloodPressureRecord.user_id == current_user.id,
-        func.date(BloodPressureRecord.measurement_date) == expected_date,
-        BloodPressureRecord.measurement_time == record.measurement_time,
-        BloodPressureRecord.systolic == record.systolic,
-        BloodPressureRecord.diastolic == record.diastolic,
-        BloodPressureRecord.pulse == record.pulse
-    ).first()
-    
-    if existing:
-        raise HTTPException(status_code=409, detail="Record already exists (Duplicate ignored)")
 
-    new_record = BloodPressureRecord(
-        user_id=current_user.id,
+    new_record, created = bp_record_service.create_record(
+        db,
+        current_user.id,
         systolic=record.systolic,
         diastolic=record.diastolic,
         pulse=record.pulse,
         measurement_date=record.measurement_date,
         measurement_time=record.measurement_time,
         notes=record.notes,
-        created_at=now_th()
+        source="web",
+        client_record_id=record.client_record_id,
     )
 
-    db.add(new_record)
-    db.commit()
-    db.refresh(new_record)
+    if not created:
+        if record.client_record_id and new_record.client_record_id == record.client_record_id:
+            # Idempotent replay (PWA_SPEC §7.3) — 200 with the existing record.
+            return create_standard_response(
+                status="success",
+                message="Record already exists (idempotent replay)",
+                data={"record": BloodPressureRecordResponse.model_validate(
+                    new_record).dict()},
+                request_id=request_id
+            )
+        # Legacy duplicate behavior preserved.
+        raise HTTPException(status_code=409, detail="Record already exists (Duplicate ignored)")
 
     logger.info(
         f"BP record created for user: {current_user.id} - Request ID: {request_id}")

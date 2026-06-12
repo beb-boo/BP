@@ -32,3 +32,4 @@ bcrypt
 
 # Optional: Redis (for serverless/production)
 redis
+pywebpush  # Web Push (PWA Sprint 2)
