@@ -1722,20 +1722,29 @@ async def password_choice_callback(update: Update, context: ContextTypes.DEFAULT
         return PW_CURRENT
 
     if data == "pw_forgot":
-        # Send OTP to user's registered contact
+        # Send OTP to user's registered contact — same routing as the
+        # web flow (app/routers/auth.py): email → email, otherwise the
+        # linked Telegram chat (the account is paired to this chat).
         user_id = context.user_data.get('pw_user_id')
         contact = BotService.get_user_contact_for_otp(user_id)
         if contact:
             try:
                 from app.otp_service import otp_service
+                from app.utils.notification import send_email_otp, send_telegram_otp
                 target = contact['email'] or contact['phone']
                 if target:
                     purpose = "password_reset"
-                    otp_service.generate_and_send(target, purpose)
-                    context.user_data['pw_otp_target'] = target
-                    await query.edit_message_text(get_text("password_otp_sent", lang))
-                    context.user_data['_auth_state'] = 'password'
-                    return PW_OTP
+                    otp_code = otp_service.generate_otp(target)
+                    if contact['email']:
+                        sent = send_email_otp(target, otp_code, purpose)
+                    else:
+                        sent = send_telegram_otp(
+                            update.effective_user.id, otp_code, purpose)
+                    if sent:
+                        context.user_data['pw_otp_target'] = target
+                        await query.edit_message_text(get_text("password_otp_sent", lang))
+                        context.user_data['_auth_state'] = 'password'
+                        return PW_OTP
             except Exception as e:
                 logger.error(f"OTP send error: {e}")
         await query.edit_message_text(get_text("error", lang))
@@ -1831,7 +1840,7 @@ async def password_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         from app.otp_service import otp_service
         target = context.user_data.get('pw_otp_target')
-        if target and otp_service.verify(target, otp_code, "password_reset"):
+        if target and otp_service.confirm_otp(target, otp_code):
             await update.message.reply_text(get_text("password_enter_new", lang), parse_mode="Markdown")
             return PW_NEW_AFTER_OTP
     except Exception as e:
