@@ -294,6 +294,36 @@ export const en = {
             now: "Update now",
             later: "Later"
         },
+        sync: {
+            savedOffline: "Saved on this device — will send when back online",
+            pending: "{n} record(s) waiting to sync",
+            syncNow: "Sync now",
+            synced: "{n} record(s) synced",
+            stillOffline: "Still offline — will retry automatically",
+            failedItem: "could not send",
+            retry: "Retry"
+        },
+        push: {
+            title: "Notifications",
+            desc: "Receive reminders and alerts on this device, even when the app is closed",
+            status_on: "Notifications are on",
+            status_off: "Notifications are off",
+            enable: "Enable notifications",
+            disable: "Disable",
+            enabled_toast: "Notifications enabled",
+            disabled_toast: "Notifications disabled",
+            subscribe_failed: "Could not enable notifications",
+            unsupported: "Push notifications are not available in this browser. Install the app (production build) and try again.",
+            permission_denied: "Notifications are blocked. Allow notifications for this site in your browser settings, then reload.",
+            show_details: "Show details in notifications",
+            show_details_desc: "When off, lock-screen notifications use generic text without your health values",
+            test: "Send test notification",
+            test_sent: "Test notification sent — check your device",
+            test_failed: "Could not deliver the test notification",
+            reminder: "Daily measurement reminders",
+            reminder_desc: "Remind me to measure my blood pressure at these times (your local time)",
+            reminder_add_time: "Add time"
+        },
         install: {
             title: "Install BP Monitor",
             message: "Add to your home screen for quick access",

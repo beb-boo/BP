@@ -4,7 +4,7 @@ Use this as the single entrypoint from task runners and deployment workflows.
 Every step is idempotent and safe to re-run.
 """
 
-from migrations import add_admin_audit_log, add_payment_fields, add_staff_management_state, add_timezone_column, migrate_schema
+from migrations import add_admin_audit_log, add_client_record_id, add_payment_fields, add_push_subscriptions, add_staff_management_state, add_timezone_column, migrate_schema
 
 
 MIGRATIONS = [
@@ -13,6 +13,8 @@ MIGRATIONS = [
     ("admin_audit_logs", add_admin_audit_log.migrate),
     ("staff_management_states", add_staff_management_state.migrate),
     ("payments current schema", add_payment_fields.migrate),
+    ("push_subscriptions + notification_preferences", add_push_subscriptions.migrate),
+    ("bp_records.client_record_id", add_client_record_id.migrate),
 ]
 
 

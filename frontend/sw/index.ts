@@ -116,11 +116,70 @@ const serwist = new Serwist({
     },
 });
 
+self.addEventListener("push", (event) => {
+    const data = (() => {
+        try {
+            return event.data?.json() ?? {};
+        } catch {
+            return { body: event.data?.text() };
+        }
+    })();
+    event.waitUntil(
+        self.registration.showNotification(data.title ?? "BP Monitor", {
+            body: data.body,
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            tag: data.tag,
+            data: { url: data.url ?? "/" },
+        }),
+    );
+});
+
+self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    const url = event.notification.data?.url ?? "/";
+    event.waitUntil(
+        (async () => {
+            const clientList = await self.clients.matchAll({
+                type: "window",
+                includeUncontrolled: true,
+            });
+            for (const client of clientList) {
+                if (new URL(client.url).origin === self.location.origin) {
+                    await client.focus();
+                    if ("navigate" in client) {
+                        await client.navigate(url);
+                    }
+                    return;
+                }
+            }
+            await self.clients.openWindow(url);
+        })(),
+    );
+});
+
 self.addEventListener("message", (event) => {
     // D5: activation only happens when the user confirms in PWAUpdatePrompt.
     if (event.data?.type === "SKIP_WAITING") {
         self.skipWaiting();
     }
+});
+
+// Background Sync (Android Chrome): the offline queue lives in the
+// client (idb + axios auth), so the SW just wakes any open window to
+// run the sync. Client-side triggers (online/mount/manual) remain the
+// primary mechanism — they also cover iOS, which lacks Background Sync.
+self.addEventListener("sync", (event) => {
+    const syncEvent = event as Event & { tag?: string; waitUntil(p: Promise<unknown>): void };
+    if (syncEvent.tag !== "bp-sync") return;
+    syncEvent.waitUntil(
+        (async () => {
+            const clientList = await self.clients.matchAll({ type: "window" });
+            for (const client of clientList) {
+                client.postMessage({ type: "SYNC_BP_QUEUE" });
+            }
+        })(),
+    );
 });
 
 serwist.addEventListeners();

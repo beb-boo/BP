@@ -187,6 +187,13 @@ LOCALES = {
         "broadcast_sending": "📤 Sending broadcast...",
         "broadcast_report": "✅ **Broadcast Complete!**\n\nSent: {success}/{total}\nFailed: {fail}",
         "broadcast_not_admin": "⛔ Access denied.",
+
+        # Web Push / Notifications (PWA)
+        "push_generic_body": "Time to measure your blood pressure",
+        "push_test_title": "BP Monitor",
+        "push_test_body": "Test notification — your device is set up correctly!",
+        "reminder_title": "BP Monitor",
+        "reminder_body": "Time to measure your blood pressure",
     },
     "th": {
         "welcome": "ยินดีต้อนรับกลับครับ, {name}! ✅\nบัญชีของคุณเชื่อมต่อเรียบร้อยแล้ว\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปมาเพื่อบันทึกได้เลยครับ",
@@ -375,6 +382,13 @@ LOCALES = {
         "broadcast_sending": "📤 กำลังส่งข้อความประกาศ...",
         "broadcast_report": "✅ **ส่งประกาศเสร็จสิ้น!**\n\nส่งสำเร็จ: {success}/{total}\nล้มเหลว: {fail}",
         "broadcast_not_admin": "⛔ ไม่มีสิทธิ์เข้าถึง",
+
+        # Web Push / Notifications (PWA)
+        "push_generic_body": "ถึงเวลาวัดความดันโลหิต",
+        "push_test_title": "BP Monitor",
+        "push_test_body": "ทดสอบการแจ้งเตือน — อุปกรณ์ของคุณตั้งค่าถูกต้องแล้ว!",
+        "reminder_title": "BP Monitor",
+        "reminder_body": "ถึงเวลาวัดความดันโลหิต",
     }
 }
 
