@@ -282,5 +282,27 @@ export const en = {
         resend_otp: "Resend Code",
         verify_success: "Email verified successfully! You can now login.",
         verify_failed: "Invalid code. Please try again."
+    },
+    pwa: {
+        offline: {
+            title: "No Internet Connection",
+            message: "Please check your connection and try again.",
+            retry: "Retry"
+        },
+        update: {
+            available: "A new version is available",
+            now: "Update now",
+            later: "Later"
+        },
+        install: {
+            title: "Install BP Monitor",
+            message: "Add to your home screen for quick access",
+            action: "Install",
+            dismiss: "Dismiss",
+            ios_title: "Install on iPhone/iPad",
+            ios_intro: "Install this app on your home screen from Safari:",
+            ios_step1: "Tap the Share button in the toolbar",
+            ios_step2: "Choose \"Add to Home Screen\""
+        }
     }
 };
