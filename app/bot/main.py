@@ -9,10 +9,11 @@ from telegram.request import HTTPXRequest
 from .handlers import (get_auth_handler, get_ocr_handler, get_manual_bp_handler,
                        get_profile_handler, get_delete_handler, get_edit_handler,
                        get_password_handler, get_deactivate_handler,
-                       get_broadcast_handler,
+                       get_broadcast_handler, get_notification_settings_handler,
                        stats, help_command, unknown, bp_command,
                        language_command, language_callback,
-                       settings_command, settings_callback, timezone_callback)
+                       settings_command, settings_callback, timezone_callback,
+                       notification_callback)
 from .payment_handlers import get_payment_handler, subscription_command
 import warnings
 from telegram.warnings import PTBUserWarning
@@ -249,6 +250,9 @@ def build_application():
     application.add_handler(get_password_handler())
     application.add_handler(get_deactivate_handler())
     application.add_handler(get_broadcast_handler())
+    # Notification add-time conversation MUST precede the plain ^notif_
+    # callback handler below so 'notif_add' reaches the conversation entry.
+    application.add_handler(get_notification_settings_handler())
 
     # Manual BP Text Input (e.g., "130 90 65") — MUST be LAST ConversationHandler
     application.add_handler(get_manual_bp_handler())
@@ -266,6 +270,7 @@ def build_application():
     application.add_handler(CommandHandler("settings", settings_command))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern='^settings_'))
     application.add_handler(CallbackQueryHandler(timezone_callback, pattern='^tz_'))
+    application.add_handler(CallbackQueryHandler(notification_callback, pattern='^notif_(menu|toggle|del:)'))
 
     # Fallback for unknown messages (Must be last)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))

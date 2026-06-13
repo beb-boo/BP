@@ -137,6 +137,37 @@ class BotService:
         """Get available timezone choices for UI."""
         return TIMEZONE_CHOICES
 
+    # ================================================================
+    # Notification preferences (shared with web — users.notification_preferences)
+    # ================================================================
+
+    @staticmethod
+    def get_notification_prefs(user_id: int) -> dict | None:
+        """Effective notification preferences (stored values over defaults)."""
+        from app.services.notification_service import parse_preferences
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            return parse_preferences(user.notification_preferences).model_dump()
+
+    @staticmethod
+    def update_notification_prefs(user_id: int, patch: dict) -> dict | None:
+        """Shallow-merge patch into stored preferences (same semantics as
+        PATCH /users/me/notification-preferences)."""
+        from app.services.notification_service import parse_preferences
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                return None
+            stored = dict(user.notification_preferences or {})
+            stored.update(patch)
+            # Reassign (not mutate) so SQLAlchemy detects the JSON change.
+            user.notification_preferences = stored
+            user.updated_at = now_tz()
+            db.commit()
+            return parse_preferences(stored).model_dump()
+
     @staticmethod
     def process_connection_token(token: str, telegram_id: int):
         """Process a JWT token from Deep Link to connect account."""
