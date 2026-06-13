@@ -4,7 +4,6 @@ import logging
 from functools import lru_cache
 
 from ...config.settings import get_pwa_settings
-from ...services.notification_service import NotificationService
 from .base import NotificationChannel
 from .telegram import TelegramChannel
 from .web_push import WebPushChannel
@@ -12,7 +11,12 @@ from .web_push import WebPushChannel
 logger = logging.getLogger(__name__)
 
 
-def build_notification_service() -> NotificationService:
+def build_notification_service() -> "NotificationService":  # noqa: F821
+    # Imported lazily: notification_service imports .base from this
+    # package, so a module-level import here would be circular whenever
+    # notification_service is imported first.
+    from ...services.notification_service import NotificationService
+
     settings = get_pwa_settings()
     channels: dict[str, NotificationChannel] = {}
 
@@ -31,6 +35,6 @@ def build_notification_service() -> NotificationService:
 
 
 @lru_cache(maxsize=1)
-def get_notification_service() -> NotificationService:
+def get_notification_service() -> "NotificationService":  # noqa: F821
     """Process-wide singleton (env doesn't change at runtime)."""
     return build_notification_service()

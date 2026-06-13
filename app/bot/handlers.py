@@ -57,15 +57,22 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_tz = user.timezone or "Asia/Bangkok"
     lang_display = "English" if lang == "en" else "ภาษาไทย"
 
+    prefs = BotService.get_notification_prefs(user.id) or {}
+    reminder_status = get_text(
+        "notif_status_on" if prefs.get("reminder_enabled", True) else "notif_status_off",
+        lang)
+
     msg = get_text("settings_title", lang) + "\n\n"
     msg += get_text("settings_language", lang, lang=lang_display) + "\n"
-    msg += get_text("settings_timezone", lang, tz=user_tz)
+    msg += get_text("settings_timezone", lang, tz=user_tz) + "\n"
+    msg += get_text("settings_reminder", lang, status=reminder_status)
 
     keyboard = [
         [
             InlineKeyboardButton(get_text("btn_change_lang", lang), callback_data="settings_lang"),
             InlineKeyboardButton(get_text("btn_change_tz", lang), callback_data="settings_tz")
-        ]
+        ],
+        [InlineKeyboardButton(get_text("btn_notif", lang), callback_data="notif_menu")]
     ]
 
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -128,6 +135,137 @@ async def timezone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(get_text("not_linked", "en"))
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Notification settings (/settings → 🔔) — shares users.notification_preferences
+# with the web settings page; changes are visible on both sides immediately.
+# ============================================================================
+
+NOTIF_TIME_INPUT = 90
+NOTIF_TIME_PATTERN = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+NOTIF_MAX_TIMES = 6
+
+
+def _render_notif_menu(user, prefs):
+    """Build (text, keyboard) for the notification settings menu."""
+    lang = user.language or "en"
+    enabled = prefs.get("reminder_enabled", True)
+    times = prefs.get("reminder_times") or []
+
+    status = get_text("notif_status_on" if enabled else "notif_status_off", lang)
+    times_display = ", ".join(times) if times else get_text("notif_no_times", lang)
+    msg = get_text("notif_title", lang,
+                   status=status, tz=user.timezone or "Asia/Bangkok",
+                   times=times_display)
+
+    toggle_key = "btn_notif_disable" if enabled else "btn_notif_enable"
+    keyboard = [[InlineKeyboardButton(get_text(toggle_key, lang),
+                                      callback_data="notif_toggle")]]
+    # One row of time buttons — tap to remove.
+    time_row = [InlineKeyboardButton(f"🕐 {t} ✕", callback_data=f"notif_del:{t}")
+                for t in times]
+    for i in range(0, len(time_row), 3):
+        keyboard.append(time_row[i:i + 3])
+    if len(times) < NOTIF_MAX_TIMES:
+        keyboard.append([InlineKeyboardButton(get_text("btn_notif_add", lang),
+                                              callback_data="notif_add")])
+    return msg, InlineKeyboardMarkup(keyboard)
+
+
+async def notification_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle notif_menu / notif_toggle / notif_del:<HH:MM> buttons."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    if not user:
+        await query.edit_message_text(get_text("not_linked", "en"))
+        return
+    lang = user.language or "en"
+
+    prefs = BotService.get_notification_prefs(user.id)
+    if prefs is None:
+        await query.edit_message_text(get_text("error", lang))
+        return
+
+    if data == "notif_toggle":
+        prefs = BotService.update_notification_prefs(
+            user.id, {"reminder_enabled": not prefs.get("reminder_enabled", True)})
+    elif data.startswith("notif_del:"):
+        target = data.split(":", 1)[1]
+        times = [t for t in (prefs.get("reminder_times") or []) if t != target]
+        prefs = BotService.update_notification_prefs(
+            user.id, {"reminder_times": times})
+    # notif_menu → just render
+
+    msg, keyboard = _render_notif_menu(user, prefs)
+    await query.edit_message_text(msg, reply_markup=keyboard, parse_mode="Markdown")
+
+
+async def notif_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Entry point: user tapped ➕ Add time."""
+    query = update.callback_query
+    await query.answer()
+
+    user = BotService.get_user_by_telegram_id(update.effective_user.id)
+    if not user:
+        await query.edit_message_text(get_text("not_linked", "en"))
+        return ConversationHandler.END
+    lang = user.language or "en"
+
+    prefs = BotService.get_notification_prefs(user.id) or {}
+    if len(prefs.get("reminder_times") or []) >= NOTIF_MAX_TIMES:
+        msg, keyboard = _render_notif_menu(user, prefs)
+        await query.edit_message_text(
+            get_text("notif_max_times", lang) + "\n\n" + msg,
+            reply_markup=keyboard, parse_mode="Markdown")
+        return ConversationHandler.END
+
+    await query.edit_message_text(get_text("notif_enter_time", lang), parse_mode="Markdown")
+    return NOTIF_TIME_INPUT
+
+
+async def notif_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Receive HH:MM, validate, save, show the menu again."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    if not user:
+        return ConversationHandler.END
+    lang = user.language or "en"
+
+    text = update.message.text.strip()
+    if not NOTIF_TIME_PATTERN.match(text):
+        await update.message.reply_text(get_text("notif_time_invalid", lang))
+        return NOTIF_TIME_INPUT
+
+    prefs = BotService.get_notification_prefs(user.id) or {}
+    times = sorted(set((prefs.get("reminder_times") or []) + [text]))
+    if len(times) > NOTIF_MAX_TIMES:
+        await update.message.reply_text(get_text("notif_max_times", lang))
+        return ConversationHandler.END
+
+    prefs = BotService.update_notification_prefs(user.id, {"reminder_times": times})
+    msg, keyboard = _render_notif_menu(user, prefs)
+    await update.message.reply_text(
+        get_text("notif_saved", lang) + "\n\n" + msg,
+        reply_markup=keyboard, parse_mode="Markdown")
+    return ConversationHandler.END
+
+
+def get_notification_settings_handler():
+    """Conversation for the add-time flow (other notif buttons are plain callbacks)."""
+    return ConversationHandler(
+        entry_points=[CallbackQueryHandler(notif_add_start, pattern='^notif_add$')],
+        states={
+            NOTIF_TIME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, notif_time_input)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+        conversation_timeout=120,
+        allow_reentry=True,
+        per_message=False,
+    )
+
 
 # --- Auth States ---
 CHOOSE_LANG = 7

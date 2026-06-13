@@ -7,6 +7,7 @@ without the python-telegram-bot runtime.
 
 import asyncio
 import logging
+import os
 
 from sqlalchemy.orm import Session
 
@@ -26,8 +27,9 @@ class TelegramChannel(NotificationChannel):
             return DeliveryResult(False, self.channel_name, "not_paired")
 
         text = f"*{payload.title}*\n\n{payload.body}" if payload.title else payload.body
-        if payload.url:
-            text += f"\n\n{payload.url}"
+        link = self._resolve_url(payload.url)
+        if link:
+            text += f"\n\n{link}"
 
         ok = await asyncio.to_thread(send_telegram_message, telegram_id, text)
         return DeliveryResult(
@@ -35,3 +37,25 @@ class TelegramChannel(NotificationChannel):
             channel=self.channel_name,
             error=None if ok else "telegram_send_failed",
         )
+
+    @staticmethod
+    def _resolve_url(url: str | None) -> str | None:
+        """Payload URLs are web-app paths (e.g. "/dashboard") meant for the
+        service worker's notificationclick. In a Telegram message a bare
+        path renders like a bot command — useless. Resolve it against
+        WEB_DASHBOARD_URL when configured, otherwise drop it.
+
+        WEB_DASHBOARD_URL is a FULL page URL elsewhere in the repo (the
+        /stats button links to it directly), e.g.
+        https://frontend.example/dashboard — so only its origin is used
+        here, never its path, to avoid .../dashboard/dashboard."""
+        if not url:
+            return None
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        from urllib.parse import urlparse
+        parsed = urlparse(os.getenv("WEB_DASHBOARD_URL", ""))
+        if not (parsed.scheme and parsed.netloc):
+            return None
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        return f"{origin}{url}" if url.startswith("/") else f"{origin}/{url}"
