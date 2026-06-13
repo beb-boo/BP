@@ -43,12 +43,19 @@ class TelegramChannel(NotificationChannel):
         """Payload URLs are web-app paths (e.g. "/dashboard") meant for the
         service worker's notificationclick. In a Telegram message a bare
         path renders like a bot command — useless. Resolve it against
-        WEB_DASHBOARD_URL when configured, otherwise drop it."""
+        WEB_DASHBOARD_URL when configured, otherwise drop it.
+
+        WEB_DASHBOARD_URL is a FULL page URL elsewhere in the repo (the
+        /stats button links to it directly), e.g.
+        https://frontend.example/dashboard — so only its origin is used
+        here, never its path, to avoid .../dashboard/dashboard."""
         if not url:
             return None
         if url.startswith("http://") or url.startswith("https://"):
             return url
-        base = os.getenv("WEB_DASHBOARD_URL", "").rstrip("/")
-        if not base:
+        from urllib.parse import urlparse
+        parsed = urlparse(os.getenv("WEB_DASHBOARD_URL", ""))
+        if not (parsed.scheme and parsed.netloc):
             return None
-        return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        return f"{origin}{url}" if url.startswith("/") else f"{origin}/{url}"
