@@ -7,6 +7,7 @@ without the python-telegram-bot runtime.
 
 import asyncio
 import logging
+import os
 
 from sqlalchemy.orm import Session
 
@@ -26,8 +27,9 @@ class TelegramChannel(NotificationChannel):
             return DeliveryResult(False, self.channel_name, "not_paired")
 
         text = f"*{payload.title}*\n\n{payload.body}" if payload.title else payload.body
-        if payload.url:
-            text += f"\n\n{payload.url}"
+        link = self._resolve_url(payload.url)
+        if link:
+            text += f"\n\n{link}"
 
         ok = await asyncio.to_thread(send_telegram_message, telegram_id, text)
         return DeliveryResult(
@@ -35,3 +37,18 @@ class TelegramChannel(NotificationChannel):
             channel=self.channel_name,
             error=None if ok else "telegram_send_failed",
         )
+
+    @staticmethod
+    def _resolve_url(url: str | None) -> str | None:
+        """Payload URLs are web-app paths (e.g. "/dashboard") meant for the
+        service worker's notificationclick. In a Telegram message a bare
+        path renders like a bot command — useless. Resolve it against
+        WEB_DASHBOARD_URL when configured, otherwise drop it."""
+        if not url:
+            return None
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        base = os.getenv("WEB_DASHBOARD_URL", "").rstrip("/")
+        if not base:
+            return None
+        return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
