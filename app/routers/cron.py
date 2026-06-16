@@ -8,13 +8,21 @@ Triggering options:
   hitting the same URL with the same header. Useful on Vercel Hobby,
   where cron granularity is once per day.
 
-Schedule every 15 minutes. A reminder fires when one of the user's
-reminder_times falls inside the current 15-minute window in the USER'S
-timezone, so each run covers exactly one window and never double-sends
-(as long as the scheduler fires once per window).
+Designed for a 15-minute cadence: a reminder fires when one of the
+user's reminder_times falls inside the current 15-minute window in the
+USER'S timezone.
+
+On Vercel Hobby the only built-in cron is daily — vercel.json uses
+`0 0 * * *` (00:00 UTC = 07:00 Asia/Bangkok), kept as a keep-alive
+backstop while the real cadence comes from an external scheduler. That
+backstop's 07:00 window overlaps the default 07:00 reminder, and a
+jittery scheduler can fire twice in one window, so sends are
+de-duplicated per (user, window) via Redis (best-effort, fails open:
+a missed Redis beats a missed reminder).
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta
 
@@ -33,6 +41,9 @@ router = APIRouter(prefix="/api/v1/cron", tags=["cron"])
 logger = logging.getLogger(__name__)
 
 WINDOW_MINUTES = 15
+# Dedup claim outlives the window + scheduler jitter. The key embeds the
+# window's local datetime, so the same clock time tomorrow is a fresh key.
+CLAIM_TTL_SECONDS = WINDOW_MINUTES * 60 * 2  # 30 min
 
 
 def verify_cron_secret(authorization: str = Header(default="")):
@@ -67,6 +78,54 @@ def _due_in_window(reminder_times: list[str], start: datetime, end: datetime) ->
         if start <= candidate < end:
             return True
     return False
+
+
+def _dedup_client():
+    """Best-effort Redis client for reminder idempotency, or None when
+    Redis isn't configured/reachable. Never raises — dedup is optional."""
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url:
+        return None
+    try:
+        import redis
+        return redis.from_url(
+            redis_url, decode_responses=True,
+            socket_connect_timeout=2.0, socket_timeout=2.0)
+    except Exception as exc:
+        logger.warning(f"Reminder dedup disabled (Redis init failed): {exc}")
+        return None
+
+
+def _claim_key(user_id: int, window_start: datetime) -> str:
+    return f"reminder:sent:{user_id}:{window_start.isoformat()}"
+
+
+def _claim_window(client, user_id: int, window_start: datetime) -> bool:
+    """Atomically claim 'this user+window is handled'.
+    True  → we won the claim, send now.
+    False → another hit already covered this window, skip (duplicate).
+    Fails OPEN: no client / Redis error → True (a rare duplicate beats a
+    missed reminder)."""
+    if client is None:
+        return True
+    try:
+        return bool(client.set(
+            _claim_key(user_id, window_start), "1",
+            nx=True, ex=CLAIM_TTL_SECONDS))
+    except Exception as exc:
+        logger.warning(f"Reminder dedup claim failed, sending anyway: {exc}")
+        return True
+
+
+def _release_window(client, user_id: int, window_start: datetime) -> None:
+    """Release a claim after a FAILED send so a later hit in the same
+    window can retry. Best-effort."""
+    if client is None:
+        return
+    try:
+        client.delete(_claim_key(user_id, window_start))
+    except Exception:
+        pass
 
 
 @router.get("/reminders", response_model=StandardResponse)
@@ -106,49 +165,69 @@ async def run_reminders(
 
     candidates = db.query(User).filter(User.is_active == True).all()  # noqa: E712
 
-    checked = sent = failed = 0
-    for user in candidates:
-        reachable = bool(user.telegram_id_hash) or user.id in push_user_ids
-        if not reachable:
-            continue
+    dedup = _dedup_client()
+    checked = sent = failed = duplicate = 0
+    try:
+        for user in candidates:
+            reachable = bool(user.telegram_id_hash) or user.id in push_user_ids
+            if not reachable:
+                continue
 
-        prefs = parse_preferences(user.notification_preferences)
-        if not prefs.reminder_enabled or not prefs.reminder_times:
-            continue
+            prefs = parse_preferences(user.notification_preferences)
+            if not prefs.reminder_enabled or not prefs.reminder_times:
+                continue
 
-        bounds = _window_bounds(now_utc, user.timezone)
-        if bounds is None:
-            continue
-        if not _due_in_window(prefs.reminder_times, *bounds):
-            continue
+            bounds = _window_bounds(now_utc, user.timezone)
+            if bounds is None:
+                continue
+            window_start, window_end = bounds
+            if not _due_in_window(prefs.reminder_times, window_start, window_end):
+                continue
 
-        checked += 1
-        lang = user.language or "th"
-        payload = NotificationPayload(
-            title=get_text("reminder_title", lang),
-            body=get_text("reminder_body", lang),
-            body_generic=get_text("reminder_body", lang),  # reminder is inherently generic
-            url="/dashboard",
-            tag="bp-reminder",
-        )
-        try:
-            results = await service.notify(db, user, payload)
-            if any(r.success for r in results):
-                sent += 1
-            else:
+            # Idempotency: a backstop or jittery scheduler firing twice in
+            # the SAME window must not double-send. First hit claims the
+            # window; later hits skip. Released below on send failure so a
+            # retry within the window can still get through.
+            if not _claim_window(dedup, user.id, window_start):
+                duplicate += 1
+                continue
+
+            checked += 1
+            lang = user.language or "th"
+            payload = NotificationPayload(
+                title=get_text("reminder_title", lang),
+                body=get_text("reminder_body", lang),
+                body_generic=get_text("reminder_body", lang),  # reminder is inherently generic
+                url="/dashboard",
+                tag="bp-reminder",
+            )
+            try:
+                results = await service.notify(db, user, payload)
+                if any(r.success for r in results):
+                    sent += 1
+                else:
+                    failed += 1
+                    _release_window(dedup, user.id, window_start)
+            except Exception as exc:
                 failed += 1
-        except Exception as exc:
-            failed += 1
-            logger.error(f"Reminder to user {user.id} raised: {exc}")
+                _release_window(dedup, user.id, window_start)
+                logger.error(f"Reminder to user {user.id} raised: {exc}")
+    finally:
+        if dedup is not None:
+            try:
+                dedup.close()
+            except Exception:
+                pass
 
     logger.info(
         f"Reminder cron: due={checked} sent={sent} failed={failed} "
-        f"redis={redis_status} - Request ID: {request_id}")
+        f"duplicate_skipped={duplicate} redis={redis_status} "
+        f"- Request ID: {request_id}")
 
     return StandardResponse(
         status="success",
         message="Reminder run complete",
         data={"due": checked, "sent": sent, "failed": failed,
-              "redis": redis_status},
+              "duplicate_skipped": duplicate, "redis": redis_status},
         request_id=request_id,
     )
