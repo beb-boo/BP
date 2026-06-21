@@ -1,7 +1,7 @@
 # Organization Foundation Plan — BP Monitor
 
-> **Status:** Draft v1.2 — GENERALIZE_ORG_PLAN rename + self-measure policy applied
-> **Last updated:** 2026-04-19
+> **Status:** Draft v1.5 — + P2 session revocation (token_version); Tier 1–2 fixes C2/C4/S2/S3
+> **Last updated:** 2026-06-21
 > **Owner:** Pornthep
 > **Depends on:** `MVP_PILOT_SCOPE.md`, `PLAN_REVIEW_RESPONSE.md`
 > **Blocks:** `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, all PDPA implementation
@@ -22,6 +22,20 @@
 > - NEW §8.3: Self-measure auto-visible policy for hybrid patients (data flow, visibility rules, withdrawal effects, implementation notes)
 > - NEW §8.4: Hybrid user onboarding — 3 paths (Admin creates / Patient self-registers + admin links / Caregiver creates on field visit) + 4 new API endpoints (link-to-org, unlink-from-org, create-hybrid, activate) + account type state transitions
 > - NEW §6.5: Role display labels per org type — role mapping table (rpsst/clinic/hospital/other) + `org_display.py` resolver (`get_role_label`) with Thai+English labels
+
+> [!IMPORTANT] **v1.3 CHANGELOG** (2026-06-20, PLAN_REVIEW_2026-06 Tier 1)
+> - C1: `AuditLog` ORM attribute changed from reserved `metadata` to `audit_metadata = Column("metadata", JSONB)`; DB column remains `metadata`
+> - M1: file cleanup example now uses timezone-aware `datetime.now(timezone.utc)`
+> - C3: BP time docs aligned with current code: existing columns are `measurement_date` and `created_at`, not `recorded_at`
+
+> [!IMPORTANT] **v1.4 CHANGELOG** (2026-06-21, PLAN_REVIEW_2026-06 Tier 1–2 fixes)
+> - C2: `measured_at` migration ทำเป็น staged — ADD nullable (v2_10) → backfill (v2_11) → `SET NOT NULL` (v2_11b). model `nullable=False` = target end-state; write path เดิม (`/api/v1/bp-records`) ต้อง set `measured_at = measurement_date` ทุก insert (§4.2.2, §5.1)
+> - C4 (new): reconcile `measured_at` vs `measurement_date` — `measured_at` (tz-aware) = canonical ไปข้างหน้า; `measurement_date` (naive) = legacy **ไม่ migrate เป็น tz-aware** (ถอด item ออกจาก G6) dual-write จน v3 ค่อย drop
+> - S2: lock gate เดียวสำหรับ caregiver สร้าง patient (§6.1, §8.4.3) — ต้องเป็น active OrganizationMember + เก็บ consent ณ จุดสร้าง (mandatory) + audit; ไม่มี admin pre-approval whitelist ใน MVP
+> - S3: `ix_bp_dedupe` แก้ comment ให้ตรงเจตนา — dedupe ระดับนาทีทำใน service layer (timestamptz + `date_trunc` ไม่ immutable → ห้ามใส่ใน index ตรง ๆ)
+
+> [!IMPORTANT] **v1.5 CHANGELOG** (2026-06-21, P2 decision)
+> - P2: เพิ่ม `User.token_version` (§4.2.1) + session-revocation spec (§6.6) → "force-logout all sessions" ทำงานจริงบน stateless JWT. token_version ไป v2_04 (ADD NOT NULL DEFAULT 0 ตรง ๆ ได้). decision log = PLAN_REVIEW_RESPONSE §4.15
 
 ---
 
@@ -418,7 +432,9 @@ class AuditLog(Base):
     error_message = Column(Text, nullable=True)
 
     # Additional data (JSONB สำหรับ flexibility)
-    metadata = Column(JSONB, nullable=True)
+    # SQLAlchemy declarative reserves the Python attribute name `metadata`.
+    # Keep DB column name as `metadata`, but use ORM attribute `audit_metadata`.
+    audit_metadata = Column("metadata", JSONB, nullable=True)
 
     # When
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -441,7 +457,7 @@ class AuditLog(Base):
 
 **Notes:**
 - BigInteger PK เพราะ audit log จะโตเร็ว
-- `metadata` JSONB: เก็บ extra context เช่น `{"old_value": "...", "new_value": "..."}`
+- DB column `metadata` / ORM attribute `audit_metadata`: เก็บ extra context เช่น `{"old_value": "...", "new_value": "..."}`
 - **ไม่มี UPDATE / DELETE ให้ audit_logs** — append-only
 - Retention: 2 ปี minimum (PDPA)
 
@@ -563,9 +579,10 @@ class File(Base):
 **Auto-deletion cron job:**
 ```python
 # app/jobs/file_cleanup.py - รันทุก 6 ชม.
+from datetime import datetime, timezone
 
 async def cleanup_expired_files():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired = await db.query(File).filter(
         File.expires_at < now,
         File.deleted_at.is_(None)
@@ -618,6 +635,10 @@ privacy_policy_accepted_at = Column(DateTime(timezone=True), nullable=True)
 # สำหรับ soft delete / deactivation
 deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 deletion_reason = Column(String(100), nullable=True)  # "user_request", "dpa_expiry", "admin_suspend"
+
+# Session revocation counter (P2, v1.5) — bump เพื่อ invalidate token เก่าทุกใบของ user นี้
+# ADD NOT NULL DEFAULT 0 ได้ตรง ๆ (มี server_default) ต่างจาก measured_at (C2). ดู §6.6
+token_version = Column(Integer, nullable=False, server_default="0", default=0)
 ```
 
 **Migration rule (v1.1 — Additive dual-read):**
@@ -654,8 +675,16 @@ measured_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, ind
 measurement_context = Column(SQLEnum(MeasurementContext), nullable=False, default=MeasurementContext.self_home)
 
 # When (แยก measured vs recorded)
-# recorded_at: มีอยู่แล้ว (timestamp ที่บันทึกเข้าระบบ)
+# measurement_date: มีอยู่แล้วใน code ปัจจุบัน (naive DateTime) — LEGACY
+#   v1.4 (C4): measurement_date ไม่ถูก migrate เป็น tz-aware (ถอดออกจาก G6 list).
+#   measured_at (ใหม่, tz-aware) = canonical going-forward; measurement_date dual-written
+#   จน v3 ค่อย drop. เหตุผล: ALTER TYPE บน hot column เสี่ยงกว่า add คอลัมน์ใหม่ + backfill
+# created_at: มีอยู่แล้วใน code ปัจจุบัน (timestamp ที่บันทึกเข้าระบบ)
+# ไม่มีคอลัมน์ recorded_at ใน BloodPressureRecord ปัจจุบัน
 # measured_at: เพิ่มใหม่ (เวลาที่วัดจริง — อาจมาจาก OCR screen, EXIF, หรือ user input)
+#   v1.4 (C2): migration ADD เป็น NULLABLE ก่อน → backfill → SET NOT NULL (ดู §5.1).
+#   nullable=False ด้านล่าง = target end-state. ทุก write path (รวม v1 /bp-records)
+#   ต้อง set measured_at = measurement_date ทุก insert มิฉะนั้น NOT NULL violation.
 measured_at = Column(DateTime(timezone=True), nullable=False, index=True)
 measured_at_source = Column(String(50), nullable=True)  # "ocr_screen", "exif", "manual", "current_time"
 
@@ -699,7 +728,12 @@ organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True,
 __table_args__ = (
     # Composite index สำหรับ query pattern "รายการ BP ของ patient X เรียงเวลา"
     Index("ix_bp_patient_measured", "user_id", "measured_at"),
-    # Dedupe: หาซ้ำจาก patient + measured_at (minute) + systolic + diastolic
+    # Dedupe helper index (non-unique): เร่ง lookup ตอนเช็คซ้ำ
+    # S3 (v1.4): การ dedupe "ระดับนาที" ทำใน service layer (เทียบ measured_at ปัดนาที +
+    # systolic + diastolic ของ user เดียวกัน) — ห้ามพึ่ง index นี้ทำ minute-dedupe เพราะ
+    # มันเก็บ timestamp เต็ม. ถ้าต้องการ DB-level unique ต้องใช้ functional index
+    # date_trunc('minute', measured_at AT TIME ZONE 'UTC') (date_trunc บน timestamptz
+    # เป็น STABLE ไม่ใช่ immutable → ต้องครอบ AT TIME ZONE 'UTC' ถึงใส่ใน index ได้)
     Index("ix_bp_dedupe", "user_id", "measured_at", "systolic", "diastolic"),
     # Review queue query
     Index("ix_bp_review_pending", "ocr_review_status",
@@ -708,7 +742,7 @@ __table_args__ = (
 ```
 
 **Migration rule:**
-- Existing records: `measured_at = recorded_at`, `measurement_context = self_home`, `measured_at_source = "manual"`, `measured_by_user_id = user_id`, `source_type = "manual"`
+- Existing records: `measured_at = measurement_date`, `measurement_context = self_home`, `measured_at_source = "manual"`, `measured_by_user_id = user_id`, `source_type = "manual"`
 
 **Validation rules for `measured_at` (v1.1 — new):**
 
@@ -716,10 +750,10 @@ Service layer `app/utils/bp_validation.py:validate_measured_at()` enforce:
 
 | Condition | Action | Rationale |
 |-----------|--------|-----------|
-| `measured_at > recorded_at` (future) | **Block** (422 Unprocessable Entity) | ไม่สามารถวัดในอนาคต |
-| `(recorded_at - measured_at) > 7 days` | **Warn** + require `notes` field populated | Fat-finger protection; 7 วันย้อนหลัง = reasonable บันทึกช้า |
-| `(recorded_at - measured_at) > 30 days` | **Block** — ต้องใช้ endpoint "historical import" แยก + extra consent | Bulk backfill คนละ flow กับ routine entry |
-| OCR batch: screen reads date/time | Use if OCR confidence > 0.8; else fallback `recorded_at` | OCR uncertain ไม่ควรเชื่อถือ date/time |
+| `measured_at > recorded_reference` (future) | **Block** (422 Unprocessable Entity) | `recorded_reference` = request-time `now` before insert; after insert it maps to existing `created_at`. Current code has no `recorded_at` column. |
+| `(recorded_reference - measured_at) > 7 days` | **Warn** + require `notes` field populated | Fat-finger protection; 7 วันย้อนหลัง = reasonable บันทึกช้า |
+| `(recorded_reference - measured_at) > 30 days` | **Block** — ต้องใช้ endpoint "historical import" แยก + extra consent | Bulk backfill คนละ flow กับ routine entry |
+| OCR batch: screen reads date/time | Use if OCR confidence > 0.8; else fallback to request-time `now` with `measured_at_source = "current_time"` | OCR uncertain ไม่ควรเชื่อถือ date/time |
 
 **Image handling policy (strict):**
 
@@ -811,6 +845,11 @@ if not has_active_license(user.active_org_id, feature="premium_asm"):
 
 ## 5. Migration Plan (v1.1 — ad-hoc scripts, no Alembic)
 
+**Execution guardrails (mandatory for every v2 migration):**
+- Read-before-write: query current schema/data first (`information_schema`, row counts, null counts) and log the observed state before any DDL/DML.
+- `dry_run` first: every migration/backfill exposes `dry_run=True` or `--dry-run` that prints intended DDL/DML, affected row counts, and skip/rollback implications without writing.
+- Production rule: run and review `dry_run` output before `migrate()` every time; no direct write path is allowed to bypass this.
+
 ### 5.1 Migration sequence (revised v1.1 — FK-correct order)
 
 > **Decision Q1 (PLAN_REVIEW_RESPONSE):** Use ad-hoc Python migration pattern (แบบเดียวกับ `migrations/add_*.py`) + `schema_migrations` version table. See [[INFRASTRUCTURE_SETUP]] for tooling.
@@ -824,15 +863,18 @@ migrations/
 ├── v2_02_create_organizations.py            # table + indexes
 ├── v2_03_create_organization_members.py
 ├── v2_04_extend_users.py                    # ADD external_id, account_type, primary_role,
-│                                           # managed_by_organization_id, terms_*, deleted_at
+│                                           # managed_by_organization_id, terms_*, deleted_at,
+│                                           # token_version (NOT NULL DEFAULT 0 — P2/§6.6)
 │                                           # (does NOT drop existing role column)
 ├── v2_05_backfill_users.py                  # LEGACY_ROLE_MAP → primary_role
 ├── v2_06_create_care_assignments.py
 ├── v2_07_create_consent_records.py
 ├── v2_08_create_pairing_codes.py
 ├── v2_09_create_files.py                    # with purpose whitelist CHECK constraint
-├── v2_10_extend_bp_readings.py              # ADD measured_at, measurement_context, etc.
-├── v2_11_backfill_bp_readings.py            # measured_at = recorded_at
+├── v2_10_extend_bp_readings.py              # ADD measured_at (NULLABLE), measurement_context,
+│                                           # source_type, measured_by_user_id, organization_id, etc.
+├── v2_11_backfill_bp_readings.py            # measured_at = measurement_date (+ context/source defaults)
+├── v2_11b_bp_readings_measured_at_notnull.py # C2: ALTER measured_at SET NOT NULL (หลัง backfill verify)
 ├── v2_12_create_audit_logs.py               # new table (BigInt PK, JSONB metadata)
 │                                           # (does NOT drop admin_audit_logs)
 └── v2_13_extend_licenses.py                 # ADD organization_id FK (nullable)
@@ -950,7 +992,7 @@ def rollback():
 | Breach response | Y | - | - | - | - | - |
 | Data retention job | Y | - | - | - | - | - |
 
-\* `caregiver` สามารถสร้าง proxy patient ได้ใน org ของตัวเอง (เพื่อ workflow สะดวก) ต้องอยู่ใน pre-approved whitelist ของ รพ.สต. admin หรือให้ admin approve หลัง create
+\* `caregiver` สร้าง patient (proxy/hybrid) ได้ใน org ของตัวเอง ภายใต้ **gate เดียว (S2, v1.4)** ใช้กับทุก path: (1) caregiver ต้องเป็น active `OrganizationMember` ของ org นั้น (2) patient ถูก org-scope ทันที (`managed_by_organization_id` = org) (3) **consent ต้องถูกเก็บ ณ จุดสร้าง** (record consent ใน transaction เดียว ไม่งั้น block) (4) audit `user_create` + `care_assignment_create`. **ไม่มี** admin pre-approval whitelist ใน MVP (revisit at scale). หมายเหตุ: ฐานทางกฎหมายของการเก็บข้อมูลสุขภาพ ณ จุดสร้าง ยังต้องยืนยันกับ PDPA consultant (P1)
 
 ### 6.2 Implementation approach
 
@@ -1181,6 +1223,48 @@ def get_role_label(org_type: str, role: str, lang: str = "th") -> str:
 - i18n keys: `caregiver.title` (generic), `caregiver.title_asm`, `caregiver.title_nurse`, `caregiver.title_assistant` (specific) — UI เลือกดูจาก `organization.type`
 - Consent forms ใช้ label นี้ populate templated text (ดู `CONSENT_FLOW_SPEC.md §4.3`)
 
+### 6.6 Session revocation via `token_version` (v1.5 new)
+
+> **Decision 4.15 (PLAN_REVIEW_RESPONSE, P2):** เพิ่ม `User.token_version` เป็น revocation counter เพื่อให้ "force-logout all sessions" ทำงานจริงบน stateless JWT — verified ว่า `get_current_user` ปัจจุบันไม่ query `UserSession`
+
+**ปัญหาเดิม:** JWT ยืนยันตัวเองได้จนถึง `exp` (ACCESS_TOKEN_EXPIRE_DAYS=7); ตั้ง `UserSession.is_active=False` ไม่มีผลเพราะ auth ไม่อ่านตารางนั้น; `User.is_active=False` = ปิดทั้งบัญชี ไม่ใช่ revoke session
+
+**Schema:** `User.token_version = Column(Integer, nullable=False, server_default="0", default=0)` (ดู §4.2.1)
+
+**Token issuance — ใส่ claim `tv` ทุกใบ:**
+```python
+# app/utils/security.py — login / refresh / select-org ทุกจุดที่ออก token
+to_encode = {"user_id": user.id, "tv": user.token_version, ...}
+# create_access_token(to_encode) / create_refresh_token(to_encode)
+```
+
+**Verification — ใน `get_current_user` (และ refresh endpoint):**
+```python
+# หลังโหลด user (ไม่มี DB hit เพิ่ม — user ถูก query อยู่แล้ว)
+if payload.get("tv", 0) != user.token_version:
+    raise HTTPException(401, "Session revoked, please log in again")
+```
+
+**Revoke (bump counter):**
+```python
+def revoke_all_sessions(user: User, db: Session):
+    user.token_version += 1   # UPDATE users SET token_version = token_version + 1
+    db.commit()
+```
+
+**Triggers ที่ต้องเรียก `revoke_all_sessions`:**
+- password change / reset
+- admin suspend / deactivate user (`user_suspend`, `user_deactivate`)
+- admin "log out all devices"
+- caregiver offboarding (ลบออกจาก org / `org_member_remove`)
+- user-initiated "ออกจากระบบทุกอุปกรณ์"
+
+**Backward-safe:** token เก่าที่ออกก่อน feature นี้ไม่มี claim `tv` → `payload.get("tv", 0)=0` = default → ไม่เตะ user ทั้งระบบตอน deploy
+
+**Scope:** ใช้กับ **ทุก user** (B2C เดิม + org) ไม่เฉพาะ v2 — เป็น security baseline ที่ส่งมาพร้อม v2
+
+**Granularity note:** กลไกนี้ revoke ทุก session ของ user พร้อมกัน. Per-device revocation (เตะทีละเครื่อง) = Phase 2 ผ่าน `UserSession` (ตารางมีอยู่ แต่ auth ยังไม่ wire) แลกกับ DB lookup ต่อ request — ไม่อยู่ใน MVP
+
 ---
 
 ## 7. Audit Log — Detailed Spec
@@ -1272,7 +1356,7 @@ async def log_audit(action, actor_user_id, target_user_id, metadata, ...):
         action=action,
         actor_user_id=actor_user_id,
         target_user_id=target_user_id,
-        metadata=metadata,  # JSONB
+        audit_metadata=metadata,  # DB column: metadata JSONB
         ...
     )
     db.add(audit_row)
@@ -1463,13 +1547,16 @@ readings = db.query(BloodPressureRecord).filter(
 
 #### 8.4.3 Path C — Caregiver creates hybrid on field visit
 
+> **Gate (S2, v1.4):** ใช้ gate เดียวกับ §6.1 footnote — caregiver ต้องเป็น active `OrganizationMember`; consent **ต้องเก็บใน flow เดียวกับการสร้าง** (step 5 เป็น mandatory ไม่ใช่ optional — ถ้าไม่เก็บ consent = readings ของ patient นี้ไม่ visible ต่อ org/caregiver); ทุกขั้น audit. ไม่มี admin pre-approval
+
 ```
 1. Caregiver อยู่ภาคสนาม เจอชาวบ้านที่มีมือถือ+อยากใช้เอง
 2. Caregiver PWA → "สร้างคนไข้ใหม่" → เลือก account_type = hybrid
    POST /api/v1/caregiver/patients/create-hybrid
-3. Backend creates user + care_assignment + ส่ง activation link ทาง SMS/Telegram
+   (guard: caregiver เป็น active OrganizationMember ของ active org)
+3. Backend (1 transaction): สร้าง user (org-scoped) + care_assignment + ConsentRecord (status เริ่มต้น) + ส่ง activation link ทาง SMS/Telegram
 4. ชาวบ้าน activate เอง (set password) ผ่าน POST /api/v1/auth/activate
-5. Caregiver เก็บ consent ทันที
+5. Caregiver เก็บ consent ทันที (mandatory — บันทึก signature/method ลง ConsentRecord ที่สร้างใน step 3)
 ```
 
 #### 8.4.4 Hybrid-specific API endpoints (NEW)
@@ -1478,7 +1565,7 @@ readings = db.query(BloodPressureRecord).filter(
 |--------|------|-------|---------|
 | POST | `/api/v1/admin/patients/{user_id}/link-to-org` | `org_admin` of target org | Move `self_managed` user into org (account_type → hybrid, set `managed_by_organization_id`) + optional care_assignment |
 | POST | `/api/v1/admin/patients/{user_id}/unlink-from-org` | `org_admin` of target org | Remove user from org (account_type → self_managed, clear `managed_by_organization_id`); end care_assignments; withdraw consent if patient confirms |
-| POST | `/api/v1/caregiver/patients/create-hybrid` | caregiver in active org | Create hybrid user + care_assignment + send activation link |
+| POST | `/api/v1/caregiver/patients/create-hybrid` | caregiver = active `OrganizationMember` (S2 gate) | Create hybrid user (org-scoped) + care_assignment + **ConsentRecord ใน transaction เดียว (mandatory)** + send activation link — ดู §6.1/§8.4.3 |
 | POST | `/api/v1/auth/activate` | `activation_token` | Set password + mark activated (reuse password reset flow w/ different purpose) |
 
 #### 8.4.5 Account type state transitions
@@ -1513,7 +1600,7 @@ proxy_managed (no login)
 
 ### 9.2 Migrations
 - [ ] Create `schema_migrations` version table (see INFRASTRUCTURE_SETUP)
-- [ ] ~13 migration scripts per §5.1 sequence (v2_00 through v2_13)
+- [ ] ~14 migration scripts per §5.1 sequence (v2_00 → v2_13, incl. v2_11b SET NOT NULL)
 - [ ] Each script: both `migrate()` + `rollback()`
 - [ ] Test upgrade + rollback cycle on Neon staging branch
 - [ ] Run backfill on staging with prod data snapshot
@@ -1526,6 +1613,7 @@ proxy_managed (no login)
 - [ ] Context checkers (is_caregiver_of, are_in_same_org, etc.)
 - [ ] `app/middleware/rbac.py` — `require_permission` decorator
 - [ ] `app/middleware/audit.py` — `log_audit()` helper with async write
+- [ ] Session revocation (P2/§6.6): add `User.token_version`; ใส่ claim `tv` ในทุกจุดที่ออก token; check `tv` ใน `get_current_user` + refresh; `revoke_all_sessions()` + wire เข้า password change / suspend / deactivate / offboarding
 - [ ] Unit tests for every permission/context combo
 
 ### 9.4 Repositories / Services

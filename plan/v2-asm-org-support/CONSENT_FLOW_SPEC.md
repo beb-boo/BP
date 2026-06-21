@@ -445,6 +445,7 @@ POST /api/v1/admin/consent/patient/{patient_id}/data-deletion
 
 ```python
 # app/middleware/consent_check.py
+from datetime import datetime, timezone
 
 async def check_active_consent(
     patient_user_id: int,
@@ -452,7 +453,7 @@ async def check_active_consent(
     as_of: datetime = None
 ) -> bool:
     """Check if patient has active consent for the given scope."""
-    as_of = as_of or datetime.utcnow()
+    as_of = as_of or datetime.now(timezone.utc)
     
     consent = await db.query(ConsentRecord).filter(
         ConsentRecord.patient_user_id == patient_user_id,

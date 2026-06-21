@@ -28,6 +28,7 @@ summary: "Map of Content for all v2 ASM/รพ.สต. org support planning docu
 
 1. **[[MVP_PILOT_SCOPE]]** — อ่านก่อนเสมอ เพื่อเข้าใจ scope + goals + constraints
 2. **[[PLAN_REVIEW_RESPONSE]]** — อ่านก่อน plan อื่น เพื่อเข้าใจ architectural decisions + why
+2.5. **[[PLAN_REVIEW_2026-06]]** — audit รอบ 2 (2026-06-20): Tier 1 blockers ที่ต้องแก้ก่อน code (C1 metadata reserved, C2/C3 migration, M1 timezone) + findings consistency/PDPA
 3. **[[BACKUP_AND_MIGRATION_SPEC]]** — **สร้างก่อน v2 migration** — Neon branch backup tool ใน admin web
 4. **[[SCALABILITY_PLAN]]** — รู้ว่าเราวางอะไรในระยะยาว เพื่อไม่ตัดสินใจผิดใน Phase 1
 5. **[[ORG_FOUNDATION]]** — foundation ของทั้งหมด (DB schema, RBAC, self-measure policy, hybrid onboarding, role labels) — v1.2
@@ -82,6 +83,7 @@ Group C (PDPA/Legal):
 |---|-----|--------|------|---------|
 | 0 | [[INDEX]] | ✅ Draft v1.2 | this | MOC — this document |
 | 0.5 | [[PLAN_REVIEW_RESPONSE]] | ✅ Draft v1.0 | ~15KB | **Decision log** — source of truth for architectural decisions |
+| 0.6 | [[PLAN_REVIEW_2026-06]] | 🚧 Open findings | ~9KB | **Audit round 2** (Claude, 2026-06-20) — Tier 1–4 findings, ยังไม่ patch |
 | 0.7 | [[BACKUP_AND_MIGRATION_SPEC]] | ✅ **Draft v1.0** | ~17KB | **Prerequisite: Neon branch backup** — build FIRST before v2 migration |
 | 0.75 | [[GENERALIZE_ORG_PLAN]] | ✅ **Draft v1.0** | ~18KB | **Rename rpsst/asm → generic org/caregiver** + hybrid policy + gap close |
 | 0.8 | [[INFRASTRUCTURE_SETUP]] | ✅ Draft v1.0 | ~15KB | **Tier 0 prerequisites** — schema_migrations, flags, staging, backup |
