@@ -3,9 +3,10 @@
 LOCALES = {
     "en": {
         "welcome": "Welcome back, {name}! ✅\nYou are already linked to the system.\nUse /stats to see your blood pressure trends or just send a photo to record.",
-        "welcome_new": "Hi {name}! 👋\nTo start using the Blood Pressure Monitor Bot, please share your phone number to verify your identity.",
+        "welcome_new": "Hi {name}! 👋\nTo start using the Blood Pressure Monitor Bot, please verify your identity with your phone number.\n\n👇 Tap the button below — or just type your phone number (e.g. 0812345678).",
         "share_contact_btn": "📱 Share Contact",
         "wrong_contact": "❌ Please share your own contact.",
+        "invalid_phone": "❌ That doesn't look like a valid phone number. Please try again (e.g. 0812345678).",
         "found_account": "✅ Found account for {phone}!\nPlease enter your **Web Password** to confirm linking:",
         "new_account": "🆕 Phone {phone} not registered.\nLet's create a new account.\n\nPlease enter your **Full Name** (e.g. John Doe):",
         "enter_dob": "📅 Please enter your **Date of Birth** (DD/MM/YYYY)\nExample: 15/04/1990",
@@ -213,9 +214,10 @@ LOCALES = {
     },
     "th": {
         "welcome": "ยินดีต้อนรับกลับครับ, {name}! ✅\nบัญชีของคุณเชื่อมต่อเรียบร้อยแล้ว\nพิมพ์ /stats เพื่อดูสถิติ หรือส่งรูปมาเพื่อบันทึกได้เลยครับ",
-        "welcome_new": "สวัสดีครับ {name}! 👋\nเพื่อเริ่มต้นใช้งาน บอทวัดความดัน กรุณากดปุ่มแชร์เบอร์โทรศัพท์เพื่อยืนยันตัวตนครับ",
+        "welcome_new": "สวัสดีครับ {name}! 👋\nเพื่อเริ่มต้นใช้งาน บอทวัดความดัน กรุณายืนยันตัวตนด้วยเบอร์โทรศัพท์ครับ\n\n👇 กดปุ่มด้านล่าง หรือพิมพ์เบอร์โทรเข้ามาก็ได้ครับ (เช่น 0812345678)",
         "share_contact_btn": "📱 แชร์เบอร์โทรศัพท์",
         "wrong_contact": "❌ กรุณาแชร์เบอร์โทรศัพท์ของตัวเองครับ",
+        "invalid_phone": "❌ เบอร์โทรไม่ถูกต้องครับ ลองใหม่อีกครั้ง (เช่น 0812345678)",
         "found_account": "✅ บัญชีนี้มีอยู่ในระบบแล้ว ({phone})!\nกรุณากรอก **รหัสผ่าน Web** เพื่อยืนยันการเชื่อมต่อ:",
         "new_account": "🆕 เบอร์ {phone} ยังไม่ลงทะเบียน\nมาสร้างบัญชีใหม่กันครับ\n\nกรุณากรอก **ชื่อ-นามสกุล** (เช่น สมชาย ใจดี):",
         "enter_dob": "📅 กรุณากรอก **วันเกิด** (วว/ดด/ปปปป) ปี ค.ศ.\nตัวอย่าง: 15/04/1990",

@@ -12,6 +12,7 @@ import tempfile
 import os
 import re
 import asyncio
+import phonenumbers
 
 # --- Language States ---
 SELECT_LANG = 99
@@ -392,7 +393,9 @@ async def choose_lang_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     # Send contact request as a new message (can't mix inline keyboard edit with reply keyboard)
     contact_btn_text = get_text("share_contact_btn", lang)
     contact_keyboard = KeyboardButton(text=contact_btn_text, request_contact=True)
-    reply_markup = ReplyKeyboardMarkup([[contact_keyboard]], one_time_keyboard=True, resize_keyboard=True)
+    # No one_time_keyboard: it makes mobile clients collapse the keyboard behind the
+    # toggle icon, so users think there's no button. We remove it explicitly after use.
+    reply_markup = ReplyKeyboardMarkup([[contact_keyboard]], resize_keyboard=True)
 
     welcome_msg = get_text("welcome_new", lang, name=update.effective_user.first_name)
     await query.message.reply_text(welcome_msg, reply_markup=reply_markup)
@@ -411,15 +414,35 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if phone_number.startswith("+"):
         phone_number = phone_number[1:]
 
+    return await _proceed_with_phone(update, context, phone_number, lang)
+
+
+async def handle_phone_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fallback when the share-contact button isn't available (groups, some clients):
+    let the user type their phone number. Normalized to match the registration format."""
+    lang = context.user_data.get('register_lang', 'en')
+    try:
+        parsed = phonenumbers.parse(update.message.text.strip(), "TH")  # default region: Thailand
+        if not phonenumbers.is_valid_number(parsed):
+            raise ValueError("invalid")
+        phone_number = phonenumbers.format_number(
+            parsed, phonenumbers.PhoneNumberFormat.E164).lstrip("+")
+    except Exception:
+        await update.message.reply_text(get_text("invalid_phone", lang))
+        return SHARE_CONTACT
+
+    return await _proceed_with_phone(update, context, phone_number, lang)
+
+
+async def _proceed_with_phone(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                              phone_number: str, lang: str):
+    """Shared tail for contact-share and typed-phone: link existing account or start registration."""
     context.user_data['phone_number'] = phone_number
     existing_user = BotService.get_user_by_phone(phone_number)
 
     if existing_user:
         context.user_data['user_id'] = existing_user.id
-
-        # Use language chosen at CHOOSE_LANG step (not from DB)
         msg = get_text("found_account", lang, phone=phone_number)
-
         await update.message.reply_text(
             msg,
             reply_markup=ReplyKeyboardRemove(),
@@ -428,9 +451,6 @@ async def handle_contact(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['_auth_state'] = 'auth_password'  # Next input: password
         return AUTH_PASSWORD
     else:
-        # Use language chosen at /start (CHOOSE_LANG step)
-        lang = context.user_data.get('register_lang', 'en')
-
         msg = get_text("new_account", lang, phone=phone_number)
         await update.message.reply_text(
             msg,
@@ -650,7 +670,10 @@ def get_auth_handler():
         entry_points=[CommandHandler("start", start)],
         states={
             CHOOSE_LANG: [CallbackQueryHandler(choose_lang_callback, pattern='^start_lang_')],
-            SHARE_CONTACT: [MessageHandler(filters.CONTACT, handle_contact)],
+            SHARE_CONTACT: [
+                MessageHandler(filters.CONTACT, handle_contact),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_phone_text),
+            ],
             AUTH_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, auth_password)],
             REG_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_name)],
             REG_DOB: [MessageHandler(filters.TEXT & ~filters.COMMAND, reg_dob)],
