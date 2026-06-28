@@ -651,6 +651,8 @@ async def reg_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += get_text("license_pending", lang)
                  
         await update.message.reply_text(msg, parse_mode="Markdown")
+        # First-time onboarding: show the full command list right away.
+        await update.message.reply_text(get_text("help_msg", lang), parse_mode="Markdown")
         BotLogService.log(update.effective_chat.id, "OUT", "registration", "User Registered successfully", new_user.id)
     else:
         err = get_text("error", lang)
@@ -1254,6 +1256,14 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = BotService.get_user_by_telegram_id(update.effective_chat.id)
     lang = user.language if user else "en"
     await update.message.reply_text(get_text("unknown_msg", lang), parse_mode="Markdown")
+
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reply to mistyped / unknown slash commands (e.g. /satts)."""
+    user = BotService.get_user_by_telegram_id(update.effective_chat.id)
+    lang = user.language if user else "en"
+    cmd = update.message.text.split()[0]  # the "/word" they typed
+    # Plain text (no Markdown): the echoed command may contain underscores.
+    await update.message.reply_text(get_text("unknown_command", lang, cmd=cmd))
 
 # ============================================================================
 # Manual BP Text Input (e.g., 130/90/65 or 130-90-65 or 130 90 65)
