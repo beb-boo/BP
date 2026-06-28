@@ -86,6 +86,7 @@ LOCALES = {
         "link_fail_inactive": "❌ This account has been deactivated. Please contact support if you need help.",
         "creating_account": "⏳ Creating account...",
         "unknown_msg": "🤔 I didn't understand that.\nType /help to see what I can do, or send a photo to record BP!\n\nYou can also type BP values directly: **130 90 65**",
+        "unknown_command": "❓ I don't recognize the command {cmd}.\nType /help to see everything I can do.",
 
         # Mini App
         "btn_record_bp": "📝 Record Blood Pressure",
@@ -207,7 +208,7 @@ LOCALES = {
         "push_test_title": "BP Monitor",
         "push_test_body": "Test notification — your device is set up correctly!",
         "reminder_title": "BP Monitor",
-        "reminder_body": "Time to measure your blood pressure",
+        "reminder_body": "Time to measure your blood pressure 🩺\n\n📸 Send a photo of your monitor, or type the values directly: 130 90 65",
         "alert_abnormal_title": "BP Monitor — Important",
         "alert_abnormal_body": "Your reading {sys}/{dia} (pulse {pulse}) is in the hypertensive crisis range. If you also have symptoms (chest pain, shortness of breath, numbness), seek medical care immediately. Otherwise rest 5 minutes and measure again.",
         "alert_abnormal_generic": "You have an important update in BP Monitor",
@@ -298,6 +299,7 @@ LOCALES = {
         "link_fail_inactive": "❌ บัญชีนี้ถูกปิดใช้งานแล้ว หากต้องการความช่วยเหลือกรุณาติดต่อผู้ดูแล",
         "creating_account": "⏳ กำลังสร้างบัญชี...",
         "unknown_msg": "🤔 ไม่เข้าใจข้อความครับ\nพิมพ์ /help เพื่อดูคำสั่ง หรือส่งรูปเพื่อบันทึกความดัน!\n\nหรือพิมพ์ค่าความดันได้เลย เช่น **130 90 65**",
+        "unknown_command": "❓ ไม่รู้จักคำสั่ง {cmd} ครับ\nพิมพ์ /help เพื่อดูคำสั่งทั้งหมดที่ใช้ได้",
 
         # Mini App
         "btn_record_bp": "📝 บันทึกความดัน",
@@ -419,7 +421,7 @@ LOCALES = {
         "push_test_title": "BP Monitor",
         "push_test_body": "ทดสอบการแจ้งเตือน — อุปกรณ์ของคุณตั้งค่าถูกต้องแล้ว!",
         "reminder_title": "BP Monitor",
-        "reminder_body": "ถึงเวลาวัดความดันโลหิต",
+        "reminder_body": "ถึงเวลาวัดความดันโลหิต 🩺\n\n📸 ส่งรูปหน้าจอเครื่องวัด หรือพิมพ์ค่าได้เลย: 130 90 65",
         "alert_abnormal_title": "BP Monitor — สำคัญ",
         "alert_abnormal_body": "ค่าความดัน {sys}/{dia} (ชีพจร {pulse}) อยู่ในเกณฑ์วิกฤต หากมีอาการร่วม (เจ็บหน้าอก หายใจลำบาก แขนขาชา) ให้รีบพบแพทย์ทันที หากไม่มีอาการ ให้พัก 5 นาทีแล้ววัดซ้ำ",
         "alert_abnormal_generic": "คุณมีข้อมูลสำคัญใน BP Monitor",
