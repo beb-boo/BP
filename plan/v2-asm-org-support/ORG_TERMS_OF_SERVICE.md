@@ -543,6 +543,7 @@ When admin accepts:
 
 ```python
 # app/api/org_onboarding.py
+from datetime import datetime, timezone
 
 @router.post("/accept-org-terms")
 @require_role(UserRole.org_admin)
@@ -559,7 +560,7 @@ async def accept_org_terms(
     
     # Record acceptance
     org.terms_version = version
-    org.terms_accepted_at = datetime.utcnow()
+    org.terms_accepted_at = datetime.now(timezone.utc)
     org.terms_accepted_by_user_id = current_user.id
     org.terms_accepted_from_ip = request.client.host
     

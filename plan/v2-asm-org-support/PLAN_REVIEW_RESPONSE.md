@@ -9,9 +9,9 @@ tags:
   - v2-asm-org
 order: 0.5
 status: draft
-version: 1.1
-updated: 2026-04-19
-summary: "Consolidated response to plan reviews (Gemini + internal code verification). Single source of truth for architectural decisions."
+version: 1.3
+updated: 2026-06-21
+summary: "Consolidated response to plan reviews (Gemini + internal code verification). Single source of truth for architectural decisions. v1.3: + decision 4.15 (P2 token_version session revocation). v1.2: + decisions 4.11–4.14 (C2/C4/S2/S3)."
 ---
 
 # v2 ASM — Plan Review Response & Decisions Log
@@ -106,8 +106,8 @@ Facts ที่ verify แล้วจาก codebase จริง (ไม่ใ
 
 **Rationale:**
 - Solo developer → ไม่มี multi-branch migration merge problem ที่ Alembic แก้
-- Existing pattern ใช้งาน prod ได้แล้ว 5 migrations — ไม่พัง
-- v2 เพิ่ม ~10 migrations → total 15 ยังไม่ถึง threshold ที่ Alembic คุ้มค่ากว่า
+- Existing pattern ใช้งาน prod ได้แล้ว 7 migrations (base, timezone, admin_audit, staff_state, payment, push_subscriptions, client_record_id) — ไม่พัง
+- v2 เพิ่ม ~14 migrations → total ~21 ยังไม่ถึง threshold ที่ Alembic คุ้มค่ากว่า
 - Upgrade path ชัด: ถ้า v3 ต้อง > 25 migrations ค่อยย้าย Alembic โดย `alembic stamp` ตาม `schema_migrations` version ล่าสุด
 
 **Action items:**
@@ -279,7 +279,7 @@ Facts ที่ verify แล้วจาก codebase จริง (ไม่ใ
 09. create pairing_codes table
 10. create files table (with purpose whitelist constraint)
 11. extend bp_readings (add measured_at, measurement_context, etc.)
-12. backfill bp_readings (measured_at = recorded_at)
+12. backfill bp_readings (measured_at = measurement_date)
 13. create audit_logs table (new, BigInt + JSONB)
 14. add organization_id FK to licenses
 15. backfill licenses (if any records exist)
@@ -303,10 +303,12 @@ Facts ที่ verify แล้วจาก codebase จริง (ไม่ใ
 
 | Condition | Action |
 |-----------|--------|
-| `measured_at > recorded_at` | **Block** (422 Unprocessable) — cannot measure in future |
-| `(recorded_at - measured_at) > 7 days` | **Warn** ใน response, require `notes` field populated |
-| `(recorded_at - measured_at) > 30 days` | **Block** — require separate "historical import" endpoint with extra consent |
-| OCR batch: ` measured_at` from Gemini screen read | Use if present, confidence > 0.8; else fall back to `recorded_at` |
+| `measured_at > recorded_reference` | **Block** (422 Unprocessable) — cannot measure in future |
+| `(recorded_reference - measured_at) > 7 days` | **Warn** ใน response, require `notes` field populated |
+| `(recorded_reference - measured_at) > 30 days` | **Block** — require separate "historical import" endpoint with extra consent |
+| OCR batch: `measured_at` from Gemini screen read | Use if present, confidence > 0.8; else fall back to request-time `now` with `measured_at_source = "current_time"` |
+
+`recorded_reference` = request-time `now` before insert, then maps to existing `BloodPressureRecord.created_at`. Current code uses `measurement_date` for legacy measurement timestamp and has no `recorded_at` column.
 
 **Action items:**
 - [ ] ORG_FOUNDATION §4.2.2: เพิ่ม validation subsection
@@ -329,7 +331,7 @@ For each column ที่ต้องเปลี่ยนเป็น timezone-
 5. Next release: swap names, drop old
 
 **Columns ที่ต้อง migrate (priority order):**
-- `bp_readings.measurement_date` (high traffic — stage carefully)
+- ~~`bp_readings.measurement_date`~~ **REMOVED (v1.2, C4):** `measured_at` (ใหม่, tz-aware) supersedes — measurement_date คงเป็น naive legacy, dual-write, drop ใน v3. ไม่ทำ ALTER TYPE บน hot column นี้ (ดู §4.12)
 - `audit_logs.created_at` (new table — tz-aware from start, no migration)
 - `users.created_at`, `updated_at`, `last_login` (low traffic)
 
@@ -358,6 +360,50 @@ For each column ที่ต้องเปลี่ยนเป็น timezone-
 **Action items:**
 - [ ] ORG_FOUNDATION §6: add subsection "Multi-org JWT claims"
 - [ ] `ADMIN_WEB_SPEC`, `CAREGIVER_PWA_SPEC`: add org selector UI spec
+
+---
+
+### 4.11 (C2) `measured_at` staged NOT NULL + write-path dual-write
+
+**Problem:** §4.2.2 model มี `measured_at NOT NULL` แต่ ADD ลงตารางที่มีข้อมูล + `AUTO_CREATE_TABLES=true` (verified default ใน `app/main.py`) → migration fail / divergence ระหว่าง prod (migrated, nullable) กับ DB ใหม่ (create_all, NOT NULL)
+
+**Decision:** Staged — `v2_10` ADD **nullable** → `v2_11` backfill `measured_at = measurement_date` → `v2_11b` `ALTER COLUMN measured_at SET NOT NULL`. model `nullable=False` = target end-state. **ทุก write path (รวม v1 `/api/v1/bp-records`) ต้อง set `measured_at` ทุก insert** (= measurement_date เมื่อไม่มีค่าจาก OCR/EXIF) มิฉะนั้น insert ใหม่ละเมิด NOT NULL
+
+### 4.12 (C4) `measured_at` vs `measurement_date` reconciliation
+
+**Problem:** ORG_FOUNDATION ตั้ง `measured_at` (tz-aware) เป็น canonical แต่ G6 (§4.9) ยัง list `measurement_date` ให้ migrate เป็น tz-aware → tz-aware timestamp 2 ตัวสำหรับ concept เดียว
+
+**Decision:** `measured_at` = canonical going-forward; `measurement_date` = naive legacy, **ไม่ migrate** (ลบจาก G6) dual-write ทั้งคู่ช่วง transition, drop `measurement_date` ใน v3. เหตุผล: add คอลัมน์ใหม่ + backfill เสี่ยงน้อยกว่า ALTER TYPE บน hot column และคง frontend/v1 ที่ใช้ measurement_date ทำงานต่อได้
+
+### 4.13 (S2) Caregiver create-patient — single gate
+
+**Problem:** §6.1 footnote (whitelist หรือ admin-approve, ยังไม่เลือก) ขัด §8.4.3 Path C (สร้างตรง ไม่มี gate)
+
+**Decision:** gate เดียวทุก path: (1) caregiver = active `OrganizationMember` ของ org (2) patient org-scoped ทันที (3) **consent เก็บ ณ จุดสร้าง (mandatory, ใน transaction เดียว)** (4) audit. ไม่มี admin pre-approval whitelist ใน MVP. **Dependency:** ฐานกฎหมายเก็บ sensitive data ณ จุดสร้าง = P1 (รอ PDPA consultant) — ถ้าต้องเลื่อนกรอกข้อมูลสุขภาพไปหลัง consent จะกระทบ field shape ของ create-hybrid
+
+### 4.14 (S3) BP dedupe granularity
+
+**Decision:** dedupe ระดับนาทีทำใน service layer (เทียบ measured_at ปัดนาที + sys/dia ต่อ user) `ix_bp_dedupe` = helper index (non-unique). ถ้าต้องการ DB unique: functional index `date_trunc('minute', measured_at AT TIME ZONE 'UTC')` (timestamptz + date_trunc ตรง ๆ ไม่ immutable)
+
+### 4.15 (P2) Session revocation: **token_version** (force-logout backed)
+
+**Problem:** `get_current_user` (`app/utils/security.py`) decode JWT อย่างเดียว ไม่ query `UserSession` → JWT stateless ล้วน; `User.is_active=False` ปิดได้ทั้งบัญชี แต่ "force-logout all sessions" (MVP_PILOT_SCOPE §4.1.4) บังคับไม่ได้จริง — token ค้างได้ถึง `exp` (ACCESS_TOKEN_EXPIRE_DAYS=7)
+
+**Decision (P2, 2026-06-21):** เพิ่ม **`User.token_version`** (Integer, NOT NULL, server_default 0) เป็น revocation counter — stateless, ไม่ต้อง DB lookup เพิ่ม (อ่านจาก user row ที่ get_current_user โหลดอยู่แล้ว)
+
+**Mechanism:**
+- ใส่ claim `tv = user.token_version` ในทุก token ที่ออก (access + refresh, รวม re-issue ตอน select-org)
+- `get_current_user` + refresh endpoint: `if payload.get("tv", 0) != user.token_version → 401 "session revoked"`
+- Revoke = `UPDATE users SET token_version = token_version + 1 WHERE id = :uid` → token เก่าทุกใบ tv ไม่ตรง → 401; ผู้ใช้ login ใหม่ได้ปกติ (ได้ tv ใหม่)
+- **Backward-safe:** token เก่าที่ไม่มี claim `tv` → `payload.get("tv", 0)=0` ตรงกับ default 0 → ไม่เตะ user ทั้งระบบตอน deploy
+
+**Triggers ที่ต้อง bump token_version:** password change, admin suspend/deactivate, admin "log out all devices", caregiver offboarding (ออกจาก org), user-initiated "ออกจากระบบทุกอุปกรณ์"
+
+**Migration:** token_version ไป v2_04_extend_users (ADD NOT NULL DEFAULT 0 ทำได้ตรง ๆ บนตารางที่มีข้อมูล เพราะมี server_default — **ต่างจาก C2** ที่ measured_at ไม่มี default จึงต้อง staged)
+
+**Granularity:** revoke = ทุก session ของ user (ทุกอุปกรณ์) พร้อมกัน. Per-device revocation (เตะทีละเครื่อง) = Phase 2 ผ่าน `UserSession` (ตารางมีอยู่แล้วแต่ auth ยังไม่ wire) แลกกับ DB lookup ต่อ request — ไม่ทำใน MVP
+
+**Affects:** ORG_FOUNDATION §4.2.1 (+token_version column), §6.6 (revocation spec), §5.1 (v2_04), §9.3 (task); MVP_PILOT_SCOPE §4.1.4 (wording)
 
 ---
 

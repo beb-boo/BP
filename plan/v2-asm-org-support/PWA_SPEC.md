@@ -9,13 +9,13 @@ tags:
   - v2-asm-org
 order: 4.5
 status: implemented
-version: 1.1
-updated: 2026-06-11
-summary: "PWA layer บน Next.js frontend หลัก (general users) — manifest, service worker, web push, offline-first BP entry, service layer unification"
+version: 1.2
+updated: 2026-06-20
+summary: "PWA layer บน Next.js frontend หลัก (general users) — manifest, service worker, web push, offline-first BP entry, service layer unification; v1.2 adds future LINE guardrails"
 ---
 # PWA Specification — Main App (General Users / B2C)
 
-> **Status:** Implemented v1.1 (Sprint 1-4 executed 2026-06-11; field testing on real devices pending)
+> **Status:** Implemented v1.1 (Sprint 1-4 executed 2026-06-11; field testing on real devices pending). v1.2 adds future LINE integration/cost guardrails only.
 > **Last updated:** 2026-06-11
 > **Owner:** Pornthep
 > **Depends on:** existing frontend (`frontend/`), existing backend (`app/`)
@@ -236,6 +236,24 @@ Flow อนาคต: LINE OAuth → ได้ `line_user_id` → lookup `auth_i
 - JWT issuance ต้อง provider-agnostic (อย่า encode "password" assumption ใน token/claims)
 - อย่า unique-constrain email แบบที่ห้าม user ไม่มี password (LINE-only user อาจไม่มี password ในอนาคต — ตรวจ nullable ตอน implement จริง)
 - หมายเหตุ: Telegram pairing เดิม (`telegram_id_hash` บน users) คือ identity provider โดยพฤตินัย — ตอนทำ LINE จริง พิจารณา migrate เข้า `auth_identities` ด้วย (จดไว้ ไม่ทำตอนนี้)
+
+#### 5.3.1 Future LINE Messaging / LIFF guardrails (not MVP)
+
+LINE support is feasible as a Phase 2 additive channel:
+- Auth: LINE Login → `auth_identities(provider="line", provider_user_id_hash=...)`.
+- In-LINE app: optional LIFF entrypoint can reuse the existing PWA screens, but must treat LIFF browser cache/session behavior as separate from installed PWA.
+- Notifications: add `LineChannel` beside `WebPushChannel` and `TelegramChannel`; extend `notification_preferences.channels` to allow `"line"` only after the user explicitly links LINE.
+- Privacy: apply D4-style generic content by default on LINE too. Health values in LINE messages require explicit opt-in and should still be avoided for routine reminders.
+
+Cost controls are mandatory before enabling LINE messaging:
+- Keep Web Push/Telegram as default low-cost channels; use LINE only as opt-in fallback or for high-value operational notifications.
+- Track LINE sends per organization/month and hard-cap by org budget before calling LINE push/multicast/broadcast APIs.
+- Prefer user-triggered reply messages when the user initiates a LINE interaction; do not implement proactive broadcast/reminder fan-out without quota checks.
+- Support org-owned LINE Official Account credentials so LINE OA subscription/overage cost can be paid by the organization instead of the BP platform.
+- Pricing source must be rechecked before launch. As of 2026-06-20, LINE's official docs say LINE Login is free, Messaging API has monthly free message limits by OA plan/country, and Thailand LINE OA shows Free 300 messages/month, Basic 1,280 THB/month for 15,000 messages, Pro 1,780 THB/month for 35,000 messages, excluding VAT, with additional-message charges by plan. Official references:
+  - https://developers.line.biz/en/docs/line-login/overview/
+  - https://developers.line.biz/en/docs/messaging-api/pricing/
+  - https://lineforbusiness.com/th/service/line-oa-features/broadcast-message
 
 ---
 

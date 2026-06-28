@@ -200,9 +200,10 @@ All retention enforcement implemented as **scheduled background jobs**.
 ```python
 # app/jobs/file_cleanup.py
 # Run: every 6 hours
+from datetime import datetime, timezone
 
 async def cleanup_expired_files():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     expired = await db.query(File).filter(
         File.expires_at < now,
         File.deleted_at.is_(None)
@@ -255,7 +256,7 @@ async def cleanup_failed_logins():
 # After 2 years in hot, move to S3 cold storage
 
 async def archive_old_audit_logs():
-    cutoff = datetime.utcnow() - timedelta(days=365*2)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365*2)
     
     # For partitioned table (recommended in [[SCALABILITY_PLAN]]):
     # DETACH old partition → export to S3 → DROP
@@ -278,7 +279,7 @@ async def archive_old_audit_logs():
 # Run: quarterly
 
 async def delete_very_old_audit_archives():
-    cutoff = datetime.utcnow() - timedelta(days=365*7)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365*7)
     # S3 Lifecycle rule handles this (configure bucket policy)
 ```
 
@@ -288,7 +289,7 @@ async def delete_very_old_audit_archives():
 # Run: monthly
 
 async def anonymize_inactive_users():
-    cutoff = datetime.utcnow() - timedelta(days=365*2)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365*2)
     
     inactive = await db.query(User).filter(
         User.last_login_at < cutoff,
@@ -308,7 +309,7 @@ async def anonymize_inactive_users():
         user.citizen_id_encrypted = None
         user.telegram_id_encrypted = None
         # Keep: email_hash, phone_hash (for lookup only)
-        user.deleted_at = datetime.utcnow()
+        user.deleted_at = datetime.now(timezone.utc)
         user.deletion_reason = "inactive_2_years"
         
         await log_audit(
@@ -326,7 +327,7 @@ async def anonymize_inactive_users():
 # Run: weekly
 
 async def hard_anonymize_deactivated_users():
-    cutoff = datetime.utcnow() - timedelta(days=90)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
     
     users = await db.query(User).filter(
         User.deleted_at < cutoff,
@@ -357,7 +358,7 @@ async def hard_anonymize_deactivated_users():
 # Run: monthly
 
 async def cleanup_old_consent_records():
-    cutoff = datetime.utcnow() - timedelta(days=365*10)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365*10)
     
     # Withdrawn records older than 10 years
     old_withdrawn = await db.query(ConsentRecord).filter(

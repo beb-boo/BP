@@ -1,7 +1,7 @@
 # MVP Pilot Scope — BP Monitor for อสม. / รพ.สต.
 
 > **Status:** Draft v1 — for review before implementation
-> **Last updated:** 2026-04-18
+> **Last updated:** 2026-06-21
 > **Owner:** Pornthep
 > **Related docs:** `ORG_FOUNDATION.md`, `ADMIN_WEB_SPEC.md`, `CAREGIVER_PWA_SPEC.md`, `docs/pdpa/PDPA_COMPLIANCE.md`
 
@@ -106,7 +106,7 @@
 #### 4.1.4 Logout & Session
 - PWA JWT TTL: 24 ชม. แล้ว re-OTP
 - Admin web session TTL: 8 ชม.
-- Force logout all sessions endpoint
+- Force logout all sessions endpoint — backed by `User.token_version` (bump counter → token เก่าทุกใบ invalid). กลไก + triggers ดู ORG_FOUNDATION §6.6 (decision PLAN_REVIEW_RESPONSE §4.15)
 
 ### 4.2 Admin Web Dashboard (รพ.สต. admin)
 

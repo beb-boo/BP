@@ -10,7 +10,7 @@ from .handlers import (get_auth_handler, get_ocr_handler, get_manual_bp_handler,
                        get_profile_handler, get_delete_handler, get_edit_handler,
                        get_password_handler, get_deactivate_handler,
                        get_broadcast_handler, get_notification_settings_handler,
-                       stats, help_command, unknown, bp_command,
+                       stats, help_command, unknown, unknown_command, bp_command,
                        language_command, language_callback,
                        settings_command, settings_callback, timezone_callback,
                        notification_callback)
@@ -274,6 +274,8 @@ def build_application():
 
     # Fallback for unknown messages (Must be last)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, unknown))
+    # Fallback for mistyped commands not matched above (e.g. /satts)
+    application.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
     return application
 

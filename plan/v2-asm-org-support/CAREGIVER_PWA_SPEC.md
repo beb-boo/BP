@@ -155,6 +155,8 @@ Step 4 — Open PWA + Login (section 3.2)
 
 **Pairing Code validation (backend)**:
 ```python
+from datetime import datetime, timezone
+
 async def handle_start_command(update, context):
     code = context.args[0] if context.args else None
     if not code or not code.isdigit() or len(code) != 6:
@@ -165,7 +167,7 @@ async def handle_start_command(update, context):
     pairing = await db.query(PairingCode).filter(
         PairingCode.code_hash == code_hash,
         PairingCode.used_at.is_(None),
-        PairingCode.expires_at > datetime.utcnow()
+        PairingCode.expires_at > datetime.now(timezone.utc)
     ).first()
     
     if not pairing:
@@ -180,7 +182,7 @@ async def handle_start_command(update, context):
     user.telegram_id_encrypted = fernet.encrypt(str(telegram_id).encode())
     
     # Mark pairing as used
-    pairing.used_at = datetime.utcnow()
+    pairing.used_at = datetime.now(timezone.utc)
     pairing.used_by_telegram_id_hash = user.telegram_id_hash
     
     await db.commit()
